@@ -7,6 +7,16 @@
 // nos models próprios (Doctor, Patient) ligados por referência — o User trata
 // apenas de identidade, credenciais, role e estado da conta.
 //
+// MULTI-CLÍNICA — quem vê o quê:
+//   - admin:        tudo, sempre (clinicIds ignorado; convenção: deixar [])
+//   - receptionist: clinicIds define as clínicas cuja operação pode ver/gerir
+//                   (rececionista da Buraca não mexe na agenda do Colombo).
+//                   [] = todas (rececionista "volante" entre as duas casas)
+//   - doctor:       clinicIds NÃO se usa — as clínicas do médico derivam de
+//                   Doctor.clinicSchedules (fonte única, nada a sincronizar)
+//   - patient:      global por natureza (a ficha segue a pessoa)
+//   A imposição é feita no RBAC das actions/queries, não aqui.
+//
 // Fluxo de vida da conta:
 //   invited  → criada pelo admin, sem password, à espera de ativação por código
 //   active   → ativada (password definida pelo próprio) ou criada já ativa
@@ -60,6 +70,13 @@ const UserSchema = new Schema(
       default: 'invited',
       index: true,
     },
+    // Clínicas que este STAFF pode operar (só relevante para receptionist —
+    // ver cabeçalho). [] = todas. Admin ignora; doctor deriva do Doctor;
+    // patient não usa.
+    clinicIds: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'Clinic' }],
+      default: [],
+    },
     // Referências ao perfil de domínio (preenchida conforme o role)
     doctorId: {
       type: Schema.Types.ObjectId,
@@ -109,3 +126,25 @@ const User: Model<UserDoc> =
   mongoose.model<UserDoc>('User', UserSchema);
 
 export default User;
+
+// -----------------------------------------------------------------------------
+// Helper de RBAC multi-clínica (puro, sem BD)
+// -----------------------------------------------------------------------------
+
+/**
+ * O user pode operar esta clínica?
+ *   admin → sempre; receptionist → clinicIds vazio OU contém a clínica;
+ *   restantes roles → false (médico e paciente não "operam" clínicas —
+ *   têm as suas próprias regras de acesso)
+ */
+export function canOperateClinic(
+  user: Pick<UserDoc, 'role' | 'clinicIds'>,
+  clinicId: string,
+): boolean {
+  if (user.role === 'admin') return true;
+  if (user.role === 'receptionist') {
+    if (user.clinicIds.length === 0) return true;
+    return user.clinicIds.some(id => id.toString() === clinicId);
+  }
+  return false;
+}

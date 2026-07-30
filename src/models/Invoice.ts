@@ -7,10 +7,17 @@
 // Este model guarda a referência ao documento certificado + o estado
 // operacional do checkout no balcão.
 //
+// MULTI-CLÍNICA: as duas clínicas pertencem à MESMA sociedade
+// (D. Amaral — Assistência Prev. Dentária, Lda) → UMA conta Moloni.
+// clinicId obrigatório para relatórios de faturação por casa; no Sprint 4
+// a integração usa (idealmente) uma série de documentos por clínica
+// (ex. FR COL/…, FR BUR/…) — a confirmar com o contabilista. O campo
+// moloniDocumentSetId guarda a série usada em cada emissão.
+//
 // FLUXO (Sprint 4):
 //   1. Receção abre o checkout com os Procedures 'completed' do paciente
 //   2. Confirma valores/meio de pagamento → action chama a API Moloni
-//   3. Moloni emite fatura-recibo certificada (numeração DELE, ex. FR CDC1/123)
+//   3. Moloni emite fatura-recibo certificada (numeração DELE)
 //   4. Gravamos aqui o espelho: ids Moloni, totais, meio de pagamento
 //   5. Procedures ligados passam a status 'invoiced'
 //   6. PDF fica disponível no portal do paciente (via link/download Moloni)
@@ -54,6 +61,13 @@ const InvoiceLineSchema = new Schema(
 
 const InvoiceSchema = new Schema(
   {
+    // Clínica onde o checkout aconteceu (relatórios por casa)
+    clinicId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Clinic',
+      required: true,
+      index: true,
+    },
     patientId: {
       type: Schema.Types.ObjectId,
       ref: 'Patient',
@@ -103,11 +117,16 @@ const InvoiceSchema = new Schema(
       required: true,
       unique: true,
     },
-    // Identificação legível: "FR CDC1/123" (série + número da AT)
+    // Identificação legível: "FR COL/123" (série + número da AT)
     moloniDocumentNumber: {
       type: String,
       required: true,
       trim: true,
+    },
+    // Série Moloni usada (document_set_id) — uma por clínica no plano atual
+    moloniDocumentSetId: {
+      type: Number,
+      default: null,
     },
     // ATCUD do documento (obrigatório nos documentos desde 2023)
     atcud: {
@@ -137,10 +156,11 @@ const InvoiceSchema = new Schema(
   },
 );
 
-// Portal do paciente: as minhas faturas, mais recentes primeiro
+// Portal do paciente: as minhas faturas (das duas clínicas), recentes primeiro
 InvoiceSchema.index({ patientId: 1, createdAt: -1 });
-// Relatórios de faturação por período
+// Relatórios de faturação por período — globais e por clínica
 InvoiceSchema.index({ status: 1, paidAt: -1 });
+InvoiceSchema.index({ clinicId: 1, status: 1, paidAt: -1 });
 
 export type InvoiceDoc = InferSchemaType<typeof InvoiceSchema> & {
   _id: mongoose.Types.ObjectId;

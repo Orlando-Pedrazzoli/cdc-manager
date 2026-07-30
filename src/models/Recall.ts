@@ -6,6 +6,11 @@
 // com recallIntervalMonths é executado (ex.: destartarização → recall a
 // +6 meses). O cron semanal convida os 'due' por WhatsApp com link de
 // marcação; conversão medida por recall (a métrica de ouro do módulo).
+//
+// MULTI-CLÍNICA: clinicId obrigatório = a clínica do ato ORIGINAL (herdado
+// da Appointment do Procedure de origem). O convite sugere o mesmo médico
+// na mesma clínica — a experiência de continuidade que o paciente espera.
+// Nada impede a receção de o marcar na outra clínica ao converter.
 // =============================================================================
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
@@ -22,6 +27,13 @@ export type RecallStatus = (typeof RECALL_STATUS)[number];
 
 const RecallSchema = new Schema(
   {
+    // Clínica do ato que originou o ciclo
+    clinicId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Clinic',
+      required: true,
+      index: true,
+    },
     patientId: {
       type: Schema.Types.ObjectId,
       ref: 'Patient',
@@ -66,8 +78,10 @@ const RecallSchema = new Schema(
   { timestamps: true },
 );
 
-// Cron semanal: scheduled cuja data chegou → due; due por contactar
+// Cron semanal: scheduled cuja data chegou → due; due por contactar.
+// O painel /admin/recalls filtra por clínica → índice próprio
 RecallSchema.index({ status: 1, dueAt: 1 });
+RecallSchema.index({ clinicId: 1, status: 1, dueAt: 1 });
 
 export type RecallDoc = InferSchemaType<typeof RecallSchema> & {
   _id: mongoose.Types.ObjectId;

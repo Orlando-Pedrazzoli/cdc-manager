@@ -27,4 +27,9 @@ export { default as Waitlist } from './Waitlist';
 export { default as Recall } from './Recall';
 export { default as Notification } from './Notification';
 export { default as AuditLog } from './AuditLog';
-export { default as ClinicSettings, getClinicSettings } from './ClinicSettings';
+export {
+  default as Clinic,
+  getActiveClinics,
+  getClinicBySlug,
+  getClinicById,
+} from './Clinic';

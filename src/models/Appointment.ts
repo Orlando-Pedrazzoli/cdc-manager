@@ -2,8 +2,16 @@
 // =============================================================================
 // CDC Manager — Model: Appointment
 // -----------------------------------------------------------------------------
-// A marcação. Cada documento representa um bloco reservado na agenda da
-// clínica, com o ciclo de vida completo do fluxo operacional.
+// A marcação. Cada documento representa um bloco reservado na agenda de UMA
+// clínica (Colombo ou Buraca), com o ciclo de vida completo do fluxo.
+//
+// MULTI-CLÍNICA:
+//   - clinicId obrigatório: toda a marcação pertence a uma clínica.
+//   - Capacidade (gabinetes) verifica-se POR CLÍNICA: Colombo 5, Buraca 1.
+//   - O conflito de MÉDICO verifica-se SEM filtro de clínica: o mesmo médico
+//     não pode ter marcações sobrepostas em clínicas diferentes (não está
+//     em dois sítios ao mesmo tempo). Por isso o índice do médico não inclui
+//     clinicId — de propósito.
 //
 // MÁQUINA DE ESTADOS (transições válidas impostas em actions/appointments.ts):
 //
@@ -71,6 +79,13 @@ export type CancelledBy = (typeof CANCELLED_BY)[number];
 
 const AppointmentSchema = new Schema(
   {
+    // Clínica onde a consulta acontece — Colombo ou Buraca
+    clinicId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Clinic',
+      required: true,
+      index: true,
+    },
     patientId: {
       type: Schema.Types.ObjectId,
       ref: 'Patient',
@@ -151,7 +166,9 @@ const AppointmentSchema = new Schema(
       maxlength: 300,
       default: null,
     },
-    // Remarcação = cancelar + criar nova; os elos preservam o rasto completo
+    // Remarcação = cancelar + criar nova; os elos preservam o rasto completo.
+    // A nova marcação pode ser NOUTRA clínica (remarcar do Colombo para a
+    // Buraca é um caso real de referência entre médicos)
     rescheduledToId: {
       type: Schema.Types.ObjectId,
       ref: 'Appointment',
@@ -175,12 +192,13 @@ const AppointmentSchema = new Schema(
 // -----------------------------------------------------------------------------
 // ÍNDICES — desenhados para as queries quentes do sistema:
 // -----------------------------------------------------------------------------
-// 1. Agenda do médico / verificação de conflito por médico:
-//    { doctorId, startAt } filtrado por status bloqueante
+// 1. Conflito de MÉDICO — SEM clinicId de propósito: o mesmo médico não pode
+//    estar sobreposto em clínica nenhuma (uma pessoa, uma agenda corporal)
 AppointmentSchema.index({ doctorId: 1, startAt: 1, status: 1 });
-// 2. Capacidade global (5 gabinetes): marcações da clínica num intervalo
-AppointmentSchema.index({ startAt: 1, endAt: 1, status: 1 });
-// 3. Histórico e próximas consultas do paciente (portal + ficha)
+// 2. Capacidade POR CLÍNICA (Colombo 5 / Buraca 1) + vista da agenda diária
+AppointmentSchema.index({ clinicId: 1, startAt: 1, endAt: 1, status: 1 });
+// 3. Histórico e próximas consultas do paciente (portal + ficha — global,
+//    o paciente vê as consultas das duas clínicas juntas)
 AppointmentSchema.index({ patientId: 1, startAt: -1 });
 // 4. Crons de lembretes: intervalo temporal + estado + flag de envio
 AppointmentSchema.index({ status: 1, startAt: 1, reminder24hSentAt: 1 });

@@ -6,7 +6,7 @@
 
 import { dbConnect } from '@/lib/mongodb';
 import '@/models'; // regista todos os schemas
-import { seedSettings } from './settings';
+import { seedClinics } from './clinics';
 import { seedTreatmentTypes } from './treatment-types';
 import { seedDoctors } from './doctors';
 import { seedPatients } from './patients';
@@ -14,7 +14,7 @@ import { seedPatients } from './patients';
 async function main() {
   console.log('CDC Manager — seed a iniciar…');
   await dbConnect();
-  await seedSettings();
+  await seedClinics();
   await seedTreatmentTypes();
   await seedDoctors();
   await seedPatients();

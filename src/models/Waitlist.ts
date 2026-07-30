@@ -7,6 +7,11 @@
 // médico opcional, janela de datas/períodos) e oferece o slot por WhatsApp —
 // primeiro a confirmar fica com ele.
 //
+// MULTI-CLÍNICA: clinicId OPCIONAL — null = o paciente aceita vaga em
+// QUALQUER das clínicas (caso comum nos referenciados Buraca↔Colombo);
+// preenchido = só naquela. O matching de um cancelamento na clínica X
+// procura entradas com clinicId ∈ {X, null}.
+//
 // OFERTA COM RESERVA TEMPORÁRIA: ao oferecer, o slot fica "held" por 30 min
 // para o paciente contactado (evita oferecer o mesmo slot a 3 pessoas e
 // ter 2 desiludidas). Expirado o hold, passa ao seguinte da fila.
@@ -28,6 +33,12 @@ export type DayPeriod = (typeof DAY_PERIODS)[number];
 
 const WaitlistSchema = new Schema(
   {
+    // null = qualquer clínica serve; preenchido = só esta
+    clinicId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Clinic',
+      default: null,
+    },
     patientId: {
       type: Schema.Types.ObjectId,
       ref: 'Patient',
@@ -55,10 +66,12 @@ const WaitlistSchema = new Schema(
       default: 'active',
       index: true,
     },
-    // Oferta em curso
+    // Oferta em curso (inclui a clínica do slot oferecido — pode ser
+    // diferente da preferida se clinicId era null)
     offeredAppointmentSlot: {
       startAt: { type: Date, default: null },
       doctorId: { type: Schema.Types.ObjectId, ref: 'Doctor', default: null },
+      clinicId: { type: Schema.Types.ObjectId, ref: 'Clinic', default: null },
     },
     offeredAt: { type: Date, default: null },
     holdExpiresAt: { type: Date, default: null }, // fim da reserva de 30 min
@@ -77,8 +90,14 @@ const WaitlistSchema = new Schema(
   { timestamps: true },
 );
 
-// Matching de cancelamentos: ativos compatíveis por ato/janela
-WaitlistSchema.index({ status: 1, treatmentTypeId: 1, fromDate: 1 });
+// Matching de cancelamentos: ativos compatíveis por ato/janela.
+// A query filtra clinicId: { $in: [clinicX, null] } — o índice serve as duas
+WaitlistSchema.index({
+  status: 1,
+  treatmentTypeId: 1,
+  clinicId: 1,
+  fromDate: 1,
+});
 
 export type WaitlistDoc = InferSchemaType<typeof WaitlistSchema> & {
   _id: mongoose.Types.ObjectId;

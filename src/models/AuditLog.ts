@@ -6,6 +6,11 @@
 // para dados de saúde (accountability, art. 5.º/32.º). Equivalente ao
 // "Registo de Operações (LOG)" do Dentoral, mas pesquisável.
 //
+// MULTI-CLÍNICA: clinicId OPCIONAL — muitos eventos são globais (login,
+// edição de ficha de paciente, gestão de utilizadores); eventos operacionais
+// (marcações, faturas, stock) registam a clínica onde aconteceram, para o
+// painel /admin/auditoria poder filtrar por casa.
+//
 // Escrito por lib/audit.ts (helper único chamado pelas Server Actions).
 // Append-only absoluto: sem updates, sem deletes — nem sequer expomos
 // actions que os façam. Retenção longa (não usamos TTL).
@@ -30,6 +35,12 @@ export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 const AuditLogSchema = new Schema(
   {
+    // Clínica do evento (null = evento global, ex. login, edição de paciente)
+    clinicId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Clinic',
+      default: null,
+    },
     // Quem (null em eventos de sistema, ex. login-failed sem user válido)
     userId: {
       type: Schema.Types.ObjectId,
@@ -71,6 +82,8 @@ const AuditLogSchema = new Schema(
 
 AuditLogSchema.index({ createdAt: -1 });
 AuditLogSchema.index({ userId: 1, createdAt: -1 });
+// Filtro por clínica no painel de auditoria
+AuditLogSchema.index({ clinicId: 1, createdAt: -1 });
 
 export type AuditLogDoc = InferSchemaType<typeof AuditLogSchema> & {
   _id: mongoose.Types.ObjectId;

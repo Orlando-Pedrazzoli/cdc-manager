@@ -2,23 +2,36 @@
 // =============================================================================
 // CDC Manager — Model: Doctor
 // -----------------------------------------------------------------------------
-// Perfil de domínio do médico (21 na clínica). A conta de acesso vive no User
-// (via User.doctorId); este model guarda o que interessa à operação:
-// especialidades, horários, exceções e regras de comissão.
+// Perfil de domínio do médico. A conta de acesso vive no User (via
+// User.doctorId); este model guarda o que interessa à operação:
+// especialidades, horários POR CLÍNICA, exceções e regras de comissão.
 //
-// HORÁRIOS — modelo em dois níveis, o padrão dos sistemas de agenda modernos:
-//   1. weeklySchedule: a semana-tipo (recorrente). Ex.: Seg 09:00-13:00 e
-//      14:00-18:00; Qua 09:00-13:00. Vários intervalos por dia = pausa de
-//      almoço sem hacks.
-//   2. exceptions: desvios pontuais por data — férias, faltas, congressos
-//      (unavailable) ou dias com horário especial (custom).
-//   Disponibilidade real = weeklySchedule do dia ± exceptions dessa data.
+// MULTI-CLÍNICA — o mesmo médico pode trabalhar no Colombo e na Buraca:
+//   - clinicSchedules[]: um bloco por clínica onde trabalha, cada um com a
+//     sua semana-tipo. Ex.: Dr. X → Colombo {Seg, Qua 09-18} + Buraca {Sex 10-13,14-20}.
+//     Médico só numa clínica = array com um elemento. A lista de clínicas
+//     do médico DERIVA daqui (não há campo separado a dessincronizar).
+//   - exceptions: clinicId OPCIONAL. null = vale nas duas (férias, baixa —
+//     a pessoa não está em lado nenhum); preenchido = só naquela clínica
+//     (ex.: "esta quarta excecionalmente na Buraca em vez do Colombo").
+//   - REGRA DE NEGÓCIO (validada na action, não aqui): os horários do mesmo
+//     médico em clínicas diferentes NUNCA podem sobrepor-se no tempo —
+//     ninguém está em Lisboa e na Buraca ao mesmo tempo.
 //
-// COMISSÕES — três níveis de resolução (do mais específico ao geral):
+// HORÁRIOS — dois níveis (padrão dos sistemas de agenda):
+//   1. semana-tipo recorrente (vários intervalos por dia = pausas sem hacks)
+//   2. exceções pontuais por data (unavailable | custom)
+//   Disponibilidade real numa clínica = semana-tipo dessa clínica ± exceções
+//   aplicáveis (globais + dessa clínica), intersectada com Clinic.openingHours.
+//
+// COMISSÕES — resolução (do mais específico ao geral):
 //   1. override por (médico × tipo de tratamento)  → commissionOverrides
 //   2. taxa base do médico                          → commissionRate
-//   3. default da clínica (40% médico / 60% clínica)→ ClinicSettings
-//   A resolução é implementada em lib/commissions.ts; aqui só os dados.
+//   3. default DA CLÍNICA onde o ato foi executado  → Clinic.defaultDoctorCommission
+//   Por agora as taxas do médico são iguais nas duas clínicas (nível 1 e 2
+//   globais); se o Victor confirmar comissões diferentes na Buraca,
+//   acrescenta-se clinicId ao override — o snapshot no Procedure já congela
+//   o valor certo na execução, por isso a mudança futura não parte histórico.
 // =============================================================================
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
@@ -66,6 +79,28 @@ const WeeklyScheduleSchema = new Schema(
   { _id: false },
 );
 
+// --- Sub-schema: horário do médico NUMA clínica ------------------------------
+const ClinicScheduleSchema = new Schema(
+  {
+    clinicId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Clinic',
+      required: true,
+    },
+    weeklySchedule: {
+      type: [WeeklyScheduleSchema],
+      default: [],
+    },
+    // Aceita marcações do site NESTA clínica? (um médico pode aceitar
+    // marcações online no Colombo mas trabalhar só por referência na Buraca)
+    bookableOnline: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  { _id: false },
+);
+
 // --- Sub-schema: exceção pontual por data ------------------------------------
 const ScheduleExceptionSchema = new Schema(
   {
@@ -75,12 +110,19 @@ const ScheduleExceptionSchema = new Schema(
       required: true,
       match: [/^\d{4}-\d{2}-\d{2}$/, 'Data inválida (YYYY-MM-DD)'],
     },
+    // null = exceção GLOBAL (férias/baixa: o médico não está em nenhuma
+    // clínica); preenchido = exceção só nessa clínica
+    clinicId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Clinic',
+      default: null,
+    },
     type: {
       type: String,
       enum: ['unavailable', 'custom'],
       required: true,
     },
-    // Apenas para type 'custom': horário especial desse dia
+    // Apenas para type 'custom': horário especial desse dia (nessa clínica)
     ranges: { type: [TimeRangeSchema], default: [] },
     reason: { type: String, trim: true, maxlength: 200, default: null },
   },
@@ -123,16 +165,27 @@ const DoctorSchema = new Schema(
         message: 'O médico deve ter pelo menos uma especialidade',
       },
     },
-    weeklySchedule: {
-      type: [WeeklyScheduleSchema],
+    // Horários por clínica — a fonte de verdade de ONDE e QUANDO o médico
+    // trabalha. Sem entrada para uma clínica = não trabalha lá.
+    clinicSchedules: {
+      type: [ClinicScheduleSchema],
       default: [],
+      validate: {
+        validator: (v: { clinicId: mongoose.Types.ObjectId }[]) => {
+          // Uma entrada por clínica no máximo (duplicados corrompem a agenda)
+          const ids = v.map(s => s.clinicId.toString());
+          return new Set(ids).size === ids.length;
+        },
+        message: 'Clínica duplicada nos horários do médico',
+      },
     },
     exceptions: {
       type: [ScheduleExceptionSchema],
       default: [],
     },
     // Taxa base do médico (fração que ELE recebe). null = usa o default da
-    // clínica em ClinicSettings (0.40). O admin edita em /admin/medicos/[id]/comissoes
+    // clínica do ato (Clinic.defaultDoctorCommission). Editável em
+    // /admin/medicos/[id]/comissoes
     commissionRate: {
       type: Number,
       min: 0,
@@ -143,19 +196,14 @@ const DoctorSchema = new Schema(
       type: [CommissionOverrideSchema],
       default: [],
     },
-    // Cor do médico nas agendas (hex) — identificação visual imediata com 21 agendas
+    // Cor do médico nas agendas (hex) — identificação visual imediata
     color: {
       type: String,
       match: [/^#[0-9A-Fa-f]{6}$/, 'Cor inválida (hex #RRGGBB)'],
       default: '#2743A6',
     },
-    // Visível no formulário público de marcação? (nem todos os médicos aceitam
-    // marcações diretas do site)
-    bookableOnline: {
-      type: Boolean,
-      default: true,
-    },
-    // Migração: número/ID do médico no Dentoral, para reconciliação de dados
+    // Migração: número/ID do médico no Dentoral, prefixado pela origem
+    // ('colombo:12' / 'buraca:3') — as duas instalações têm numerações próprias
     legacyId: {
       type: String,
       default: null,
@@ -174,6 +222,8 @@ const DoctorSchema = new Schema(
 
 // Listagens e motor de disponibilidade filtram por especialidade + ativo
 DoctorSchema.index({ specialties: 1, active: 1 });
+// "Que médicos trabalham nesta clínica?" — query central das agendas
+DoctorSchema.index({ 'clinicSchedules.clinicId': 1, active: 1 });
 
 export type DoctorDoc = InferSchemaType<typeof DoctorSchema> & {
   _id: mongoose.Types.ObjectId;
@@ -184,3 +234,38 @@ const Doctor: Model<DoctorDoc> =
   mongoose.model<DoctorDoc>('Doctor', DoctorSchema);
 
 export default Doctor;
+
+// -----------------------------------------------------------------------------
+// Helpers puros (sem BD — operam sobre um DoctorDoc já carregado)
+// -----------------------------------------------------------------------------
+
+/** Ids das clínicas onde o médico trabalha (derivado de clinicSchedules) */
+export function getDoctorClinicIds(doctor: DoctorDoc): string[] {
+  return doctor.clinicSchedules.map(s => s.clinicId.toString());
+}
+
+/** Semana-tipo do médico numa clínica específica (undefined = não trabalha lá) */
+export function getScheduleForClinic(
+  doctor: DoctorDoc,
+  clinicId: string,
+): (typeof doctor.clinicSchedules)[number] | undefined {
+  return doctor.clinicSchedules.find(s => s.clinicId.toString() === clinicId);
+}
+
+/**
+ * Exceções aplicáveis a uma data numa clínica: as globais (clinicId null)
+ * + as específicas dessa clínica. 'unavailable' global ganha sempre.
+ */
+export function getExceptionsForDate(
+  doctor: DoctorDoc,
+  date: string, // YYYY-MM-DD
+  clinicId: string,
+): (typeof doctor.exceptions)[number][] {
+  return doctor.exceptions.filter(
+    e =>
+      e.date === date &&
+      // !e.clinicId cobre null E undefined (o schema tem default: null sem
+      // required, logo o InferSchemaType tipa como possivelmente undefined)
+      (!e.clinicId || e.clinicId.toString() === clinicId),
+  );
+}
