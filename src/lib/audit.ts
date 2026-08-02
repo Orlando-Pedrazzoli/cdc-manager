@@ -5,6 +5,10 @@
 // Ponto único de escrita no AuditLog. Fire-and-forget com catch: um log
 // falhado NUNCA pode partir a operação principal (mas fica registado na
 // consola do servidor para investigação).
+//
+// clinicId (opcional): eventos operacionais (marcações, faturas, stock)
+// registam a clínica onde aconteceram; eventos globais (login, edição de
+// paciente) omitem-no — ver AuditLog.ts.
 // =============================================================================
 
 import { dbConnect } from '@/lib/mongodb';
@@ -16,6 +20,7 @@ export async function logAudit(params: {
   entityType: string;
   entityId?: string | null;
   patientId?: string | null;
+  clinicId?: string | null;
   summary?: string;
   changedFields?: string[];
   ip?: string | null;
@@ -29,6 +34,7 @@ export async function logAudit(params: {
       entityType: params.entityType,
       entityId: params.entityId ?? null,
       patientId: params.patientId ?? null,
+      clinicId: params.clinicId ?? null,
       summary: params.summary ?? null,
       changedFields: params.changedFields ?? [],
       ip: params.ip ?? null,
