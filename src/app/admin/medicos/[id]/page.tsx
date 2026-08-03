@@ -96,7 +96,7 @@ export default async function DoctorPage({
         }}
       >
         <ArrowLeft size={15} />
-        Médicos
+        Corpo Clínico
       </Link>
 
       {/* Cabeçalho */}
@@ -223,7 +223,7 @@ export default async function DoctorPage({
             doctorId={id}
             basePercentLabel={
               doctor.commissionRate != null
-                ? `a taxa base do médico (${Math.round(doctor.commissionRate * 100)}%)`
+                ? `a taxa base do profissional (${Math.round(doctor.commissionRate * 100)}%)`
                 : 'o default da clínica do ato (40%)'
             }
             treatments={(

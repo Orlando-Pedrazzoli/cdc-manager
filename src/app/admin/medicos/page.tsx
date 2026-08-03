@@ -91,10 +91,11 @@ export default async function DoctorsPage({
               color: '#1B2A6B',
             }}
           >
-            Médicos
+            Corpo Clínico
           </h1>
           <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#6A7186' }}>
-            {doctors.length} {doctors.length === 1 ? 'médico' : 'médicos'}
+            {doctors.length}{' '}
+            {doctors.length === 1 ? 'profissional' : 'profissionais'}
             {showInactive ? ' (incluindo inativos)' : ' ativos'}
             {' · '}
             <Link
@@ -110,7 +111,7 @@ export default async function DoctorsPage({
         <Link href='/admin/medicos/novo'>
           <Button>
             <UserPlus size={16} style={{ marginRight: 6 }} />
-            Novo médico
+            Novo profissional
           </Button>
         </Link>
       </div>
@@ -132,7 +133,7 @@ export default async function DoctorsPage({
           {doctors.length === 0 ? (
             <TableEmpty
               colSpan={6}
-              message='Ainda não existem médicos registados.'
+              message='Ainda não existem profissionais registados.'
             />
           ) : (
             doctors.map(d => {
@@ -224,7 +225,7 @@ export default async function DoctorsPage({
       <p style={{ margin: 0, fontSize: '12px', color: '#9AA1B4' }}>
         A comissão “default” usa a taxa da clínica onde cada ato é executado
         (60/40 salvo indicação). Overrides por ato configuram-se na página de
-        cada médico.
+        cada profissional.
       </p>
     </div>
   );

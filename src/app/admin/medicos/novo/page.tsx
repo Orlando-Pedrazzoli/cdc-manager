@@ -43,7 +43,7 @@ export default async function NewDoctorPage() {
           }}
         >
           <ArrowLeft size={15} />
-          Médicos
+          Corpo Clínico
         </Link>
         <h1
           style={{
@@ -53,7 +53,7 @@ export default async function NewDoctorPage() {
             color: '#1B2A6B',
           }}
         >
-          Novo médico
+          Novo profissional
         </h1>
       </div>
 

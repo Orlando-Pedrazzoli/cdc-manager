@@ -5,7 +5,7 @@
 // Inclui o EDITOR DE HORÁRIOS POR CLÍNICA — o componente central da gestão
 // multi-clínica: por cada clínica ativa, um bloco com toggle "trabalha aqui",
 // semana-tipo (Seg…Dom) com MÚLTIPLOS intervalos por dia (o "10–13 + 14–20"
-// com pausa de almoço faz-se com o botão + Intervalo), e flag de marcação
+// com pausa de almoço faz-se com o botão + Período), e flag de marcação
 // online nessa clínica.
 //
 // A estrutura aninhada é serializada continuamente para um <input hidden>
@@ -25,7 +25,7 @@ import {
   updateDoctorAction,
   type DoctorFormState,
 } from '@/actions/doctors';
-import { SPECIALTIES, type Specialty } from '@/models/Doctor';
+import { SPECIALTIES, type Specialty } from '@/lib/domain';
 import { SPECIALTY_LABEL, WEEKDAYS_DISPLAY } from '@/lib/labels';
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Input } from '@/components/ui/Input';
@@ -371,7 +371,8 @@ export function DoctorForm({
                                   paddingTop: 8,
                                 }}
                               >
-                                Não trabalha
+                                Folga — clique em + Período para definir o
+                                horário
                               </span>
                             )}
                             {ranges.map((r, i) => (
@@ -418,7 +419,7 @@ export function DoctorForm({
                                 />
                                 <button
                                   type='button'
-                                  aria-label='Remover intervalo'
+                                  aria-label='Remover período'
                                   onClick={() =>
                                     setDay(
                                       c.id,
@@ -462,7 +463,7 @@ export function DoctorForm({
                               }}
                             >
                               <Plus size={14} />
-                              Intervalo
+                              Período
                             </button>
                           </div>
                         </div>
@@ -475,8 +476,9 @@ export function DoctorForm({
                         color: '#9AA1B4',
                       }}
                     >
-                      Dois intervalos no mesmo dia = pausa entre eles (ex.:
-                      10:00–13:00 e 14:00–20:00 → almoço 13–14).
+                      Cada período é um bloco de trabalho (das X às Y). Para
+                      pausa de almoço, adicione dois períodos: 10:00–13:00 e
+                      14:00–20:00 → almoço 13h–14h.
                     </p>
                   </div>
                 )}

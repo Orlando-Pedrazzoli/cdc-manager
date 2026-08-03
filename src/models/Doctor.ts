@@ -36,20 +36,11 @@
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
 
-// Slugs das 10 especialidades da clínica (validados no projeto do site)
-export const SPECIALTIES = [
-  'dentisteria',
-  'estetica-dentaria',
-  'endodontia',
-  'implantologia',
-  'odontopediatria',
-  'ortodontia',
-  'periodontologia',
-  'proteses-dentarias',
-  'higiene-oral',
-  'harmonizacao-orofacial',
-] as const;
-export type Specialty = (typeof SPECIALTIES)[number];
+// Slugs das 10 especialidades — canónicos em lib/domain.ts (partilhados com
+// client components SEM arrastar mongoose para o browser); re-exportados
+// aqui para o código server continuar a importar do model
+import { SPECIALTIES, type Specialty } from '@/lib/domain';
+export { SPECIALTIES, type Specialty };
 
 // --- Sub-schema: intervalo de trabalho ("09:00" a "13:00") -------------------
 // Horas como string HH:mm — formato estável, sem armadilhas de timezone;

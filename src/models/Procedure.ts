@@ -38,6 +38,15 @@ const FDI_REGEX = /^(1[1-8]|2[1-8]|3[1-8]|4[1-8]|5[1-5]|6[1-5]|7[1-5]|8[1-5])$/;
 
 const ProcedureSchema = new Schema(
   {
+    // MULTI-CLÍNICA (Sprint 3): a faturação, o stock e a fila de cobrança são
+    // POR CLÍNICA — todo o ato pertence a uma. Atos 'planned' herdam a clínica
+    // do plano; na EXECUÇÃO prevalece a clínica da consulta (o médico pode
+    // executar um item do plano em qualquer das duas)
+    clinicId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Clinic',
+      required: true,
+    },
     patientId: {
       type: Schema.Types.ObjectId,
       ref: 'Patient',
@@ -155,8 +164,8 @@ const ProcedureSchema = new Schema(
   },
 );
 
-// Fila de cobrança da receção: completed sem fatura, ordenados por execução
-ProcedureSchema.index({ status: 1, invoiceId: 1, executedAt: -1 });
+// Fila de cobrança da receção: POR CLÍNICA, completed sem fatura, por execução
+ProcedureSchema.index({ clinicId: 1, status: 1, invoiceId: 1, executedAt: -1 });
 // Relatórios de produção/comissões: por médico e período
 ProcedureSchema.index({ doctorId: 1, executedAt: -1 });
 

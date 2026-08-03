@@ -42,12 +42,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     items: [
       { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/admin/pacientes', label: 'Pacientes', icon: Users },
-      {
-        href: '/admin/agenda',
-        label: 'Agenda',
-        icon: CalendarDays,
-        soon: 'Sprint 2',
-      },
+      { href: '/admin/agenda', label: 'Agenda', icon: CalendarDays },
       {
         href: '/admin/recalls',
         label: 'Recalls',
@@ -59,12 +54,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: 'Gestão',
     items: [
-      {
-        href: '/admin/medicos',
-        label: 'Médicos',
-        icon: Stethoscope,
-        soon: 'Sprint 2',
-      },
+      { href: '/admin/medicos', label: 'Corpo Clínico', icon: Stethoscope },
       {
         href: '/admin/faturacao',
         label: 'Faturação',

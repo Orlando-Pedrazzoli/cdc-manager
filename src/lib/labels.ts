@@ -4,7 +4,7 @@
 // Usados por formulários, listagens e (futuro) documentos/emails.
 // =============================================================================
 
-import type { Specialty } from '@/models/Doctor';
+import type { Specialty } from '@/lib/domain';
 
 export const SPECIALTY_LABEL: Record<Specialty, string> = {
   dentisteria: 'Dentisteria',

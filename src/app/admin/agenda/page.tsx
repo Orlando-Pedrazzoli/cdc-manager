@@ -148,12 +148,15 @@ export default async function AgendaPage({
     };
   });
 
-  const dateLabel = new Intl.DateTimeFormat('pt-PT', {
+  const rawDate = new Intl.DateTimeFormat('pt-PT', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     timeZone: 'Europe/Lisbon',
   }).format(lisbonToUtc(date, 12 * 60));
+  // Capitalizar SÓ a primeira letra — textTransform:'capitalize' capitalizava
+  // palavra a palavra ("Segunda-Feira, 3 De Agosto"), errado em português
+  const dateLabel = rawDate.charAt(0).toUpperCase() + rawDate.slice(1);
 
   const href = (c: string, d: string) => `/admin/agenda?clinic=${c}&date=${d}`;
 
@@ -185,7 +188,6 @@ export default async function AgendaPage({
               margin: '2px 0 0',
               fontSize: '13px',
               color: '#6A7186',
-              textTransform: 'capitalize',
             }}
           >
             {dateLabel}

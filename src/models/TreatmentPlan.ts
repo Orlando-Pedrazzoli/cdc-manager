@@ -58,6 +58,15 @@ const PlanItemSchema = new Schema(
 
 const TreatmentPlanSchema = new Schema(
   {
+    // MULTI-CLÍNICA (Sprint 3): clínica onde o plano foi criado/proposto —
+    // dá contexto aos relatórios ("orçamentos propostos na Buraca") e é a
+    // clínica default herdada pelos Procedures 'planned' na aprovação.
+    // Na execução de cada item prevalece a clínica da consulta real.
+    clinicId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Clinic',
+      required: true,
+    },
     patientId: {
       type: Schema.Types.ObjectId,
       ref: 'Patient',
