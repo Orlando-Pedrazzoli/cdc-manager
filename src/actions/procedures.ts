@@ -34,10 +34,12 @@ import {
   addClinicalNoteSchema,
   completeConsultationSchema,
   updateAnamnesisSchema,
+  saveOdontogramSchema,
 } from '@/lib/validations/procedure';
 import Appointment, { type AppointmentStatus } from '@/models/Appointment';
 import Procedure from '@/models/Procedure';
 import ClinicalRecord from '@/models/ClinicalRecord';
+import Odontogram from '@/models/Odontogram';
 import Doctor from '@/models/Doctor';
 import TreatmentType from '@/models/TreatmentType';
 import { getClinicById } from '@/models/Clinic';
@@ -399,7 +401,7 @@ export async function completeConsultationAction(
 // -----------------------------------------------------------------------------
 // RBAC de dados (ficha): o médico só acede a pacientes COM QUEM TEM CONSULTAS
 // -----------------------------------------------------------------------------
-async function requireDoctorWithPatient(patientId: string) {
+export async function requireDoctorWithPatient(patientId: string) {
   const session = await auth();
   if (session?.user?.role !== 'doctor' || !session.user.doctorId) {
     throw new Error('Sem permissões.');
@@ -465,6 +467,72 @@ export async function updateAnamnesisAction(
     });
 
     revalidatePath(`/doutor/pacientes/${data.patientId}`);
+    return { success: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// GRAVAR ODONTOGRAMA — nova VERSÃO (snapshot completo; versões antigas
+// nunca se alteram — histórico "como estava em janeiro")
+// -----------------------------------------------------------------------------
+export async function saveOdontogramAction(
+  _prev: ConsultationActionState,
+  formData: FormData,
+): Promise<ConsultationActionState> {
+  try {
+    const parsed = saveOdontogramSchema.safeParse({
+      patientId: formData.get('patientId'),
+      teeth: formData.get('teeth'),
+    });
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
+    }
+    const data = parsed.data;
+
+    const { userId, doctorId } = await requireDoctorWithPatient(data.patientId);
+
+    // Versão sequencial otimista com retry E11000 (índice único
+    // {patientId, version}) — mesmo padrão do processNumber dos pacientes
+    let saved = false;
+    let version = 0;
+    for (let attempt = 0; attempt < 3 && !saved; attempt++) {
+      const latest = await Odontogram.findOne({ patientId: data.patientId })
+        .sort({ version: -1 })
+        .select('version')
+        .lean();
+      version = (latest?.version ?? 0) + 1;
+      try {
+        await Odontogram.create({
+          patientId: data.patientId,
+          version,
+          teeth: data.teeth,
+          updatedBy: doctorId,
+          appointmentId: null,
+        });
+        saved = true;
+      } catch (err) {
+        const isDup =
+          typeof err === 'object' &&
+          err !== null &&
+          'code' in err &&
+          (err as { code?: number }).code === 11000;
+        if (!isDup) throw err;
+        // colisão de versão (gravação concorrente) → reler e tentar de novo
+      }
+    }
+    if (!saved) return { error: 'Conflito ao gravar — tente novamente.' };
+
+    await logAudit({
+      userId,
+      action: 'update',
+      entityType: 'Odontogram',
+      patientId: data.patientId,
+      summary: `Odontograma v${version} gravado (${data.teeth.length} dente${data.teeth.length === 1 ? '' : 's'} assinalado${data.teeth.length === 1 ? '' : 's'})`,
+    });
+
+    revalidatePath(`/doutor/pacientes/${data.patientId}/odontograma`);
     return { success: true };
   } catch (e) {
     return fail(e);

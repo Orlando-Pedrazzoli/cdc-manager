@@ -76,9 +76,11 @@ function NotFound() {
   );
 }
 
+// Odontograma é subrota própria (versões por URL); os restantes são ?tab=
 const TABS = [
   { key: 'anamnese', label: 'Anamnese' },
   { key: 'historico', label: 'Histórico clínico' },
+  { key: 'odontograma', label: 'Odontograma' },
 ] as const;
 
 export default async function DoctorPatientPage({
@@ -252,10 +254,14 @@ export default async function DoctorPatientPage({
       >
         {TABS.map(t => {
           const active = t.key === activeTab;
+          const href =
+            t.key === 'odontograma'
+              ? `/doutor/pacientes/${id}/odontograma`
+              : `/doutor/pacientes/${id}?tab=${t.key}`;
           return (
             <Link
               key={t.key}
-              href={`/doutor/pacientes/${id}?tab=${t.key}`}
+              href={href}
               style={{
                 padding: '9px 16px',
                 fontSize: '14px',

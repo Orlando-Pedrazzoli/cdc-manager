@@ -16,29 +16,18 @@
 // =============================================================================
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
-
-export const TOOTH_STATUS = [
-  'present', // são/presente
-  'missing', // ausente
-  'implant',
-  'crown',
-  'bridge-pontic', // pôntico de ponte
-  'root-only', // resto radicular
-  'to-extract',
-] as const;
-export type ToothStatus = (typeof TOOTH_STATUS)[number];
-
-export const FACE_CONDITIONS = [
-  'caries',
-  'restoration', // restauração existente
-  'fracture',
-  'sealant',
-  'wear', // desgaste/erosão
-] as const;
-export type FaceCondition = (typeof FACE_CONDITIONS)[number];
-
-export const TOOTH_FACES = ['O', 'M', 'D', 'V', 'L'] as const;
-export type ToothFace = (typeof TOOTH_FACES)[number];
+// Constantes canónicas em lib/domain.ts (partilhadas com o client sem
+// arrastar mongoose) — re-exportadas aqui para o código server
+import {
+  TOOTH_STATUS,
+  FACE_CONDITIONS,
+  TOOTH_FACES,
+  type ToothStatus,
+  type FaceCondition,
+  type ToothFace,
+} from '@/lib/domain';
+export { TOOTH_STATUS, FACE_CONDITIONS, TOOTH_FACES };
+export type { ToothStatus, FaceCondition, ToothFace };
 
 const FDI_REGEX = /^(1[1-8]|2[1-8]|3[1-8]|4[1-8]|5[1-5]|6[1-5]|7[1-5]|8[1-5])$/;
 

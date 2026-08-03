@@ -19,6 +19,7 @@
 'use client';
 
 import { useActionState, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Plus, X } from 'lucide-react';
 import {
@@ -164,6 +165,7 @@ export function AnamneseForm({
   patientId: string;
   initial: AnamnesisData;
 }) {
+  const router = useRouter();
   const [allergies, setAllergies] = useState<string[]>(initial.allergies);
   const [medications, setMedications] = useState<string[]>(
     initial.currentMedications,
@@ -185,8 +187,13 @@ export function AnamneseForm({
     if (!state || handled.current === state) return;
     handled.current = state;
     if ('error' in state) toast.error(state.error);
-    if ('success' in state) toast.success('Anamnese gravada');
-  }, [state]);
+    if ('success' in state) {
+      toast.success('Anamnese gravada');
+      // Padrão UX do projeto (herdado do modelo mental Dentoral):
+      // gravar formulário de página inteira = terminei → voltar à listagem
+      router.push('/doutor/pacientes');
+    }
+  }, [state, router]);
 
   const toggleCondition = (c: SystemicCondition) => {
     setConditions(prev =>

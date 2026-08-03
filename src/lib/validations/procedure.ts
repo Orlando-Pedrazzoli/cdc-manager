@@ -149,3 +149,84 @@ export const updateAnamnesisSchema = z.object({
   anamnesisNotes: optionalText(3000),
 });
 export type UpdateAnamnesisInput = z.infer<typeof updateAnamnesisSchema>;
+
+// --- Odontograma (gravação de nova versão) -----------------------------------
+// Os dentes chegam como JSON (hidden input). Só viajam dentes COM ALGO a
+// assinalar — dente omisso = presente e são (mantém documentos pequenos).
+import { TOOTH_STATUS, FACE_CONDITIONS, TOOTH_FACES } from '@/lib/domain';
+
+const toothEntrySchema = z.object({
+  number: z.string().regex(FDI_REGEX, 'Dente inválido (FDI)'),
+  status: z.enum(TOOTH_STATUS),
+  faces: z
+    .array(
+      z.object({
+        face: z.enum(TOOTH_FACES),
+        condition: z.enum(FACE_CONDITIONS),
+      }),
+    )
+    .max(5)
+    .refine(
+      faces => new Set(faces.map(f => f.face)).size === faces.length,
+      'Cada face só pode ter uma condição',
+    ),
+  note: z.preprocess(
+    v => (typeof v === 'string' && v.trim() === '' ? null : v),
+    z.string().trim().max(200).nullable(),
+  ),
+});
+
+export const saveOdontogramSchema = z.object({
+  patientId: z.string().regex(OBJECT_ID),
+  teeth: z.preprocess(v => {
+    if (Array.isArray(v)) return v;
+    if (typeof v !== 'string') return [];
+    try {
+      const parsed: unknown = JSON.parse(v);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }, z.array(toothEntrySchema).max(52)),
+});
+export type SaveOdontogramInput = z.infer<typeof saveOdontogramSchema>;
+
+// --- Planos de tratamento ----------------------------------------------------
+// Itens chegam como JSON (hidden input): o PREÇO é congelado aqui — o
+// orçamento entregue ao paciente é um compromisso, não muda com a tabela.
+const planItemSchema = z.object({
+  treatmentTypeId: z.string().regex(OBJECT_ID),
+  priceEuros: eurosToCentsField, // cêntimos após o preprocess
+  toothNumbers: toothNumbersField,
+  phase: z.coerce.number().int().min(1).max(20).default(1),
+});
+
+export const createPlanSchema = z.object({
+  patientId: z.string().regex(OBJECT_ID),
+  clinicId: z.string().regex(OBJECT_ID, 'Selecione a clínica'),
+  title: z.string().trim().min(3, 'Título demasiado curto').max(160),
+  items: z.preprocess(v => {
+    if (Array.isArray(v)) return v;
+    if (typeof v !== 'string') return [];
+    try {
+      const parsed: unknown = JSON.parse(v);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }, z.array(planItemSchema).min(1, 'O plano precisa de pelo menos um ato').max(60)),
+  discountEuros: z.preprocess(
+    v => (typeof v === 'string' && v.trim() === '' ? '0' : v),
+    eurosToCentsField,
+  ),
+  notes: optionalText(2000),
+});
+export type CreatePlanInput = z.infer<typeof createPlanSchema>;
+
+export const planIdSchema = z.object({
+  planId: z.string().regex(OBJECT_ID),
+});
+
+export const executePlanItemSchema = z.object({
+  procedureId: z.string().regex(OBJECT_ID),
+});

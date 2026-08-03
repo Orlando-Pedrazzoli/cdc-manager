@@ -73,3 +73,95 @@ export const SYSTEMIC_CONDITION_LABEL: Record<SystemicCondition, string> = {
   'alergia-anestesicos': 'Alergia a anestésicos',
   'refluxo-gastrico': 'Refluxo gástrico',
 };
+
+// =============================================================================
+// ODONTOGRAMA — estados de dente, condições de face e faces (notação FDI)
+// Canónicos aqui (o Odontograma é client); models/Odontogram re-exporta.
+// =============================================================================
+
+export const TOOTH_STATUS = [
+  'present', // são/presente
+  'missing', // ausente
+  'implant',
+  'crown',
+  'bridge-pontic', // pôntico de ponte
+  'root-only', // resto radicular
+  'to-extract',
+] as const;
+export type ToothStatus = (typeof TOOTH_STATUS)[number];
+
+export const TOOTH_STATUS_LABEL: Record<ToothStatus, string> = {
+  present: 'Presente',
+  missing: 'Ausente',
+  implant: 'Implante',
+  crown: 'Coroa',
+  'bridge-pontic': 'Pôntico de ponte',
+  'root-only': 'Resto radicular',
+  'to-extract': 'A extrair',
+};
+
+export const FACE_CONDITIONS = [
+  'caries',
+  'restoration', // restauração existente
+  'fracture',
+  'sealant',
+  'wear', // desgaste/erosão
+] as const;
+export type FaceCondition = (typeof FACE_CONDITIONS)[number];
+
+export const FACE_CONDITION_LABEL: Record<FaceCondition, string> = {
+  caries: 'Cárie',
+  restoration: 'Restauração',
+  fracture: 'Fratura',
+  sealant: 'Selante',
+  wear: 'Desgaste',
+};
+
+export const TOOTH_FACES = ['O', 'M', 'D', 'V', 'L'] as const;
+export type ToothFace = (typeof TOOTH_FACES)[number];
+
+export const TOOTH_FACE_LABEL: Record<ToothFace, string> = {
+  O: 'Oclusal',
+  M: 'Mesial',
+  D: 'Distal',
+  V: 'Vestibular',
+  L: 'Lingual/Palatina',
+};
+
+/** Dentição definitiva na ordem de exibição do odontograma (FDI) */
+export const UPPER_TEETH = [
+  '18',
+  '17',
+  '16',
+  '15',
+  '14',
+  '13',
+  '12',
+  '11',
+  '21',
+  '22',
+  '23',
+  '24',
+  '25',
+  '26',
+  '27',
+  '28',
+] as const;
+export const LOWER_TEETH = [
+  '48',
+  '47',
+  '46',
+  '45',
+  '44',
+  '43',
+  '42',
+  '41',
+  '31',
+  '32',
+  '33',
+  '34',
+  '35',
+  '36',
+  '37',
+  '38',
+] as const;
