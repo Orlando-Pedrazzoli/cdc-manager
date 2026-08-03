@@ -24,6 +24,7 @@ import {
   RefreshCcw,
   Settings,
   Stethoscope,
+  ReceiptEuro,
   Users,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
@@ -43,6 +44,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/admin/pacientes', label: 'Pacientes', icon: Users },
       { href: '/admin/agenda', label: 'Agenda', icon: CalendarDays },
+      { href: '/admin/cobranca', label: 'Cobrança', icon: ReceiptEuro },
       {
         href: '/admin/recalls',
         label: 'Recalls',

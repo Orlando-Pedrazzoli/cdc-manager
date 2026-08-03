@@ -165,3 +165,21 @@ export const LOWER_TEETH = [
   '37',
   '38',
 ] as const;
+
+// =============================================================================
+// COBRANÇA — meios de pagamento no balcão (client: CheckoutModal)
+// =============================================================================
+export const PAYMENT_METHODS = [
+  'cash', // numerário
+  'card', // multibanco/cartão no TPA
+  'mbway', // MB WAY
+  'transfer', // transferência bancária
+] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  cash: 'Numerário',
+  card: 'Multibanco / cartão',
+  mbway: 'MB WAY',
+  transfer: 'Transferência',
+};

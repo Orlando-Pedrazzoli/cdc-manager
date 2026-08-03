@@ -31,19 +31,22 @@
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
 
 export const INVOICE_STATUS = [
+  // Cobrança registada no balcão, documento fiscal POR EMITIR — o estado
+  // de operação enquanto a conta Moloni não está ativa (pré-aprovação).
+  // Quando o Moloni ligar (Sprint 4), a emissão preenche os campos moloni*
+  // e transita para 'issued'.
+  'awaiting-emission',
   'issued', // emitida e paga no ato (fatura-recibo — o caso normal no balcão)
   'pending', // emitida, pagamento por regularizar (transferência a confirmar)
   'voided', // anulada via nota de crédito no Moloni
 ] as const;
 export type InvoiceStatus = (typeof INVOICE_STATUS)[number];
 
-export const PAYMENT_METHODS = [
-  'cash', // numerário
-  'card', // multibanco/cartão no TPA
-  'mbway', // MB WAY (pedido na máquina com o nº do paciente)
-  'transfer', // transferência bancária
-] as const;
-export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+// Meios de pagamento canónicos em lib/domain.ts (o CheckoutModal é client);
+// re-exportados aqui para o código server
+import { PAYMENT_METHODS, type PaymentMethod } from '@/lib/domain';
+export { PAYMENT_METHODS };
+export type { PaymentMethod };
 
 // Linha da fatura — snapshot no momento da emissão (imutável)
 const InvoiceLineSchema = new Schema(
@@ -112,16 +115,20 @@ const InvoiceSchema = new Schema(
       default: null,
     },
     // --- Referências Moloni (o documento certificado real) ------------------
+    // NULOS enquanto 'awaiting-emission' (pré-ativação Moloni); unique
+    // sparse permite múltiplos nulls e continua a garantir unicidade
+    // dos documentos emitidos
     moloniDocumentId: {
       type: Number, // document_id devolvido pela API Moloni
-      required: true,
+      default: null,
       unique: true,
+      sparse: true,
     },
     // Identificação legível: "FR COL/123" (série + número da AT)
     moloniDocumentNumber: {
       type: String,
-      required: true,
       trim: true,
+      default: null,
     },
     // Série Moloni usada (document_set_id) — uma por clínica no plano atual
     moloniDocumentSetId: {
