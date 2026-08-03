@@ -32,12 +32,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     section: 'Consulta',
     items: [
       { href: '/doutor/dashboard', label: 'O meu dia', icon: LayoutDashboard },
-      {
-        href: '/doutor/agenda',
-        label: 'Agenda',
-        icon: CalendarDays,
-        soon: 'Sprint 3',
-      },
+      { href: '/doutor/agenda', label: 'Agenda', icon: CalendarDays },
       { href: '/doutor/pacientes', label: 'Pacientes', icon: Users },
     ],
   },

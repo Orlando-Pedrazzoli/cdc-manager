@@ -211,14 +211,14 @@ export function DoctorForm({
             <Input
               id='commissionRate'
               name='commissionRate'
-              label='Comissão base do médico (%)'
+              label='Comissão base do profissional (%)'
               type='number'
               min={0}
               max={100}
               step={1}
               defaultValue={initial?.commissionPercent ?? ''}
               placeholder='vazio = default da clínica (40)'
-              help='Fração que o MÉDICO recebe. Overrides por ato na página do médico.'
+              help='Fração que o PROFISSIONAL recebe. Overrides por ato na ficha do profissional.'
             />
             <div>
               <label
@@ -505,7 +505,7 @@ export function DoctorForm({
                 id='email'
                 name='email'
                 type='email'
-                label='Email do médico'
+                label='Email do profissional'
                 placeholder='medico@exemplo.pt'
               />
             </div>
@@ -513,7 +513,7 @@ export function DoctorForm({
               id='sendActivationInvite'
               name='sendActivationInvite'
               label='Enviar convite de ativação por email'
-              help='O médico recebe um código para definir a password e aceder à sua área.'
+              help='O profissional recebe um código para definir a password e aceder à sua área.'
             />
           </section>
         )}
@@ -536,7 +536,7 @@ export function DoctorForm({
 
         <div style={{ display: 'flex', gap: '10px' }}>
           <Button type='submit' loading={pending}>
-            {mode === 'create' ? 'Criar médico' : 'Guardar alterações'}
+            {mode === 'create' ? 'Criar profissional' : 'Guardar alterações'}
           </Button>
           <Button
             type='button'
@@ -557,8 +557,8 @@ export function DoctorForm({
         footer={<Button onClick={closeManualCode}>Continuar</Button>}
       >
         <p style={{ margin: '0 0 14px', fontSize: '14px', color: '#3A3F4A' }}>
-          O email do convite não foi entregue. Envie este código ao médico — uso
-          único, válido 7 dias:
+          O email do convite não foi entregue. Envie este código ao profissional
+          — uso único, válido 7 dias:
         </p>
         <div
           style={{
