@@ -33,3 +33,43 @@ export const SPECIALTIES = [
   'harmonizacao-orofacial',
 ] as const;
 export type Specialty = (typeof SPECIALTIES)[number];
+
+/**
+ * Condições sistémicas relevantes em medicina dentária (checklist da
+ * anamnese). Valores canónicos guardados no ClinicalRecord; o detalhe
+ * livre por condição vive ao lado no sub-schema.
+ */
+export const SYSTEMIC_CONDITIONS = [
+  'diabetes',
+  'hipertensao',
+  'doenca-cardiaca',
+  'protese-valvular',
+  'problemas-coagulacao',
+  'anticoagulantes',
+  'bifosfonatos-osteoporose',
+  'epilepsia',
+  'asma',
+  'hepatite',
+  'hiv',
+  'gravidez',
+  'alergia-anestesicos',
+  'refluxo-gastrico',
+] as const;
+export type SystemicCondition = (typeof SYSTEMIC_CONDITIONS)[number];
+
+export const SYSTEMIC_CONDITION_LABEL: Record<SystemicCondition, string> = {
+  diabetes: 'Diabetes',
+  hipertensao: 'Hipertensão',
+  'doenca-cardiaca': 'Doença cardíaca',
+  'protese-valvular': 'Prótese valvular cardíaca',
+  'problemas-coagulacao': 'Problemas de coagulação',
+  anticoagulantes: 'Toma anticoagulantes',
+  'bifosfonatos-osteoporose': 'Bifosfonatos / osteoporose',
+  epilepsia: 'Epilepsia',
+  asma: 'Asma',
+  hepatite: 'Hepatite',
+  hiv: 'HIV',
+  gravidez: 'Gravidez',
+  'alergia-anestesicos': 'Alergia a anestésicos',
+  'refluxo-gastrico': 'Refluxo gástrico',
+};

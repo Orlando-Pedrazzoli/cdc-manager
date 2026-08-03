@@ -38,12 +38,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
         icon: CalendarDays,
         soon: 'Sprint 3',
       },
-      {
-        href: '/doutor/pacientes',
-        label: 'Pacientes',
-        icon: Users,
-        soon: 'Sprint 3',
-      },
+      { href: '/doutor/pacientes', label: 'Pacientes', icon: Users },
     ],
   },
 ];

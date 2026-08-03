@@ -14,11 +14,11 @@
 //   2. KPIs do dia — total, concluídas, por atender, faltas/canceladas
 //   3. Lista cronológica completa do dia
 //
-// NOTA: os cartões ainda NÃO linkam para /doutor/consulta/[id] — a página
-// está vazia no repo (page.tsx vazia rebenta em runtime). Os links ativam-se
-// na entrega do fluxo de consulta, o passo seguinte do Sprint 3.
+// Os cartões (destaque e lista) linkam para /doutor/consulta/[id] — o
+// fluxo da consulta (iniciar → registar → concluir).
 // =============================================================================
 
+import Link from 'next/link';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import Appointment, { type AppointmentStatus } from '@/models/Appointment';
@@ -257,7 +257,8 @@ export default async function DoctorDashboardPage() {
 
       {/* Destaque: consulta em curso / próximo paciente */}
       {highlight && (
-        <div
+        <Link
+          href={`/doutor/consulta/${highlight.id}`}
           style={{
             backgroundColor: inProgress ? '#1B2A6B' : '#FFFFFF',
             border: inProgress ? 'none' : '1px solid #D8DEEF',
@@ -268,6 +269,8 @@ export default async function DoctorDashboardPage() {
             justifyContent: 'space-between',
             gap: '16px',
             flexWrap: 'wrap',
+            textDecoration: 'none',
+            cursor: 'pointer',
           }}
         >
           <div>
@@ -326,7 +329,7 @@ export default async function DoctorDashboardPage() {
           >
             {STATUS_LABEL[highlight.status] ?? highlight.status}
           </Badge>
-        </div>
+        </Link>
       )}
 
       {/* KPIs do dia */}
@@ -416,18 +419,17 @@ export default async function DoctorDashboardPage() {
                 bg: '#EAECF3',
                 fg: '#3D4257',
               };
-              return (
-                <div
-                  key={a.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '16px',
-                    padding: '12px 20px',
-                    borderBottom: '1px solid #F4F6FB',
-                    opacity: muted ? 0.55 : 1,
-                  }}
-                >
+              const rowStyle: React.CSSProperties = {
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+                padding: '12px 20px',
+                borderBottom: '1px solid #F4F6FB',
+                opacity: muted ? 0.55 : 1,
+                textDecoration: 'none',
+              };
+              const rowContent = (
+                <>
                   <span
                     style={{
                       fontVariantNumeric: 'tabular-nums',
@@ -487,7 +489,20 @@ export default async function DoctorDashboardPage() {
                   <Badge bg={st.bg} fg={st.fg}>
                     {STATUS_LABEL[a.status] ?? a.status}
                   </Badge>
+                </>
+              );
+              return muted ? (
+                <div key={a.id} style={rowStyle}>
+                  {rowContent}
                 </div>
+              ) : (
+                <Link
+                  key={a.id}
+                  href={`/doutor/consulta/${a.id}`}
+                  style={rowStyle}
+                >
+                  {rowContent}
+                </Link>
               );
             })}
           </div>
