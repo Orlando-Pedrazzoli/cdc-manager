@@ -44,6 +44,7 @@ import {
   workingRangesForDate,
 } from '@/lib/availability';
 import { logAudit } from '@/lib/audit';
+import { sendAppointmentConfirmationEmail } from '@/lib/resend';
 
 // -----------------------------------------------------------------------------
 // Tipos de estado
@@ -137,7 +138,7 @@ export async function createAppointmentAction(
   // Referências têm de existir e estar ativas
   const [clinic, patient, treatment, doctor] = await Promise.all([
     Clinic.findById(data.clinicId),
-    Patient.findById(data.patientId).select('status name'),
+    Patient.findById(data.patientId).select('status name email consents'),
     TreatmentType.findById(data.treatmentTypeId).select(
       'name durationMin bufferMin',
     ),
@@ -222,6 +223,28 @@ export async function createAppointmentAction(
       clinicId: data.clinicId,
       summary: `Marcação criada: ${treatment.name} a ${data.date} ${data.start}`,
     });
+
+    // Confirmação por email — best-effort (falha NUNCA reverte a marcação):
+    // só com email na ficha E consentimento de lembretes (RGPD)
+    if (patient.email && patient.consents?.remindersAt) {
+      const rawDate = new Intl.DateTimeFormat('pt-PT', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'Europe/Lisbon',
+      }).format(startAt);
+      await sendAppointmentConfirmationEmail({
+        to: patient.email,
+        patientName: patient.name,
+        clinicName: clinic.name,
+        clinicAddress: clinic.address ?? null,
+        dateLabel: rawDate.charAt(0).toUpperCase() + rawDate.slice(1),
+        timeLabel: data.start,
+        treatmentName: treatment.name,
+        doctorName: doctor?.name ?? null,
+      });
+    }
 
     revalidatePath('/admin/agenda');
     return { success: true, appointmentId };

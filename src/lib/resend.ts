@@ -229,3 +229,64 @@ export async function sendPasswordResetEmail(params: {
     html: baseLayout(content),
   });
 }
+
+// -----------------------------------------------------------------------------
+// 3) CONFIRMAÇÃO DE MARCAÇÃO
+// -----------------------------------------------------------------------------
+// Enviada ao paciente quando a receção cria a marcação — SÓ com email na
+// ficha E consentimento de lembretes (consents.remindersAt). Best-effort:
+// a falha nunca reverte a marcação (padrão SendResult do projeto).
+// Os lembretes T-72h/T-24h por WhatsApp/SMS chegam no Sprint 6.
+export async function sendAppointmentConfirmationEmail(params: {
+  to: string;
+  patientName: string;
+  clinicName: string;
+  clinicAddress: string | null;
+  dateLabel: string; // "Segunda-feira, 3 de agosto de 2026"
+  timeLabel: string; // "15:30"
+  treatmentName: string;
+  doctorName: string | null;
+}): Promise<SendResult> {
+  const rows: [string, string][] = [
+    ['Data', params.dateLabel],
+    ['Hora', params.timeLabel],
+    ['Ato', params.treatmentName],
+  ];
+  if (params.doctorName) rows.push(['Profissional', params.doctorName]);
+  rows.push([
+    'Clínica',
+    params.clinicName +
+      (params.clinicAddress ? ` — ${params.clinicAddress}` : ''),
+  ]);
+
+  const detailRows = rows
+    .map(
+      ([k, v]) => `
+      <tr>
+        <td style="padding:6px 14px 6px 0;color:#6A7186;font-size:13px;white-space:nowrap;vertical-align:top;">${k}</td>
+        <td style="padding:6px 0;color:#1B2A6B;font-size:14px;font-weight:600;">${v}</td>
+      </tr>`,
+    )
+    .join('');
+
+  const content = `
+    <h1 style="margin:0 0 16px 0;color:#1B2A6B;font-size:20px;">
+      Consulta marcada ✔
+    </h1>
+    <p style="margin:0 0 12px 0;color:#3A3F4A;font-size:14px;line-height:1.7;">
+      Olá ${params.patientName}, a sua consulta ficou marcada com os
+      seguintes detalhes:
+    </p>
+    <table style="border-collapse:collapse;margin:0 0 16px 0;background:#F4F6FB;border-radius:10px;padding:8px;width:100%;">
+      <tbody>${detailRows}</tbody>
+    </table>
+    <p style="margin:0;color:#6A7186;font-size:13px;line-height:1.7;">
+      Se precisar de remarcar ou cancelar, contacte a clínica. Até breve!
+    </p>`;
+
+  return send({
+    to: params.to,
+    subject: `Consulta marcada — ${params.dateLabel}, ${params.timeLabel}`,
+    html: baseLayout(content),
+  });
+}
