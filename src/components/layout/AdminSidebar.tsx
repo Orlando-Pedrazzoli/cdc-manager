@@ -64,12 +64,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
         soon: 'Sprint 4',
       },
       { href: '/admin/stock', label: 'Stock', icon: Package, soon: 'Sprint 5' },
-      {
-        href: '/admin/relatorios',
-        label: 'Relatórios',
-        icon: BarChart3,
-        soon: 'Sprint 5',
-      },
+      { href: '/admin/relatorios', label: 'Relatórios', icon: BarChart3 },
     ],
   },
   {
