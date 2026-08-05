@@ -1,36 +1,158 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CDC Manager
 
-## Getting Started
+Sistema de gestão clínica full-stack para clínicas dentárias multi-unidade, desenvolvido para substituir integralmente um software de gestão legado (Dentoral). Cobre o ciclo completo de operação de duas clínicas de uma mesma entidade: pacientes, agenda, registo clínico, cobrança, faturação, recalls, stock e configurações — com dados clínicos globais e operação segregada por clínica.
 
-First, run the development server:
+## Índice
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- [Funcionalidades](#funcionalidades)
+- [Arquitetura](#arquitetura)
+- [Stack tecnológica](#stack-tecnológica)
+- [Estrutura do projeto](#estrutura-do-projeto)
+- [Começar](#começar)
+- [Variáveis de ambiente](#variáveis-de-ambiente)
+- [Seed de demonstração](#seed-de-demonstração)
+- [Convenções de domínio](#convenções-de-domínio)
+- [Testes](#testes)
+- [Deployment](#deployment)
+- [Licença](#licença)
+
+## Funcionalidades
+
+**Gestão de pacientes** — Ficha global partilhada entre clínicas, com número de processo, NIF validado por dígito de controlo, consentimentos RGPD, anamnese (alergias, medicação e condições sistémicas com banner de alerta permanente nos ecrãs clínicos) e portal do paciente com convite por email.
+
+**Agenda multi-clínica** — Motor de disponibilidade com grelha de 15 minutos, horários de funcionamento por clínica com múltiplos intervalos por dia, semana-tipo por profissional e por clínica, correção de DST (fuso Europe/Lisbon) e prevenção atómica de dupla marcação através de transações MongoDB. Marcações online públicas com políticas configuráveis de antecedência e horizonte.
+
+**Registo clínico** — Área dedicada do profissional com fluxo de consulta orientado por máquina de estados (pending → confirmed → checked-in → in-progress → completed), registo de atos com snapshot imutável de preço e comissão, odontograma SVG de 32 dentes com diagrama de cinco faces e orientação anatómica correta (versionado e imutável), planos de tratamento com execução faseada e notas clínicas append-only.
+
+**Cobrança e faturação** — Fila de cobrança por clínica com checkout no balcão, guarda transacional anti-dupla-cobrança, meios de pagamento múltiplos e NIF pré-preenchido. Listagem de documentos com navegação mensal, filtros por clínica e estado, e detalhe com linhas imutáveis. Preparado para emissão fiscal certificada via Moloni (documentos em estado `awaiting-emission` até à ativação da integração).
+
+**Recalls** — Geração automática de ciclos de reativação na conclusão de atos com intervalo de recall configurado, com um único ciclo aberto por paciente e tipo de ato. Fila de gestão por clínica com promoção automática por data, registo de tentativas de contacto e máquina de transições validada.
+
+**Stock** — Catálogo de produtos com taxonomia emergente (famílias em texto livre com sugestão automática), existências por clínica materializadas a partir de um ledger imutável de movimentos, alertas de stock mínimo, entradas, saídas com motivo obrigatório em acertos e quebras, e transferências entre clínicas registadas como par atómico de movimentos numa única transação.
+
+**Configurações** — Edição do catálogo de atos (preços, durações, buffers, recall, marcação online) e dos dados, políticas e horários de cada clínica, com aviso não destrutivo de marcações futuras afetadas por alterações de horário.
+
+**Notificações** — Emails transacionais de confirmação de marcação via Resend, condicionados ao consentimento RGPD do paciente e enviados em regime best-effort (uma falha de envio nunca reverte a operação principal).
+
+**Administração transversal** — RBAC estrito (administração, receção com âmbito por clínica, profissionais com acesso apenas aos seus dados), trilho de auditoria em todas as escritas, relatórios mensais de produção e comissões calculados a partir de snapshots, e dashboard operacional em tempo real.
+
+## Arquitetura
+
+Princípios estruturais do sistema:
+
+- **Multi-clínica com dados clínicos globais.** Pacientes e fichas são partilhados; agenda, capacidade, cobrança, faturação, recalls e stock são segregados por `clinicId` em todos os modelos operacionais. As interfaces geram colunas e seletores dinamicamente a partir da coleção de clínicas.
+- **Imutabilidade financeira.** Valores monetários em cêntimos inteiros com arredondamento bancário; cada ato congela preço e taxa de comissão no momento do registo; alterações posteriores de tabela nunca afetam registos existentes.
+- **Never delete.** Registos anulam-se com autor e motivo; o stock corrige-se com movimentos de acerto; o odontograma versiona-se; faturas anulam-se por nota de crédito.
+- **Invariantes por transação.** Dupla marcação, dupla cobrança e saldo negativo de stock são prevenidos com transações MongoDB e atualizações condicionadas que abortam quando o estado diverge do esperado.
+- **Regra de ouro dos horários.** Alterar horários de clínicas ou profissionais nunca cancela nem move marcações existentes; o sistema identifica conflitos e a remarcação é sempre uma decisão humana.
+- **Fronteira cliente/servidor disciplinada.** Constantes de domínio partilhadas vivem em `src/lib/domain.ts` sem dependências; os modelos Mongoose importam-nas e reexportam-nas, garantindo que componentes de cliente nunca arrastam código de servidor.
+
+## Stack tecnológica
+
+| Camada                   | Tecnologia                                                  |
+| ------------------------ | ----------------------------------------------------------- |
+| Framework                | Next.js 16 (App Router, Turbopack)                          |
+| Linguagem                | TypeScript (strict)                                         |
+| Base de dados            | MongoDB Atlas com Mongoose 9                                |
+| Autenticação             | NextAuth v5 (JWT) com RBAC                                  |
+| Validação                | Zod 4                                                       |
+| Estilos                  | Tailwind CSS v4 com propriedades críticas em estilos inline |
+| Email transacional       | Resend (domínio dedicado, região UE)                        |
+| Armazenamento de imagens | Cloudinary (assets privados, URLs assinados)                |
+| Deployment               | Vercel                                                      |
+
+## Estrutura do projeto
+
+```
+src/
+  actions/          Server Actions (uma por domínio: agenda, cobrança,
+                    faturação, recalls, stock, configurações, ...)
+  app/
+    admin/          Área de administração e receção
+    doutor/         Área clínica dos profissionais
+    marcar/         Fluxo público de marcação online
+    portal/         Portal do paciente
+  components/       Componentes por domínio + componentes de UI partilhados
+  lib/
+    domain.ts       Constantes de domínio partilhadas cliente/servidor
+    availability.ts Motor de disponibilidade e utilitários de fuso horário
+    validations/    Schemas Zod e máquinas de transição por domínio
+    seed/           Seed de demonstração
+  models/           Modelos Mongoose (20+, todos com clinicId quando
+                    operacionais)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Começar
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Pré-requisitos
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Node.js 20 ou superior
+- Acesso a um cluster MongoDB Atlas (ou instância MongoDB com suporte a replica set, necessário para transações)
 
-## Learn More
+### Instalação
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+git clone https://github.com/Orlando-Pedrazzoli/cdc-manager.git
+cd cdc-manager
+npm install
+cp .env.example .env.local   # criar e preencher (ver tabela abaixo)
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+A aplicação fica disponível em `http://localhost:3000`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Variáveis de ambiente
 
-## Deploy on Vercel
+Definidas em `.env.local` (nunca versionado):
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Variável              | Descrição                                                    |
+| --------------------- | ------------------------------------------------------------ |
+| `MONGODB_URI`         | String de ligação ao MongoDB Atlas                           |
+| `AUTH_SECRET`         | Segredo do NextAuth (gerar com `npx auth secret`)            |
+| `AUTH_URL`            | URL base da aplicação                                        |
+| `RESEND_API_KEY`      | Chave da API do Resend                                       |
+| `EMAIL_FROM`          | Remetente dos emails transacionais (domínio verificado)      |
+| `NEXT_PUBLIC_APP_URL` | URL pública usada nos links dos emails                       |
+| `SEED_DEMO_EMAIL`     | Email que recebe as notificações no ambiente de demonstração |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Seed de demonstração
+
+O seed cria um ambiente de demonstração completo: profissionais com semanas-tipo nas duas clínicas, pacientes com NIFs válidos gerados, um paciente com histórico clínico rico (anamnese, odontograma versionado e plano de tratamento em curso), o dia corrente com marcações em estados relativos à hora de execução e uma fila de cobrança com valores.
+
+```bash
+# Dry-run (não escreve nada)
+npx tsx --env-file=.env.local src/lib/seed/demo.ts
+
+# Execução real
+npx tsx --env-file=.env.local src/lib/seed/demo.ts --confirmar
+```
+
+O script aborta automaticamente se a base contiver mais de 100 pacientes, como proteção contra execução acidental sobre dados reais.
+
+## Convenções de domínio
+
+- Valores monetários armazenados em cêntimos inteiros; conversão de euros para cêntimos na fronteira de validação.
+- Dentes identificados em notação FDI (definitivos 11–48; decíduos 51–85 suportados no modelo).
+- Datas e horas de parede calculadas no fuso `Europe/Lisbon` com `Intl` nativo, incluindo correção de DST.
+- Quantidades de stock sempre positivas; a direção do movimento é dada pelo tipo.
+- Terminologia de interface: "Corpo Clínico" para o grupo e "profissional" para o indivíduo.
+- Cada ficheiro entregue inclui o caminho de destino como comentário na primeira linha.
+
+## Testes
+
+A lógica pura (conversões monetárias, aritmética de datas com clamp de fim de mês, validação de horários e sobreposições, máquinas de transição, geração de slugs) é coberta por testes executados antes de cada entrega. A verificação de tipos (`npx tsc --noEmit`) é mantida sem erros em todos os commits.
+
+## Deployment
+
+O projeto está preparado para deployment na Vercel:
+
+1. Importar o repositório na Vercel.
+2. Configurar as variáveis de ambiente da tabela acima no projeto Vercel.
+3. Autorizar o acesso de rede da Vercel no MongoDB Atlas (Network Access).
+4. Opcionalmente, configurar um domínio personalizado.
+
+Antes de operar com dados reais, o cluster Atlas deve ser migrado para um tier com backups automáticos e point-in-time recovery.
+
+## Licença
+
+Software proprietário desenvolvido por Pedrazzoli Digital. Todos os direitos reservados. A utilização, cópia ou distribuição não autorizada não é permitida.
