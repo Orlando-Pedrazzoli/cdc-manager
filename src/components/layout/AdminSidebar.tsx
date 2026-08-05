@@ -74,7 +74,6 @@ const NAV: { section: string; items: NavItem[] }[] = [
         href: '/admin/configuracoes',
         label: 'Configurações',
         icon: Settings,
-        soon: 'Sprint 2',
       },
     ],
   },
