@@ -199,3 +199,54 @@ export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   mbway: 'MB WAY',
   transfer: 'Transferência',
 };
+
+// =============================================================================
+// STOCK — constantes partilhadas (client: forms do módulo Stock)
+// Canónicas aqui; models Product/StockMovement re-exportam.
+// =============================================================================
+
+export const PRODUCT_UNITS = ['un', 'ml', 'g', 'caixa'] as const;
+export type ProductUnit = (typeof PRODUCT_UNITS)[number];
+
+export const PRODUCT_UNIT_LABEL: Record<ProductUnit, string> = {
+  un: 'Unidade',
+  ml: 'Mililitro (ml)',
+  g: 'Grama (g)',
+  caixa: 'Caixa',
+};
+
+export const STOCK_MOVEMENT_TYPES = [
+  'purchase',
+  'consumption',
+  'adjustment-in',
+  'adjustment-out',
+  'transfer-in',
+  'transfer-out',
+  'waste',
+] as const;
+export type StockMovementType = (typeof STOCK_MOVEMENT_TYPES)[number];
+
+/** Tipos que somam ao saldo; os restantes subtraem */
+export const STOCK_INBOUND_TYPES: readonly StockMovementType[] = [
+  'purchase',
+  'adjustment-in',
+  'transfer-in',
+] as const;
+
+export const STOCK_MOVEMENT_LABEL: Record<StockMovementType, string> = {
+  purchase: 'Compra',
+  consumption: 'Consumo',
+  'adjustment-in': 'Acerto (+)',
+  'adjustment-out': 'Acerto (−)',
+  'transfer-in': 'Transferência (entrada)',
+  'transfer-out': 'Transferência (saída)',
+  waste: 'Quebra / validade',
+};
+
+/** Tipos que a receção regista manualmente nos modais Entrada/Saída */
+export const MANUAL_IN_TYPES = ['purchase', 'adjustment-in'] as const;
+export const MANUAL_OUT_TYPES = [
+  'consumption',
+  'adjustment-out',
+  'waste',
+] as const;

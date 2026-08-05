@@ -15,24 +15,16 @@
 // =============================================================================
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
+import {
+  STOCK_MOVEMENT_TYPES,
+  STOCK_INBOUND_TYPES,
+  type StockMovementType,
+} from '@/lib/domain';
 
-export const STOCK_MOVEMENT_TYPES = [
-  'purchase',
-  'consumption',
-  'adjustment-in',
-  'adjustment-out',
-  'transfer-in',
-  'transfer-out',
-  'waste',
-] as const;
-export type StockMovementType = (typeof STOCK_MOVEMENT_TYPES)[number];
-
+// Canónicos em lib/domain.ts (client precisa em runtime) — re-export
+export { STOCK_MOVEMENT_TYPES, type StockMovementType };
 /** Tipos que somam ao saldo; os restantes subtraem */
-export const INBOUND_TYPES: StockMovementType[] = [
-  'purchase',
-  'adjustment-in',
-  'transfer-in',
-];
+export const INBOUND_TYPES = STOCK_INBOUND_TYPES;
 
 const StockMovementSchema = new Schema(
   {

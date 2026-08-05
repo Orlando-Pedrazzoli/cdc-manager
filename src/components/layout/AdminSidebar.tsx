@@ -61,7 +61,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
         label: 'Faturação',
         icon: FileText,
       },
-      { href: '/admin/stock', label: 'Stock', icon: Package, soon: 'Sprint 5' },
+      { href: '/admin/stock', label: 'Stock', icon: Package },
       { href: '/admin/relatorios', label: 'Relatórios', icon: BarChart3 },
     ],
   },

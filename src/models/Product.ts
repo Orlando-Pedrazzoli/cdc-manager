@@ -16,15 +16,11 @@
 // =============================================================================
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
+import { PRODUCT_UNITS, type ProductUnit } from '@/lib/domain';
 
-// Unidades base de consumo — a BOM dos TreatmentType consome nestas unidades
-export const PRODUCT_UNITS = [
-  'un', // unidade (luvas par, agulha, cápsula, película RX)
-  'ml', // líquidos (anestésico, hipoclorito)
-  'g', // pós e pastas (gesso, compósito a peso)
-  'caixa', // quando a clínica gere por caixa fechada
-] as const;
-export type ProductUnit = (typeof PRODUCT_UNITS)[number];
+// Unidades canónicas em lib/domain.ts (client precisa em runtime) —
+// re-export para o código server continuar a importar do model
+export { PRODUCT_UNITS, type ProductUnit };
 
 // Sub-schema: cache de saldo por armazém
 const StockCacheSchema = new Schema(
