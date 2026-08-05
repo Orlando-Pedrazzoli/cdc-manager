@@ -6,6 +6,7 @@
 
 import type { Specialty } from '@/lib/domain';
 import type { RecallStatus } from '@/models/Recall';
+import type { InvoiceStatus } from '@/models/Invoice';
 
 export const SPECIALTY_LABEL: Record<Specialty, string> = {
   dentisteria: 'Dentisteria',
@@ -39,4 +40,12 @@ export const RECALL_STATUS_LABEL: Record<RecallStatus, string> = {
   booked: 'Convertido',
   dismissed: 'Dispensado',
   unreachable: 'Incontactável',
+};
+
+/** Estados do documento de faturação (/admin/faturacao) */
+export const INVOICE_STATUS_LABEL: Record<InvoiceStatus, string> = {
+  'awaiting-emission': 'Aguarda emissão',
+  issued: 'Emitida',
+  pending: 'Pag. por regularizar',
+  voided: 'Anulada',
 };
