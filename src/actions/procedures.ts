@@ -29,6 +29,10 @@ import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import { resolveCommissionRate, commissionCentsOf } from '@/lib/commissions';
 import {
+  spawnRecallForProcedure,
+  cancelRecallForProcedure,
+} from '@/lib/recalls';
+import {
   addProcedureSchema,
   voidProcedureSchema,
   addClinicalNoteSchema,
@@ -209,6 +213,17 @@ export async function addProcedureAction(
       summary: `Ato registado: ${treatment.name} (${(data.priceEuros / 100).toFixed(2)} €)`,
     });
 
+    // Recall automático se o ato tem recallIntervalMonths (best-effort:
+    // nunca reverte o registo do ato; clinicId = clínica do ato)
+    await spawnRecallForProcedure({
+      procedureId: String(proc._id),
+      clinicId: String(appt.clinicId),
+      patientId: String(appt.patientId),
+      doctorId,
+      treatmentTypeId: data.treatmentTypeId,
+      executedAt: now,
+    });
+
     revalidatePath(`/doutor/consulta/${data.appointmentId}`);
     return { success: true };
   } catch (e) {
@@ -266,6 +281,10 @@ export async function voidProcedureAction(
       clinicId: String(proc.clinicId),
       summary: `Ato anulado: ${proc.nameSnapshot} — ${parsed.data.reason}`,
     });
+
+    // Ato anulado não deve convidar ninguém: fecha o ciclo de recall que
+    // este ato originou (best-effort)
+    await cancelRecallForProcedure(String(proc._id));
 
     if (proc.appointmentId) {
       revalidatePath(`/doutor/consulta/${String(proc.appointmentId)}`);

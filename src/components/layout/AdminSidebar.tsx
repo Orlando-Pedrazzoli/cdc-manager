@@ -49,7 +49,6 @@ const NAV: { section: string; items: NavItem[] }[] = [
         href: '/admin/recalls',
         label: 'Recalls',
         icon: RefreshCcw,
-        soon: 'Sprint 5',
       },
     ],
   },

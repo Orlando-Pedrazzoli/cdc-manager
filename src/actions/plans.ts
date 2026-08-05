@@ -25,6 +25,7 @@ import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import { resolveCommissionRate, commissionCentsOf } from '@/lib/commissions';
+import { spawnRecallForProcedure } from '@/lib/recalls';
 import {
   createPlanSchema,
   planIdSchema,
@@ -362,6 +363,17 @@ export async function executePlanItemAction(
       patientId: String(proc.patientId),
       clinicId: String(proc.clinicId),
       summary: `Ato do plano executado: ${proc.nameSnapshot} (${(proc.priceCents / 100).toFixed(2)} €)`,
+    });
+
+    // Recall automático — mesmo contrato do registo direto na consulta:
+    // best-effort, clinicId = clínica do ato do plano
+    await spawnRecallForProcedure({
+      procedureId: String(proc._id),
+      clinicId: String(proc.clinicId),
+      patientId: String(proc.patientId),
+      doctorId,
+      treatmentTypeId: String(proc.treatmentTypeId),
+      executedAt: proc.executedAt ?? new Date(),
     });
 
     revalidatePath(`/doutor/pacientes/${String(proc.patientId)}/plano`);

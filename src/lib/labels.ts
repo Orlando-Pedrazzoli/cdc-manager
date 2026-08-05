@@ -5,6 +5,7 @@
 // =============================================================================
 
 import type { Specialty } from '@/lib/domain';
+import type { RecallStatus } from '@/models/Recall';
 
 export const SPECIALTY_LABEL: Record<Specialty, string> = {
   dentisteria: 'Dentisteria',
@@ -29,3 +30,13 @@ export const WEEKDAYS_DISPLAY: { value: number; label: string }[] = [
   { value: 6, label: 'Sábado' },
   { value: 0, label: 'Domingo' },
 ];
+
+/** Estados do ciclo de recall (fila /admin/recalls) */
+export const RECALL_STATUS_LABEL: Record<RecallStatus, string> = {
+  scheduled: 'Agendado',
+  due: 'Por contactar',
+  contacted: 'Contactado',
+  booked: 'Convertido',
+  dismissed: 'Dispensado',
+  unreachable: 'Incontactável',
+};
