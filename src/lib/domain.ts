@@ -167,6 +167,22 @@ export const LOWER_TEETH = [
 ] as const;
 
 // =============================================================================
+// CATÁLOGO DE ATOS — constantes partilhadas (client: forms de Configurações)
+// Canónicos aqui; models/TreatmentType re-exporta.
+// =============================================================================
+
+/** Granularidade da grelha de slots (minutos) — regra global do motor */
+export const SLOT_GRANULARITY_MIN = 15;
+
+export const DURATION_SOURCES = ['benchmark', 'clinic-confirmed'] as const;
+export type DurationSource = (typeof DURATION_SOURCES)[number];
+
+export const DURATION_SOURCE_LABEL: Record<DurationSource, string> = {
+  benchmark: 'Benchmark',
+  'clinic-confirmed': 'Confirmado pela clínica',
+};
+
+// =============================================================================
 // COBRANÇA — meios de pagamento no balcão (client: CheckoutModal)
 // =============================================================================
 export const PAYMENT_METHODS = [

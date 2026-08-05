@@ -154,6 +154,49 @@ export function dateRange(fromStr: string, toStr: string): string[] {
   return out;
 }
 
+/**
+ * Instante UTC → componentes de "parede" em Lisboa (inverso de lisbonToUtc).
+ * Usado para verificar se marcações existentes cabem em novos horários de
+ * funcionamento (Configurações) — leitura pura, nunca altera marcações.
+ */
+export function utcToLisbonParts(instant: Date): {
+  dateStr: string; // 'YYYY-MM-DD' civil em Lisboa
+  weekday: number; // 0=Dom…6=Sáb
+  min: number; // minutos desde as 00:00 (parede Lisboa)
+} {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const p: Record<string, number> = {};
+  for (const part of dtf.formatToParts(instant)) {
+    if (part.type !== 'literal') p[part.type] = Number(part.value);
+  }
+  const hour = p.hour % 24; // Intl pode devolver '24' à meia-noite
+  const dateStr = `${p.year}-${String(p.month).padStart(2, '0')}-${String(
+    p.day,
+  ).padStart(2, '0')}`;
+  return {
+    dateStr,
+    weekday: weekdayOf(dateStr),
+    min: hour * 60 + p.minute,
+  };
+}
+
+/** [startMin, endMin] cabe INTEIRAMENTE dentro de algum dos intervalos? */
+export function fitsWithinRanges(
+  startMin: number,
+  endMin: number,
+  ranges: MinRange[],
+): boolean {
+  return ranges.some(r => startMin >= r.start && endMin <= r.end);
+}
+
 // -----------------------------------------------------------------------------
 // Passos 1–3: intervalos de trabalho efetivos do médico numa clínica num dia
 // -----------------------------------------------------------------------------

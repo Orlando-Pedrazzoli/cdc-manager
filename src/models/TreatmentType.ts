@@ -18,12 +18,15 @@
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
 import { SPECIALTIES } from '@/models/Doctor';
+import {
+  DURATION_SOURCES,
+  SLOT_GRANULARITY_MIN,
+  type DurationSource,
+} from '@/lib/domain';
 
-export const DURATION_SOURCES = ['benchmark', 'clinic-confirmed'] as const;
-export type DurationSource = (typeof DURATION_SOURCES)[number];
-
-/** Granularidade da grelha de slots (minutos) — regra global do motor */
-export const SLOT_GRANULARITY_MIN = 15;
+// Canónicos em lib/domain.ts (client precisa em runtime) — re-export para o
+// código server continuar a poder importar do model, como sempre
+export { DURATION_SOURCES, SLOT_GRANULARITY_MIN, type DurationSource };
 
 // --- Sub-schema: item da BOM (consumo de stock por execução do ato) ----------
 const BomItemSchema = new Schema(
