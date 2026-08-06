@@ -250,3 +250,29 @@ export const MANUAL_OUT_TYPES = [
   'adjustment-out',
   'waste',
 ] as const;
+
+// -----------------------------------------------------------------------------
+// DOCUMENTOS CLÍNICOS (migrado de models/Document.ts — o client precisa das
+// categorias em runtime no select de upload; o model importa daqui e
+// RE-EXPORTA, código server continua a importar do model)
+// -----------------------------------------------------------------------------
+export const DOCUMENT_CATEGORIES = [
+  'xray', // radiografia (periapical, panorâmica)
+  'cbct', // TAC / CBCT
+  'photo', // fotografia clínica
+  'consent', // consentimento informado assinado
+  'report', // relatório/carta externa
+  'prescription', // receita (PDF gerado)
+  'other',
+] as const;
+export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
+
+export const DOCUMENT_CATEGORY_LABEL: Record<DocumentCategory, string> = {
+  xray: 'Radiografia',
+  cbct: 'TAC / CBCT',
+  photo: 'Fotografia clínica',
+  consent: 'Consentimento assinado',
+  report: 'Relatório externo',
+  prescription: 'Receita',
+  other: 'Outro',
+};

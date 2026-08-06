@@ -3,9 +3,18 @@
 // CDC Manager — Dashboard Admin: a operação do dia
 // -----------------------------------------------------------------------------
 // Server Component. O ecrã de entrada da gestão: como está o dia AGORA nas
-// duas clínicas — marcações e o seu progresso, atos executados e valor, e
-// o que está POR COBRAR (a ponte visível para a cobrança/faturação).
-// Tudo calculado ao vivo do MongoDB, sem caches.
+// duas clínicas — marcações e o seu progresso, atos executados e valor, o que
+// está POR COBRAR (ponte visível para a Cobrança), recalls por contactar e
+// stock a repor. Tudo calculado ao vivo do MongoDB, sem caches.
+//
+// Notas de implementação:
+// · Recalls "por contactar" = status 'due' OU 'scheduled' cuja data já chegou
+//   (leitura pura — a promoção lazy scheduled→due acontece só no load de
+//   /admin/recalls; aqui apenas CONTAMOS, nunca escrevemos).
+// · Stock "a repor" = produtos ativos com minStock > 0 e saldo TOTAL das duas
+//   casas abaixo do mínimo (mesma regra do badge "Repor" da StockTable).
+// · Badge da clínica: derivado do slug (capitalizado) — 3.ª clínica = zero
+//   código, como nas colunas dinâmicas do Stock.
 // =============================================================================
 
 import Link from 'next/link';
@@ -15,6 +24,8 @@ import mongoose from 'mongoose';
 import Appointment from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import Procedure from '@/models/Procedure';
+import Recall from '@/models/Recall';
+import Product from '@/models/Product';
 import { getActiveClinics } from '@/models/Clinic';
 import { lisbonToUtc, todayLisbon } from '@/lib/availability';
 import { formatCents } from '@/lib/commissions';
@@ -27,6 +38,11 @@ const CLINIC_STYLE: Record<string, { bg: string; fg: string }> = {
   buraca: { bg: '#EFE6FA', fg: '#5B2E91' },
 };
 
+/** "colombo" → "Colombo" (badge dinâmico — sem hardcode por clínica) */
+function slugLabel(slug: string): string {
+  return slug.charAt(0).toUpperCase() + slug.slice(1);
+}
+
 export default async function AdminDashboardPage() {
   const session = await auth();
   const firstName = (session?.user?.name ?? '').split(' ')[0];
@@ -36,52 +52,84 @@ export default async function AdminDashboardPage() {
   const today = todayLisbon();
   const dayStart = lisbonToUtc(today, 0);
   const dayEnd = lisbonToUtc(today, 24 * 60);
+  const now = new Date();
 
-  const [clinics, apptsByClinic, patientsTotal, executedToday, toCollect] =
-    await Promise.all([
-      getActiveClinics(),
-      // Marcações de hoje agrupadas por clínica × estado
-      Appointment.aggregate<{
-        _id: { clinicId: mongoose.Types.ObjectId; status: string };
-        n: number;
-      }>([
-        { $match: { startAt: { $gte: dayStart, $lt: dayEnd } } },
-        {
-          $group: {
-            _id: { clinicId: '$clinicId', status: '$status' },
-            n: { $sum: 1 },
-          },
+  const [
+    clinics,
+    apptsByClinic,
+    patientsTotal,
+    executedByClinic,
+    toCollect,
+    recallsDue,
+    stockLow,
+  ] = await Promise.all([
+    getActiveClinics(),
+    // Marcações de hoje agrupadas por clínica × estado
+    Appointment.aggregate<{
+      _id: { clinicId: mongoose.Types.ObjectId; status: string };
+      n: number;
+    }>([
+      { $match: { startAt: { $gte: dayStart, $lt: dayEnd } } },
+      {
+        $group: {
+          _id: { clinicId: '$clinicId', status: '$status' },
+          n: { $sum: 1 },
         },
-      ]),
-      Patient.countDocuments({ status: 'active' }),
-      // Atos executados hoje (nº + valor)
-      Procedure.aggregate<{ _id: null; n: number; cents: number }>([
-        {
-          $match: {
-            status: { $in: ['completed', 'invoiced'] },
-            executedAt: { $gte: dayStart, $lt: dayEnd },
-          },
+      },
+    ]),
+    Patient.countDocuments({ status: 'active' }),
+    // Atos executados hoje (nº + valor) POR CLÍNICA — o global soma-se abaixo
+    Procedure.aggregate<{
+      _id: mongoose.Types.ObjectId;
+      n: number;
+      cents: number;
+    }>([
+      {
+        $match: {
+          status: { $in: ['completed', 'invoiced'] },
+          executedAt: { $gte: dayStart, $lt: dayEnd },
         },
-        {
-          $group: { _id: null, n: { $sum: 1 }, cents: { $sum: '$priceCents' } },
+      },
+      {
+        $group: {
+          _id: '$clinicId',
+          n: { $sum: 1 },
+          cents: { $sum: '$priceCents' },
         },
-      ]),
-      // Por cobrar (qualquer data): completed sem fatura, por clínica
-      Procedure.aggregate<{
-        _id: mongoose.Types.ObjectId;
-        n: number;
-        cents: number;
-      }>([
-        { $match: { status: 'completed', invoiceId: null } },
-        {
-          $group: {
-            _id: '$clinicId',
-            n: { $sum: 1 },
-            cents: { $sum: '$priceCents' },
-          },
+      },
+    ]),
+    // Por cobrar (qualquer data): completed sem fatura, por clínica
+    Procedure.aggregate<{
+      _id: mongoose.Types.ObjectId;
+      n: number;
+      cents: number;
+    }>([
+      { $match: { status: 'completed', invoiceId: null } },
+      {
+        $group: {
+          _id: '$clinicId',
+          n: { $sum: 1 },
+          cents: { $sum: '$priceCents' },
         },
-      ]),
-    ]);
+      },
+    ]),
+    // Recalls na fila de contacto (leitura pura — ver nota no topo)
+    Recall.countDocuments({
+      $or: [{ status: 'due' }, { status: 'scheduled', dueAt: { $lte: now } }],
+    }),
+    // Produtos ativos com mínimo definido e saldo total abaixo do mínimo
+    Product.aggregate<{ n: number }>([
+      { $match: { active: true, minStock: { $gt: 0 } } },
+      {
+        $project: {
+          minStock: 1,
+          total: { $sum: '$stockCache.quantity' },
+        },
+      },
+      { $match: { $expr: { $lt: ['$total', '$minStock'] } } },
+      { $count: 'n' },
+    ]),
+  ]);
 
   // Reorganizar agregações
   const perClinic = new Map<
@@ -95,10 +143,13 @@ export default async function AdminDashboardPage() {
     entry.byStatus[row._id.status] = row.n;
     perClinic.set(key, entry);
   }
+  const executedMap = new Map(executedByClinic.map(r => [String(r._id), r]));
+  const executedTotalCents = executedByClinic.reduce((s, r) => s + r.cents, 0);
+  const executedTotalN = executedByClinic.reduce((s, r) => s + r.n, 0);
   const collectByClinic = new Map(toCollect.map(r => [String(r._id), r]));
   const collectTotalCents = toCollect.reduce((s, r) => s + r.cents, 0);
   const collectTotalN = toCollect.reduce((s, r) => s + r.n, 0);
-  const executed = executedToday[0] ?? { n: 0, cents: 0 };
+  const stockLowN = stockLow[0]?.n ?? 0;
 
   const rawDate = new Intl.DateTimeFormat('pt-PT', {
     weekday: 'long',
@@ -127,6 +178,65 @@ export default async function AdminDashboardPage() {
   const missedOf = (byStatus: Record<string, number>) =>
     (byStatus['cancelled'] ?? 0) + (byStatus['no-show'] ?? 0);
 
+  // ---------------------------------------------------------------------------
+  // KPIs — os acionáveis (Por cobrar, Recalls, Stock) são cartões-link.
+  // Paleta de alerta: azul (cobrança), vermelho (recalls), âmbar (stock).
+  // ---------------------------------------------------------------------------
+  const kpis: Array<{
+    label: string;
+    value: string;
+    sub?: string;
+    href?: string;
+    accentBg?: string;
+    accentBorder?: string;
+    valueColor?: string;
+  }> = [
+    { label: 'Pacientes ativos', value: String(patientsTotal) },
+    {
+      label: 'Atos executados hoje',
+      value: String(executedTotalN),
+      sub: formatCents(executedTotalCents),
+    },
+    {
+      label: 'Por cobrar',
+      value: formatCents(collectTotalCents),
+      sub:
+        collectTotalN > 0
+          ? `${collectTotalN} ato${collectTotalN === 1 ? '' : 's'} aguarda${collectTotalN === 1 ? '' : 'm'} cobrança`
+          : 'Tudo cobrado',
+      href: '/admin/cobranca',
+      ...(collectTotalCents > 0
+        ? { accentBg: '#F5F8FF', accentBorder: '#C9D4FF' }
+        : {}),
+    },
+    {
+      label: 'Recalls por contactar',
+      value: String(recallsDue),
+      sub: recallsDue > 0 ? 'Na fila de contacto' : 'Em dia',
+      href: '/admin/recalls',
+      ...(recallsDue > 0
+        ? {
+            accentBg: '#FDF3F2',
+            accentBorder: '#F3CFCC',
+            valueColor: '#B3261E',
+          }
+        : {}),
+    },
+    {
+      label: 'Stock a repor',
+      value: String(stockLowN),
+      sub: stockLowN > 0 ? 'Abaixo do mínimo' : 'Níveis OK',
+      href: '/admin/stock',
+      ...(stockLowN > 0
+        ? {
+            accentBg: '#FFF9EE',
+            accentBorder: '#F2DEB6',
+            valueColor: '#8A5A00',
+          }
+        : {}),
+    },
+  ];
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div>
@@ -145,7 +255,7 @@ export default async function AdminDashboardPage() {
         </p>
       </div>
 
-      {/* KPIs globais */}
+      {/* KPIs globais + alertas operacionais */}
       <div
         style={{
           display: 'grid',
@@ -153,57 +263,76 @@ export default async function AdminDashboardPage() {
           gap: '12px',
         }}
       >
-        {[
-          { label: 'Pacientes ativos', value: String(patientsTotal) },
-          {
-            label: 'Atos executados hoje',
-            value: `${executed.n}`,
-            sub: formatCents(executed.cents),
-          },
-          {
-            label: 'Por cobrar',
-            value: formatCents(collectTotalCents),
-            sub: `${collectTotalN} ato${collectTotalN === 1 ? '' : 's'} · faturação ativa com o Moloni`,
-            accent: collectTotalCents > 0,
-          },
-        ].map(kpi => (
-          <div
-            key={kpi.label}
-            style={{
-              ...card,
-              border: kpi.accent ? '1px solid #C9D4FF' : card.border,
-              backgroundColor: kpi.accent ? '#F5F8FF' : '#FFFFFF',
-            }}
-          >
-            <p
+        {kpis.map(kpi => {
+          const body = (
+            <div
               style={{
-                margin: 0,
-                fontSize: '24px',
-                fontWeight: 700,
-                color: '#1B2A6B',
-                lineHeight: 1.15,
+                ...card,
+                height: '100%',
+                boxSizing: 'border-box',
+                border: kpi.accentBorder
+                  ? `1px solid ${kpi.accentBorder}`
+                  : card.border,
+                backgroundColor: kpi.accentBg ?? '#FFFFFF',
               }}
             >
-              {kpi.value}
-            </p>
-            <p
-              style={{ margin: '4px 0 0', fontSize: '13px', color: '#6A7186' }}
-            >
-              {kpi.label}
-            </p>
-            {kpi.sub && (
               <p
                 style={{
-                  margin: '2px 0 0',
-                  fontSize: '12px',
-                  color: '#9AA1B4',
+                  margin: 0,
+                  fontSize: '24px',
+                  fontWeight: 700,
+                  color: kpi.valueColor ?? '#1B2A6B',
+                  lineHeight: 1.15,
                 }}
               >
-                {kpi.sub}
+                {kpi.value}
               </p>
-            )}
-          </div>
-        ))}
+              <p
+                style={{
+                  margin: '4px 0 0',
+                  fontSize: '13px',
+                  color: '#6A7186',
+                }}
+              >
+                {kpi.label}
+              </p>
+              {kpi.sub && (
+                <p
+                  style={{
+                    margin: '2px 0 0',
+                    fontSize: '12px',
+                    color: '#9AA1B4',
+                  }}
+                >
+                  {kpi.sub}
+                </p>
+              )}
+              {kpi.href && (
+                <p
+                  style={{
+                    margin: '6px 0 0',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#2743A6',
+                  }}
+                >
+                  Abrir →
+                </p>
+              )}
+            </div>
+          );
+          return kpi.href ? (
+            <Link
+              key={kpi.label}
+              href={kpi.href}
+              style={{ textDecoration: 'none', display: 'block' }}
+            >
+              {body}
+            </Link>
+          ) : (
+            <div key={kpi.label}>{body}</div>
+          );
+        })}
       </div>
 
       {/* O dia por clínica */}
@@ -219,6 +348,7 @@ export default async function AdminDashboardPage() {
             total: 0,
             byStatus: {},
           };
+          const executed = executedMap.get(String(c._id));
           const collect = collectByClinic.get(String(c._id));
           const cl = CLINIC_STYLE[c.slug] ?? { bg: '#EAECF3', fg: '#3D4257' };
           const inProgress = stats.byStatus['in-progress'] ?? 0;
@@ -256,7 +386,7 @@ export default async function AdminDashboardPage() {
                     color: cl.fg,
                   }}
                 >
-                  {c.slug === 'colombo' ? 'Colombo' : 'Buraca'}
+                  {slugLabel(c.slug)}
                 </span>
               </div>
               <div
@@ -295,6 +425,15 @@ export default async function AdminDashboardPage() {
                     Agora: {inProgress > 0 ? `${inProgress} em curso` : ''}
                     {inProgress > 0 && waiting > 0 ? ' · ' : ''}
                     {waiting > 0 ? `${waiting} em espera` : ''}
+                  </p>
+                )}
+                {executed && executed.cents > 0 && (
+                  <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
+                    Executado hoje:{' '}
+                    <strong style={{ color: '#0F7B4D' }}>
+                      {formatCents(executed.cents)}
+                    </strong>{' '}
+                    ({executed.n} ato{executed.n === 1 ? '' : 's'})
                   </p>
                 )}
                 {collect && collect.cents > 0 && (

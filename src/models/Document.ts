@@ -6,22 +6,23 @@
 // TAC, fotografias clínicas, consentimentos assinados, relatórios externos.
 // Guardamos METADADOS + public_id; o binário vive no Cloudinary com acesso
 // `authenticated` (nunca URLs públicas — dados de saúde). As URLs de
-// visualização são assinadas e de curta duração, geradas on-demand em
-// lib/cloudinary.ts.
+// visualização são assinadas e geradas on-demand em lib/cloudinary.ts.
+//
+// Convenções:
+// · _id do Document É o sufixo do public_id no Cloudinary (IDs opacos —
+//   nunca nome do paciente nem nº de processo no caminho do asset).
+// · NEVER DELETE: anular = voidedAt + autor + motivo (padrão Procedure).
+//   O asset fica no Cloudinary; remoção física só em apagamento RGPD
+//   deliberado (destroyAsset em lib/cloudinary.ts, fase posterior).
+// · DOCUMENT_CATEGORIES vive em lib/domain.ts (o client usa no select de
+//   upload); aqui importa-se e RE-EXPORTA — código server importa do model.
 // =============================================================================
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
+import { DOCUMENT_CATEGORIES, type DocumentCategory } from '@/lib/domain';
 
-export const DOCUMENT_CATEGORIES = [
-  'xray', // radiografia (periapical, panorâmica)
-  'cbct', // TAC / CBCT
-  'photo', // fotografia clínica
-  'consent', // consentimento informado assinado
-  'report', // relatório/carta externa
-  'prescription', // receita (PDF gerado)
-  'other',
-] as const;
-export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
+export { DOCUMENT_CATEGORIES };
+export type { DocumentCategory };
 
 const DocumentSchema = new Schema(
   {
@@ -46,7 +47,7 @@ const DocumentSchema = new Schema(
     publicId: { type: String, required: true, unique: true },
     resourceType: {
       type: String,
-      enum: ['image', 'raw'], // raw = PDFs e outros não-imagem
+      enum: ['image', 'raw'], // raw = DICOM e outros não-imagem (PDF entra como image)
       required: true,
     },
     format: { type: String, trim: true, default: null }, // jpg, png, pdf, dcm
@@ -68,6 +69,14 @@ const DocumentSchema = new Schema(
       default: null,
     },
     note: { type: String, trim: true, maxlength: 300, default: null },
+    // --- Anulação (never delete) --------------------------------------------
+    voidedAt: { type: Date, default: null },
+    voidedByUserId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    voidReason: { type: String, trim: true, maxlength: 300, default: null },
   },
   { timestamps: true },
 );
