@@ -28,6 +28,12 @@ import {
   PatientForm,
   type PatientFormInitial,
 } from '@/components/pacientes/PatientForm';
+import {
+  DocumentsTab,
+  type DocumentItem,
+} from '@/components/pacientes/DocumentsTab';
+import ClinicalDocument from '@/models/Document';
+import { signedPreviewUrl } from '@/lib/cloudinary';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,6 +98,47 @@ export default async function PatientPage({
             .lean()
         ).map(d => ({ id: String(d._id), name: d.name }))
       : [];
+
+  // Documentos só no separador de documentos (não anulados; URLs assinadas
+  // geradas AQUI, server-side, já com a sessão validada pelo proxy)
+  let documents: DocumentItem[] = [];
+  if (tab === 'documentos') {
+    const lisbonDateTime = new Intl.DateTimeFormat('pt-PT', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Europe/Lisbon',
+    });
+    const docs = await ClinicalDocument.find({ patientId: id, voidedAt: null })
+      .sort({ createdAt: -1 })
+      .populate<{
+        uploadedByUserId: { name?: string } | null;
+      }>('uploadedByUserId', 'name')
+      .lean();
+    documents = docs.map(d => {
+      const isImage = d.resourceType === 'image';
+      const isPdf = d.format === 'pdf';
+      return {
+        id: String(d._id),
+        category: d.category,
+        title: d.title,
+        thumbUrl: isImage
+          ? signedPreviewUrl(d.publicId, { width: 480, isPdf })
+          : null,
+        previewUrl: isImage
+          ? signedPreviewUrl(d.publicId, { width: 1600, isPdf })
+          : null,
+        format: d.format ?? null,
+        bytes: d.bytes ?? 0,
+        visibleToPatient: Boolean(d.visibleToPatient),
+        uploadedByName: d.uploadedByUserId?.name ?? '—',
+        createdAtLabel: d.createdAt ? lisbonDateTime.format(d.createdAt) : '',
+        note: d.note ?? null,
+      };
+    });
+  }
 
   const initial: PatientFormInitial = {
     name: patient.name,
@@ -187,6 +234,17 @@ export default async function PatientPage({
             doctors={doctors}
           />
         </div>
+      ) : tab === 'documentos' ? (
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #EEF1F8',
+            borderRadius: '12px',
+            padding: '20px',
+          }}
+        >
+          <DocumentsTab patientId={id} documents={documents} />
+        </div>
       ) : (
         <div
           style={{
@@ -203,8 +261,6 @@ export default async function PatientPage({
             'Histórico e marcação de consultas — disponível no Sprint 2 (agenda).'}
           {tab === 'clinico' &&
             'Anamnese, odontograma e planos de tratamento — disponível no Sprint 3.'}
-          {tab === 'documentos' &&
-            'RX, consentimentos e documentos — disponível nos Sprints 3–5.'}
         </div>
       )}
     </div>

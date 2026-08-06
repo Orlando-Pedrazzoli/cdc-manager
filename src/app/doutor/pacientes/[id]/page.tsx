@@ -29,6 +29,12 @@ import {
   AnamneseForm,
   type AnamnesisData,
 } from '@/components/clinico/AnamneseForm';
+import {
+  DocumentsTab,
+  type DocumentItem,
+} from '@/components/pacientes/DocumentsTab';
+import ClinicalDocument from '@/models/Document';
+import { signedPreviewUrl } from '@/lib/cloudinary';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,6 +86,7 @@ function NotFound() {
 const TABS = [
   { key: 'anamnese', label: 'Anamnese' },
   { key: 'historico', label: 'Histórico clínico' },
+  { key: 'documentos', label: 'Documentos' },
   { key: 'odontograma', label: 'Odontograma' },
 ] as const;
 
@@ -92,7 +99,12 @@ export default async function DoctorPatientPage({
 }) {
   const { id } = await params;
   const { tab } = await searchParams;
-  const activeTab = tab === 'historico' ? 'historico' : 'anamnese';
+  const activeTab =
+    tab === 'historico'
+      ? 'historico'
+      : tab === 'documentos'
+        ? 'documentos'
+        : 'anamnese';
 
   const session = await auth();
   const doctorId = session?.user?.doctorId;
@@ -103,6 +115,39 @@ export default async function DoctorPatientPage({
   // RBAC: relação médico↔paciente obrigatória
   const hasRelation = await Appointment.exists({ doctorId, patientId: id });
   if (!hasRelation) return <NotFound />;
+
+  // Documentos só no separador de documentos (não anulados; URLs assinadas
+  // geradas server-side após o RBAC acima)
+  let documents: DocumentItem[] = [];
+  if (activeTab === 'documentos') {
+    const docs = await ClinicalDocument.find({ patientId: id, voidedAt: null })
+      .sort({ createdAt: -1 })
+      .populate<{
+        uploadedByUserId: { name?: string } | null;
+      }>('uploadedByUserId', 'name')
+      .lean();
+    documents = docs.map(d => {
+      const isImage = d.resourceType === 'image';
+      const isPdf = d.format === 'pdf';
+      return {
+        id: String(d._id),
+        category: d.category,
+        title: d.title,
+        thumbUrl: isImage
+          ? signedPreviewUrl(d.publicId, { width: 480, isPdf })
+          : null,
+        previewUrl: isImage
+          ? signedPreviewUrl(d.publicId, { width: 1600, isPdf })
+          : null,
+        format: d.format ?? null,
+        bytes: d.bytes ?? 0,
+        visibleToPatient: Boolean(d.visibleToPatient),
+        uploadedByName: d.uploadedByUserId?.name ?? '—',
+        createdAtLabel: d.createdAt ? lisbonDateTime(d.createdAt) : '',
+        note: d.note ?? null,
+      };
+    });
+  }
 
   const [patient, record] = await Promise.all([
     Patient.findById(id).select('name processNumber phone birthDate').lean(),
@@ -282,6 +327,17 @@ export default async function DoctorPatientPage({
 
       {activeTab === 'anamnese' ? (
         <AnamneseForm patientId={id} initial={anamnesis} />
+      ) : activeTab === 'documentos' ? (
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #EEF1F8',
+            borderRadius: '14px',
+            padding: '20px',
+          }}
+        >
+          <DocumentsTab patientId={id} documents={documents} />
+        </div>
       ) : (
         <div
           style={{
