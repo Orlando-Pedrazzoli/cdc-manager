@@ -68,6 +68,49 @@ const EMPTY: PatientFormInitial = {
   hasConsentMarketing: false,
 };
 
+// -----------------------------------------------------------------------------
+// Telefone internacional (balcão): select de indicativo + nº nacional →
+// hidden input compõe o valor que o Zod normaliza para E.164 no server.
+// Lista curada para a realidade do balcão de Lisboa; "Outro" aceita o
+// número completo com qualquer indicativo (+...).
+// -----------------------------------------------------------------------------
+const DIAL_CODES: { code: string; label: string }[] = [
+  { code: '+351', label: '🇵🇹 Portugal +351' },
+  { code: '+55', label: '🇧🇷 Brasil +55' },
+  { code: '+34', label: '🇪🇸 Espanha +34' },
+  { code: '+33', label: '🇫🇷 França +33' },
+  { code: '+44', label: '🇬🇧 Reino Unido +44' },
+  { code: '+49', label: '🇩🇪 Alemanha +49' },
+  { code: '+39', label: '🇮🇹 Itália +39' },
+  { code: '+41', label: '🇨🇭 Suíça +41' },
+  { code: '+352', label: '🇱🇺 Luxemburgo +352' },
+  { code: '+32', label: '🇧🇪 Bélgica +32' },
+  { code: '+31', label: '🇳🇱 Países Baixos +31' },
+  { code: '+353', label: '🇮🇪 Irlanda +353' },
+  { code: '+48', label: '🇵🇱 Polónia +48' },
+  { code: '+40', label: '🇷🇴 Roménia +40' },
+  { code: '+380', label: '🇺🇦 Ucrânia +380' },
+  { code: '+238', label: '🇨🇻 Cabo Verde +238' },
+  { code: '+244', label: '🇦🇴 Angola +244' },
+  { code: '+245', label: '🇬🇼 Guiné-Bissau +245' },
+  { code: '+258', label: '🇲🇿 Moçambique +258' },
+  { code: '+239', label: '🇸🇹 São Tomé +239' },
+  { code: '+1', label: '🇺🇸 EUA/Canadá +1' },
+];
+
+/** Decompõe um E.164 guardado em (indicativo, nacional); sem match → Outro */
+function splitPhone(stored: string): { dial: string; national: string } {
+  if (!stored) return { dial: '+351', national: '' };
+  // indicativos mais longos primeiro (+351 antes de +35 hipotético)
+  const sorted = [...DIAL_CODES].sort((a, b) => b.code.length - a.code.length);
+  for (const { code } of sorted) {
+    if (stored.startsWith(code)) {
+      return { dial: code, national: stored.slice(code.length) };
+    }
+  }
+  return { dial: 'other', national: stored };
+}
+
 const sectionTitle = {
   margin: '0 0 4px',
   fontSize: '13px',
@@ -106,6 +149,85 @@ export function PatientForm({
     PatientFormState,
     FormData
   >(action, undefined);
+
+  // Telefone internacional: indicativo + nº nacional (hidden compõe)
+  const initialPhone = splitPhone(values.phone);
+  const [dial, setDial] = useState<string>(initialPhone.dial);
+  const [nationalNumber, setNationalNumber] = useState<string>(
+    initialPhone.national,
+  );
+  const composedPhone =
+    dial === 'other'
+      ? nationalNumber.trim()
+      : nationalNumber.trim()
+        ? `${dial}${nationalNumber.replace(/[\s().\-]/g, '')}`
+        : '';
+
+  // Código postal → Localidade e, quando o CP7 tem UMA só artéria, também
+  // a Morada (GeoAPI.pt; silencioso, nunca sobrepõe o que foi escrito).
+  // Nota: ao contrário do CEP brasileiro, o CP7 nem sempre identifica a
+  // rua única — nesses casos a Morada fica manual, por desenho.
+  const [postalCode, setPostalCode] = useState<string>(values.postalCode);
+  const [city, setCity] = useState<string>(values.city);
+  const [street, setStreet] = useState<string>(values.street);
+  const cityTouched = useRef<boolean>(Boolean(values.city));
+  const streetTouched = useRef<boolean>(Boolean(values.street));
+  useEffect(() => {
+    if (!/^\d{4}-\d{3}$/.test(postalCode)) return;
+    if (cityTouched.current && streetTouched.current) return;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    fetch(`https://json.geoapi.pt/cp/${postalCode}`, {
+      signal: controller.signal,
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then((data: unknown) => {
+        if (!data || typeof data !== 'object') return;
+        const d = data as Record<string, unknown>;
+
+        if (!cityTouched.current) {
+          const locality =
+            (typeof d.Localidade === 'string' && d.Localidade) ||
+            (typeof d.localidade === 'string' && d.localidade) ||
+            (typeof d.concelho === 'string' && d.concelho) ||
+            (typeof d.Concelho === 'string' && d.Concelho) ||
+            null;
+          if (locality) setCity(locality);
+        }
+
+        if (!streetTouched.current) {
+          // Recolher artérias em todos os formatos que a GeoAPI usa
+          const candidates = new Set<string>();
+          const collect = (v: unknown) => {
+            if (typeof v === 'string' && v.trim()) candidates.add(v.trim());
+          };
+          collect(d['Artéria'] ?? d.arteria);
+          const lists = [d.partes, d.ruas, d.pontos] as unknown[];
+          for (const list of lists) {
+            if (!Array.isArray(list)) continue;
+            for (const item of list) {
+              if (typeof item === 'string') collect(item);
+              else if (item && typeof item === 'object') {
+                const o = item as Record<string, unknown>;
+                collect(o['Artéria'] ?? o.arteria ?? o.rua ?? o.local);
+              }
+            }
+          }
+          // Só preenche quando é INEQUÍVOCO (uma única artéria no CP7)
+          if (candidates.size === 1) {
+            setStreet([...candidates][0]);
+          }
+        }
+      })
+      .catch(() => {
+        /* API em baixo/offline: os campos ficam manuais, sem ruído */
+      })
+      .finally(() => clearTimeout(timeout));
+    return () => {
+      controller.abort();
+      clearTimeout(timeout);
+    };
+  }, [postalCode]);
 
   // Modal do código manual (email do convite falhou)
   const [manualCode, setManualCode] = useState<string | null>(null);
@@ -202,15 +324,63 @@ export function PatientForm({
         >
           <h3 style={sectionTitle}>Contactos</h3>
           <div style={grid2}>
-            <Input
-              id='phone'
-              name='phone'
-              label='Telemóvel'
-              type='tel'
-              defaultValue={values.phone}
-              placeholder='912 345 678 ou +351...'
-              help='Usado para confirmações e lembretes WhatsApp'
-            />
+            <div
+              style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+            >
+              <label
+                htmlFor='phone-national'
+                style={{ fontSize: '13px', fontWeight: 500, color: '#3A3F4A' }}
+              >
+                Telemóvel
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <select
+                  aria-label='Indicativo do país'
+                  value={dial}
+                  onChange={e => setDial(e.target.value)}
+                  style={{
+                    borderRadius: '8px',
+                    border: '1px solid #D8DEEF',
+                    padding: '9px 8px',
+                    fontSize: '14px',
+                    color: '#1B2A6B',
+                    backgroundColor: '#FFFFFF',
+                    maxWidth: 150,
+                  }}
+                >
+                  {DIAL_CODES.map(c => (
+                    <option key={c.code} value={c.code}>
+                      {c.label}
+                    </option>
+                  ))}
+                  <option value='other'>🌍 Outro (+…)</option>
+                </select>
+                <input
+                  id='phone-national'
+                  type='tel'
+                  value={nationalNumber}
+                  onChange={e => setNationalNumber(e.target.value)}
+                  placeholder={
+                    dial === 'other' ? '+ indicativo e número' : '912 345 678'
+                  }
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    borderRadius: '8px',
+                    border: '1px solid #D8DEEF',
+                    padding: '9px 12px',
+                    fontSize: '14px',
+                    color: '#1B2A6B',
+                    backgroundColor: '#FFFFFF',
+                  }}
+                />
+              </div>
+              {/* O que o server valida/normaliza (E.164) */}
+              <input type='hidden' name='phone' value={composedPhone} />
+              <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
+                Usado para confirmações e lembretes WhatsApp
+              </p>
+            </div>
             <Input
               id='email'
               name='email'
@@ -226,22 +396,33 @@ export function PatientForm({
               name='street'
               label='Morada'
               maxLength={200}
-              defaultValue={values.street}
+              value={street}
+              onChange={e => {
+                streetTouched.current = true;
+                setStreet(e.target.value);
+              }}
+              placeholder='Rua, nº, andar'
             />
             <Input
               id='postalCode'
               name='postalCode'
               label='Código postal'
               maxLength={8}
-              defaultValue={values.postalCode}
+              value={postalCode}
+              onChange={e => setPostalCode(e.target.value)}
               placeholder='0000-000'
+              help='Ao completar, a localidade preenche-se automaticamente'
             />
             <Input
               id='city'
               name='city'
               label='Localidade'
               maxLength={100}
-              defaultValue={values.city}
+              value={city}
+              onChange={e => {
+                cityTouched.current = true;
+                setCity(e.target.value);
+              }}
             />
           </div>
         </section>

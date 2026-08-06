@@ -27,6 +27,7 @@ import Doctor from '@/models/Doctor';
 import { getActiveClinics } from '@/models/Clinic';
 import { lisbonToUtc } from '@/lib/availability';
 import { formatCents } from '@/lib/commissions';
+import { ExportCsvButton } from '@/components/relatorios/ExportCsvButton';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Relatórios' };
@@ -313,6 +314,10 @@ export default async function RelatoriosPage({
       <div style={card}>
         <div
           style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
             padding: '14px 20px',
             borderBottom: '1px solid #EEF1F8',
             fontSize: '14px',
@@ -321,6 +326,29 @@ export default async function RelatoriosPage({
           }}
         >
           Produção e comissões por profissional
+          {/* Mapa mensal para contabilidade/acerto — valores com vírgula PT */}
+          <ExportCsvButton
+            filename={`comissoes-${mes}.csv`}
+            headers={[
+              'Profissional',
+              'Atos',
+              'Produção (€)',
+              'Comissão (€)',
+              'Parte da clínica (€)',
+            ]}
+            rows={prodByDoctor.map(r => {
+              const d = doctorById.get(String(r._id));
+              return [
+                d?.name ?? '(profissional removido)',
+                String(r.n),
+                (r.producedCents / 100).toFixed(2).replace('.', ','),
+                (r.commissionCents / 100).toFixed(2).replace('.', ','),
+                ((r.producedCents - r.commissionCents) / 100)
+                  .toFixed(2)
+                  .replace('.', ','),
+              ];
+            })}
+          />
         </div>
         {prodByDoctor.length === 0 ? (
           <p
@@ -360,7 +388,16 @@ export default async function RelatoriosPage({
                           marginRight: 8,
                         }}
                       />
-                      {d?.name ?? '(profissional removido)'}
+                      {d ? (
+                        <Link
+                          href={`/admin/medicos/${String(r._id)}`}
+                          style={{ color: '#1B2A6B', textDecoration: 'none' }}
+                        >
+                          {d.name}
+                        </Link>
+                      ) : (
+                        '(profissional removido)'
+                      )}
                     </td>
                     <td style={tdNum}>{r.n}</td>
                     <td style={tdNum}>{formatCents(r.producedCents)}</td>

@@ -151,7 +151,7 @@ export default async function CobrancaPage({
                   color: active ? '#FFFFFF' : '#1B2A6B',
                 }}
               >
-                {c.slug === 'colombo' ? 'Colombo' : 'Buraca'}
+                {c.slug.charAt(0).toUpperCase() + c.slug.slice(1)}
               </Link>
             );
           })}
@@ -217,7 +217,16 @@ export default async function CobrancaPage({
                       color: '#1B2A6B',
                     }}
                   >
-                    {patient?.name ?? '(paciente removido)'}
+                    {patient ? (
+                      <Link
+                        href={`/admin/pacientes/${patientId}`}
+                        style={{ color: '#1B2A6B', textDecoration: 'none' }}
+                      >
+                        {patient.name}
+                      </Link>
+                    ) : (
+                      '(paciente removido)'
+                    )}
                     <span
                       style={{
                         marginLeft: 8,
@@ -378,6 +387,18 @@ export default async function CobrancaPage({
                 >
                   {formatCents(inv.totalCents)}
                 </span>
+                <Link
+                  href={`/admin/faturacao/${String(inv._id)}`}
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#2743A6',
+                    textDecoration: 'none',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Ver →
+                </Link>
               </div>
             );
           })

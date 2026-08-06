@@ -102,7 +102,7 @@ export async function consumeActivationCode(params: {
       expiresAt: { $gt: new Date() },
     },
     { $set: { usedAt: new Date() } },
-    { new: true },
+    { returnDocument: 'after' },
   );
 
   if (!doc) return null;

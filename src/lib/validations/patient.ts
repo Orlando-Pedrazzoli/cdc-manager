@@ -94,7 +94,8 @@ const phoneField = z.preprocess(
       if (!normalized) {
         ctx.addIssue({
           code: 'custom',
-          message: 'Telefone inválido — use 9 dígitos ou formato +351...',
+          message:
+            'Telefone inválido — 9 dígitos (PT) ou indicativo internacional +…',
         });
         return z.NEVER;
       }

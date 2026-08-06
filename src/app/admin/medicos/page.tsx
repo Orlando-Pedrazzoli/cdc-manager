@@ -193,9 +193,19 @@ export default async function DoctorsPage({
                   </TD>
                   <TD>{clinicLabels || '—'}</TD>
                   <TD align='right'>
-                    {d.commissionRate != null
-                      ? `${Math.round(d.commissionRate * 100)}%`
-                      : 'default'}
+                    <Link
+                      href={`/admin/medicos/${id}?tab=comissoes`}
+                      title='Abrir comissões e overrides'
+                      style={{
+                        color: '#2743A6',
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                      }}
+                    >
+                      {d.commissionRate != null
+                        ? `${Math.round(d.commissionRate * 100)}%`
+                        : 'default'}
+                    </Link>
                   </TD>
                   <TD>
                     {account === 'active' ? (
