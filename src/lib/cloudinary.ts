@@ -62,6 +62,13 @@ export function patientDocumentPublicId(documentId: string): string {
   return `${ROOT_FOLDER()}/pacientes/${documentId}`;
 }
 
+/** Public ID da foto de um produto de stock: {root}/stock/{productId}.
+ *  Substituir foto = novo upload para o MESMO public_id (overwrite);
+ *  nota: o CDN pode servir a derivada antiga até expirar o cache. */
+export function stockProductPublicId(productId: string): string {
+  return `${ROOT_FOLDER()}/stock/${productId}`;
+}
+
 // -----------------------------------------------------------------------------
 // 1. Assinatura de upload direto browser → Cloudinary
 // -----------------------------------------------------------------------------
@@ -69,29 +76,44 @@ export function patientDocumentPublicId(documentId: string): string {
 export interface CloudinaryUploadTicket {
   /** POST target: https://api.cloudinary.com/v1_1/{cloud}/auto/upload */
   uploadUrl: string;
-  /** Campos a enviar no FormData junto com `file` */
+  /** Campos a enviar no FormData junto com `file` (iterar Object.entries —
+   *  o conjunto varia: transformation só existe quando pedida) */
   fields: {
     api_key: string;
     timestamp: number;
     signature: string;
     public_id: string;
     type: 'authenticated';
+    transformation?: string;
   };
 }
 
 /**
  * Assina um upload para o public_id dado. O endpoint /auto/upload deteta o
  * resource_type (jpg/png/pdf → image; .dcm e outros → raw).
- * Só timestamp, public_id e type entram na assinatura (api_key e file não).
+ *
+ * `incomingTransformation` (opcional): o Cloudinary aplica NA RECEÇÃO e
+ * guarda só o resultado — ex. 'c_limit,w_1600,q_auto' encolhe uma foto de
+ * telemóvel de 6 MB para ~200 KB no storage. USAR SÓ em material não
+ * clínico (fotos de stock); documentos clínicos (RX/TAC) guardam SEMPRE o
+ * original intacto — qualidade diagnóstica não se comprime.
+ *
+ * Tudo o que vai no pedido (exceto file e api_key) entra na assinatura.
  */
-export function signDocumentUpload(publicId: string): CloudinaryUploadTicket {
+export function signDocumentUpload(
+  publicId: string,
+  opts: { incomingTransformation?: string } = {},
+): CloudinaryUploadTicket {
   const c = cld();
   const timestamp = Math.floor(Date.now() / 1000);
-  const paramsToSign = {
+  const paramsToSign: Record<string, string | number> = {
     public_id: publicId,
     timestamp,
-    type: 'authenticated' as const,
+    type: 'authenticated',
   };
+  if (opts.incomingTransformation) {
+    paramsToSign.transformation = opts.incomingTransformation;
+  }
   const signature = c.utils.api_sign_request(
     paramsToSign,
     c.config().api_secret as string,
@@ -104,6 +126,9 @@ export function signDocumentUpload(publicId: string): CloudinaryUploadTicket {
       signature,
       public_id: publicId,
       type: 'authenticated',
+      ...(opts.incomingTransformation
+        ? { transformation: opts.incomingTransformation }
+        : {}),
     },
   };
 }

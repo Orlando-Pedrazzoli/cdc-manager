@@ -18,6 +18,7 @@ import StockMovement from '@/models/StockMovement';
 import Warehouse from '@/models/Warehouse';
 import User from '@/models/User';
 import { getActiveClinics } from '@/models/Clinic';
+import { signedPreviewUrl } from '@/lib/cloudinary';
 import {
   PRODUCT_UNIT_LABEL,
   STOCK_MOVEMENT_LABEL,
@@ -125,6 +126,25 @@ export default async function ProductLedgerPage({
             flexWrap: 'wrap',
           }}
         >
+          {product.imagePublicId && (
+            <div
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: '10px',
+                border: '1px solid #EEF1F8',
+                overflow: 'hidden',
+                flexShrink: 0,
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- URL assinada dinâmica */}
+              <img
+                src={signedPreviewUrl(product.imagePublicId, { width: 128 })}
+                alt={product.name}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </div>
+          )}
           <h1
             style={{
               margin: 0,

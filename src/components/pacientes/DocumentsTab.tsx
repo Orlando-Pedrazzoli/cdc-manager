@@ -129,11 +129,9 @@ function UploadModal({
       // 2. Upload DIRETO ao Cloudinary
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('api_key', ticket.ticket.fields.api_key);
-      fd.append('timestamp', String(ticket.ticket.fields.timestamp));
-      fd.append('signature', ticket.ticket.fields.signature);
-      fd.append('public_id', ticket.ticket.fields.public_id);
-      fd.append('type', ticket.ticket.fields.type);
+      for (const [key, value] of Object.entries(ticket.ticket.fields)) {
+        fd.append(key, String(value));
+      }
       const upload = await fetch(ticket.ticket.uploadUrl, {
         method: 'POST',
         body: fd,

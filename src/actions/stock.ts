@@ -43,6 +43,13 @@ import {
   signedDelta,
 } from '@/lib/validations/stock';
 import { PRODUCT_UNIT_LABEL, STOCK_MOVEMENT_LABEL } from '@/lib/domain';
+import {
+  stockProductPublicId,
+  signDocumentUpload,
+  fetchDocumentAssetInfo,
+  destroyDocumentAsset,
+  type CloudinaryUploadTicket,
+} from '@/lib/cloudinary';
 import Product from '@/models/Product';
 import StockMovement from '@/models/StockMovement';
 import Warehouse from '@/models/Warehouse';
@@ -290,6 +297,119 @@ export async function toggleProductActiveAction(
     console.error('[stock] toggleProductActive:', err);
     return { error: 'Erro inesperado ao alterar o estado do produto.' };
   }
+}
+
+// -----------------------------------------------------------------------------
+// 1b. FOTO DO PRODUTO (opcional) — mesmo fluxo em 3 passos dos documentos
+//     clínicos (lib/cloudinary.ts): ticket → upload direto → confirmação
+//     verificada. Aqui não é dado de saúde, mas mantém-se 'authenticated'
+//     — UM só fluxo de assets no projeto. Substituir = re-upload para o
+//     MESMO public_id. Remover apaga o asset (produto não é registo
+//     clínico — o never-delete aplica-se ao ledger, não à foto).
+// -----------------------------------------------------------------------------
+
+export async function createProductImageTicketAction(input: {
+  productId: string;
+}): Promise<
+  { ok: true; ticket: CloudinaryUploadTicket } | { ok: false; error: string }
+> {
+  const gate = await requireOperator(null);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  if (!/^[0-9a-fA-F]{24}$/.test(input.productId)) {
+    return { ok: false, error: 'Produto inválido.' };
+  }
+  const product = await Product.findById(input.productId).select('_id').lean();
+  if (!product) return { ok: false, error: 'Produto não encontrado.' };
+
+  try {
+    // Foto de catálogo, não clínica: o Cloudinary encolhe NA RECEÇÃO e
+    // guarda só o resultado (~200 KB) — foto de telemóvel entra direto
+    const ticket = signDocumentUpload(stockProductPublicId(input.productId), {
+      incomingTransformation: 'c_limit,w_1600,q_auto',
+    });
+    return { ok: true, ticket };
+  } catch (err) {
+    console.error('[stock] assinatura de upload de foto falhou:', err);
+    return {
+      ok: false,
+      error: 'Cloudinary não configurado — verifique as variáveis de ambiente.',
+    };
+  }
+}
+
+export async function setProductImageAction(input: {
+  productId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const gate = await requireOperator(null);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  if (!/^[0-9a-fA-F]{24}$/.test(input.productId)) {
+    return { ok: false, error: 'Produto inválido.' };
+  }
+  const product = await Product.findById(input.productId);
+  if (!product) return { ok: false, error: 'Produto não encontrado.' };
+
+  const publicId = stockProductPublicId(input.productId);
+  const asset = await fetchDocumentAssetInfo(publicId);
+  if (!asset) {
+    return { ok: false, error: 'Upload não encontrado — tente novamente.' };
+  }
+  if (asset.resourceType !== 'image') {
+    // Ficheiro não-imagem: apagar o asset órfão e recusar
+    await destroyDocumentAsset(publicId, asset.resourceType);
+    return { ok: false, error: 'A foto tem de ser uma imagem (JPEG/PNG).' };
+  }
+
+  product.imagePublicId = publicId;
+  await product.save();
+
+  await logAudit({
+    userId: gate.userId,
+    action: 'update',
+    entityType: 'Product',
+    entityId: String(product._id),
+    summary: `Foto do produto atualizada: ${product.name}`,
+    changedFields: ['imagePublicId'],
+  });
+
+  revalidatePath('/admin/stock');
+  revalidatePath(`/admin/stock/${input.productId}`);
+  return { ok: true };
+}
+
+export async function removeProductImageAction(input: {
+  productId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const gate = await requireOperator(null);
+  if (!gate.ok) return { ok: false, error: gate.error };
+
+  if (!/^[0-9a-fA-F]{24}$/.test(input.productId)) {
+    return { ok: false, error: 'Produto inválido.' };
+  }
+  const product = await Product.findById(input.productId);
+  if (!product || !product.imagePublicId) {
+    return { ok: false, error: 'Produto sem foto.' };
+  }
+
+  // Best-effort: se o destroy falhar, a referência sai na mesma (o asset
+  // órfão pode limpar-se depois na Media Library)
+  await destroyDocumentAsset(product.imagePublicId, 'image');
+  product.imagePublicId = null;
+  await product.save();
+
+  await logAudit({
+    userId: gate.userId,
+    action: 'update',
+    entityType: 'Product',
+    entityId: String(product._id),
+    summary: `Foto do produto removida: ${product.name}`,
+    changedFields: ['imagePublicId'],
+  });
+
+  revalidatePath('/admin/stock');
+  revalidatePath(`/admin/stock/${input.productId}`);
+  return { ok: true };
 }
 
 // -----------------------------------------------------------------------------

@@ -21,8 +21,11 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   ArrowLeftRight,
+  ImagePlus,
+  Package,
   Pencil,
   Plus,
+  Trash2,
 } from 'lucide-react';
 import {
   createProductAction,
@@ -31,6 +34,9 @@ import {
   registerStockEntryAction,
   registerStockExitAction,
   transferStockAction,
+  createProductImageTicketAction,
+  setProductImageAction,
+  removeProductImageAction,
   type StockActionState,
 } from '@/actions/stock';
 import {
@@ -61,6 +67,8 @@ export interface StockProductRow {
   supplierRef: string | null;
   minStock: number;
   active: boolean;
+  /** thumbnail assinada da foto do produto (null = sem foto) */
+  imageThumbUrl: string | null;
   /** saldo por slug de clínica (armazém default) */
   balances: Record<string, number>;
   total: number;
@@ -113,6 +121,138 @@ function ActiveToggle({ product }: { product: StockProductRow }) {
 }
 
 // =============================================================================
+// Foto do produto (opcional; só em edição — o produto precisa de existir).
+// Fluxo em 3 passos dos documentos: ticket → upload direto → confirmação.
+// =============================================================================
+function ProductPhotoSection({ product }: { product: StockProductRow }) {
+  const router = useRouter();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [pending, setPending] = useState<'upload' | 'remove' | null>(null);
+
+  const upload = async (file: File | null) => {
+    if (!file || pending) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Foto com mais de 10 MB — reduza a resolução.', {
+        duration: 7000,
+      });
+      return;
+    }
+    setPending('upload');
+    try {
+      const ticket = await createProductImageTicketAction({
+        productId: product.id,
+      });
+      if (!ticket.ok) {
+        toast.error(ticket.error, { duration: 7000 });
+        return;
+      }
+      const fd = new FormData();
+      fd.append('file', file);
+      for (const [key, value] of Object.entries(ticket.ticket.fields)) {
+        fd.append(key, String(value));
+      }
+      const res = await fetch(ticket.ticket.uploadUrl, {
+        method: 'POST',
+        body: fd,
+      });
+      if (!res.ok) {
+        toast.error('O upload falhou — tente novamente.', { duration: 7000 });
+        return;
+      }
+      const confirm = await setProductImageAction({ productId: product.id });
+      if (!confirm.ok) {
+        toast.error(confirm.error, { duration: 7000 });
+        return;
+      }
+      toast.success('Foto atualizada', { duration: 4000 });
+      router.refresh();
+    } finally {
+      setPending(null);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const remove = async () => {
+    if (pending) return;
+    setPending('remove');
+    try {
+      const res = await removeProductImageAction({ productId: product.id });
+      if (!res.ok) {
+        toast.error(res.error, { duration: 7000 });
+        return;
+      }
+      toast.success('Foto removida', { duration: 4000 });
+      router.refresh();
+    } finally {
+      setPending(null);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: '10px',
+          border: '1px solid #EEF1F8',
+          backgroundColor: '#F4F6FB',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+          flexShrink: 0,
+        }}
+      >
+        {product.imageThumbUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- URL assinada dinâmica
+          <img
+            src={product.imageThumbUrl}
+            alt={product.name}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <Package size={22} style={{ color: '#9AA1B4' }} />
+        )}
+      </div>
+      <input
+        ref={fileRef}
+        type='file'
+        accept='image/*'
+        style={{ display: 'none' }}
+        onChange={e => upload(e.target.files?.[0] ?? null)}
+      />
+      <Button
+        type='button'
+        variant='ghost'
+        size='sm'
+        disabled={pending !== null}
+        onClick={() => fileRef.current?.click()}
+      >
+        <ImagePlus size={15} />
+        {pending === 'upload'
+          ? 'A carregar…'
+          : product.imageThumbUrl
+            ? 'Substituir foto'
+            : 'Adicionar foto'}
+      </Button>
+      {product.imageThumbUrl && (
+        <Button
+          type='button'
+          variant='ghost'
+          size='sm'
+          disabled={pending !== null}
+          onClick={remove}
+        >
+          <Trash2 size={15} />
+          {pending === 'remove' ? 'A remover…' : 'Remover'}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
 // Modal de produto (criar/editar) — família com datalist emergente
 // =============================================================================
 function ProductModal({
@@ -161,6 +301,7 @@ function ProductModal({
       <form action={isEdit ? updateFormAction : createFormAction}>
         {isEdit && <input type='hidden' name='id' value={editing.id} />}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {isEdit && <ProductPhotoSection product={editing} />}
           <Input
             id='prod-name'
             name='name'
@@ -693,27 +834,66 @@ export function StockTable({
                   }}
                 >
                   <td style={{ padding: '10px 12px' }}>
-                    <Link
-                      href={`/admin/stock/${p.id}`}
+                    <div
                       style={{
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        color: '#1C2233',
-                        textDecoration: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
                       }}
                     >
-                      {p.name}
-                    </Link>
-                    <p
-                      style={{
-                        margin: 0,
-                        fontSize: '12px',
-                        color: '#9AA1B4',
-                      }}
-                    >
-                      {PRODUCT_UNIT_LABEL[p.unit]}
-                      {p.supplierName ? ` · ${p.supplierName}` : ''}
-                    </p>
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: '8px',
+                          border: '1px solid #EEF1F8',
+                          backgroundColor: '#F4F6FB',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          overflow: 'hidden',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {p.imageThumbUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- URL assinada dinâmica
+                          <img
+                            src={p.imageThumbUrl}
+                            alt=''
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                            }}
+                          />
+                        ) : (
+                          <Package size={16} style={{ color: '#C3C9D9' }} />
+                        )}
+                      </div>
+                      <div>
+                        <Link
+                          href={`/admin/stock/${p.id}`}
+                          style={{
+                            fontSize: '14px',
+                            fontWeight: 600,
+                            color: '#1C2233',
+                            textDecoration: 'none',
+                          }}
+                        >
+                          {p.name}
+                        </Link>
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: '12px',
+                            color: '#9AA1B4',
+                          }}
+                        >
+                          {PRODUCT_UNIT_LABEL[p.unit]}
+                          {p.supplierName ? ` · ${p.supplierName}` : ''}
+                        </p>
+                      </div>
+                    </div>
                   </td>
                   <td
                     style={{

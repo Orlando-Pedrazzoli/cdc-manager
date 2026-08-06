@@ -13,6 +13,7 @@ import { dbConnect } from '@/lib/mongodb';
 import Product from '@/models/Product';
 import Warehouse from '@/models/Warehouse';
 import { getActiveClinics } from '@/models/Clinic';
+import { signedPreviewUrl } from '@/lib/cloudinary';
 import {
   StockTable,
   type StockProductRow,
@@ -65,6 +66,9 @@ export default async function StockPage() {
       supplierRef: p.supplierRef ?? null,
       minStock: p.minStock ?? 0,
       active: !!p.active,
+      imageThumbUrl: p.imagePublicId
+        ? signedPreviewUrl(p.imagePublicId, { width: 96 })
+        : null,
       balances,
       total,
     };
