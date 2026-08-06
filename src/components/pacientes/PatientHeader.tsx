@@ -14,7 +14,15 @@
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Copy, KeyRound, Phone, Mail, UserX, UserCheck } from 'lucide-react';
+import {
+  Copy,
+  KeyRound,
+  MessageCircle,
+  Phone,
+  Mail,
+  UserX,
+  UserCheck,
+} from 'lucide-react';
 import {
   sendPatientInviteAction,
   setPatientStatusAction,
@@ -162,7 +170,30 @@ export function PatientHeader({ patient }: { patient: PatientHeaderData }) {
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
               <Phone size={14} style={{ color: '#9AA1B4' }} />
-              {patient.phone}
+              <a
+                href={`tel:${patient.phone}`}
+                style={{ color: '#3A3F4A', textDecoration: 'none' }}
+              >
+                {patient.phone}
+              </a>
+              {/* WhatsApp direto — convite/contacto v1 é manual (padrão Recalls) */}
+              <a
+                href={`https://wa.me/${patient.phone.replace(/\D/g, '')}`}
+                target='_blank'
+                rel='noopener noreferrer'
+                title='Abrir conversa no WhatsApp'
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  color: '#0F7B4D',
+                  fontWeight: 600,
+                  textDecoration: 'none',
+                }}
+              >
+                <MessageCircle size={14} />
+                WhatsApp
+              </a>
             </span>
           )}
           {patient.email && (

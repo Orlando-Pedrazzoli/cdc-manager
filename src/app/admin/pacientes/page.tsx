@@ -37,6 +37,14 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** dd/mm/aaaa (Lisboa) — desambiguação de homónimos na receção */
+const birthFmt = new Intl.DateTimeFormat('pt-PT', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  timeZone: 'Europe/Lisbon',
+});
+
 type Search = { q?: string; status?: string; page?: string };
 
 export default async function PatientsPage({
@@ -153,6 +161,7 @@ export default async function PatientsPage({
           <TR>
             <TH width={90}>Nº Proc.</TH>
             <TH>Nome</TH>
+            <TH width={110}>Nascimento</TH>
             <TH width={150}>Telefone</TH>
             <TH>Email</TH>
             <TH width={110}>Estado</TH>
@@ -161,7 +170,7 @@ export default async function PatientsPage({
         <TBody>
           {patients.length === 0 ? (
             <TableEmpty
-              colSpan={5}
+              colSpan={6}
               message={
                 term
                   ? 'Nenhum paciente corresponde à pesquisa.'
@@ -186,6 +195,7 @@ export default async function PatientsPage({
                     {p.name}
                   </Link>
                 </TD>
+                <TD>{p.birthDate ? birthFmt.format(p.birthDate) : '—'}</TD>
                 <TD>{p.phone ?? '—'}</TD>
                 <TD>{p.email ?? '—'}</TD>
                 <TD>

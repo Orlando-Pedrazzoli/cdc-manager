@@ -65,7 +65,7 @@ function shiftDate(dateStr: string, days: number): string {
 export default async function AgendaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ clinic?: string; date?: string }>;
+  searchParams: Promise<{ clinic?: string; date?: string; medico?: string }>;
 }) {
   const sp = await searchParams;
   const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? '')
@@ -107,6 +107,21 @@ export default async function AgendaPage({
       ranges: workingRangesForDate(d, clinic, date),
     }))
     .filter(d => d.ranges.length > 0);
+
+  // Filtro opcional por médico (?medico=) — a pill "Todos" limpa. Se o
+  // médico não trabalhar neste dia/clínica, o filtro é ignorado (mostra
+  // todos) mas o parâmetro fica no URL — voltar a um dia em que trabalha
+  // reaplica-o. Ao mudar de clínica o parâmetro cai (ver href).
+  const medicoParam = /^[0-9a-fA-F]{24}$/.test(sp.medico ?? '')
+    ? (sp.medico as string)
+    : null;
+  const medicoFilter =
+    medicoParam && doctorColumns.some(d => d.id === medicoParam)
+      ? medicoParam
+      : null;
+  const visibleColumns = medicoFilter
+    ? doctorColumns.filter(d => d.id === medicoFilter)
+    : doctorColumns;
 
   // Marcações do dia nesta clínica
   const dayStart = lisbonToUtc(date, 0);
@@ -158,7 +173,9 @@ export default async function AgendaPage({
   // palavra a palavra ("Segunda-Feira, 3 De Agosto"), errado em português
   const dateLabel = rawDate.charAt(0).toUpperCase() + rawDate.slice(1);
 
-  const href = (c: string, d: string) => `/admin/agenda?clinic=${c}&date=${d}`;
+  const href = (c: string, d: string) =>
+    `/admin/agenda?clinic=${c}&date=${d}` +
+    (medicoParam && c === clinic.slug ? `&medico=${medicoParam}` : '');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -272,14 +289,60 @@ export default async function AgendaPage({
         </div>
       </div>
 
+      {/* Filtro por médico — só quando o dia tem mais do que um */}
+      {doctorColumns.length > 1 && (
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <Link
+            href={`/admin/agenda?clinic=${clinic.slug}&date=${date}`}
+            style={doctorPillStyle(!medicoFilter, '#2743A6')}
+          >
+            Todos
+          </Link>
+          {doctorColumns.map(d => (
+            <Link
+              key={d.id}
+              href={`/admin/agenda?clinic=${clinic.slug}&date=${date}&medico=${d.id}`}
+              style={doctorPillStyle(medicoFilter === d.id, d.color)}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '999px',
+                  display: 'inline-block',
+                  backgroundColor: medicoFilter === d.id ? '#FFFFFF' : d.color,
+                }}
+              />
+              {d.name}
+            </Link>
+          ))}
+        </div>
+      )}
+
       <AgendaGrid
         gridStart={gridStart}
         gridEnd={gridEnd}
-        doctors={doctorColumns}
+        doctors={visibleColumns}
         appointments={gridAppointments}
       />
     </div>
   );
+}
+
+function doctorPillStyle(active: boolean, color: string): React.CSSProperties {
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '6px 12px',
+    borderRadius: '999px',
+    fontSize: '13px',
+    fontWeight: 600,
+    textDecoration: 'none',
+    color: active ? '#FFFFFF' : '#1B2A6B',
+    backgroundColor: active ? color : '#FFFFFF',
+    border: `1px solid ${active ? color : '#D8DEEF'}`,
+  };
 }
 
 const navBtnStyle = {
