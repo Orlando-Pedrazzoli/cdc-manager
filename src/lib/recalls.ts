@@ -24,6 +24,7 @@
 
 import Recall from '@/models/Recall';
 import TreatmentType from '@/models/TreatmentType';
+import Patient from '@/models/Patient';
 
 // -----------------------------------------------------------------------------
 // Pura: soma meses com clamp ao último dia do mês de destino (UTC)
@@ -65,6 +66,14 @@ export async function spawnRecallForProcedure(params: {
       .lean();
     const months = treatment?.recallIntervalMonths ?? null;
     if (!months) return { created: false }; // ato sem ciclo de recall
+
+    // Nunca convidar falecidos nem fichas não-ativas (anonimizadas/inativas)
+    const patient = await Patient.findById(params.patientId)
+      .select('deceasedAt status')
+      .lean();
+    if (!patient || patient.deceasedAt || patient.status !== 'active') {
+      return { created: false };
+    }
 
     // O ato mais recente substitui ciclos abertos do mesmo paciente×ato
     await Recall.updateMany(

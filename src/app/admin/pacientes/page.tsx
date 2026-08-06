@@ -101,7 +101,7 @@ export default async function PatientsPage({
       .sort({ processNumber: -1 }) // mais recentes primeiro
       .skip((page - 1) * perPage)
       .limit(perPage)
-      .select('processNumber name phone email status birthDate')
+      .select('processNumber name phone email status birthDate deceasedAt')
       .lean(),
   ]);
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -199,7 +199,29 @@ export default async function PatientsPage({
                 <TD>{p.phone ?? '—'}</TD>
                 <TD>{p.email ?? '—'}</TD>
                 <TD>
-                  <PatientStatusBadge status={p.status} />
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      gap: '4px',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <PatientStatusBadge status={p.status} />
+                    {p.deceasedAt && (
+                      <span
+                        style={{
+                          borderRadius: '999px',
+                          padding: '2px 10px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          backgroundColor: '#3D4257',
+                          color: '#FFFFFF',
+                        }}
+                      >
+                        Falecido
+                      </span>
+                    )}
+                  </span>
                 </TD>
               </TR>
             ))

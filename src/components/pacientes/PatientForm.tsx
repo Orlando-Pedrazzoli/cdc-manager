@@ -29,6 +29,7 @@ import {
 } from '@/actions/patients';
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Input, Select, Textarea } from '@/components/ui/Input';
+import { MARITAL_STATUSES, MARITAL_STATUS_LABEL } from '@/lib/domain';
 import { Modal } from '@/components/ui/Modal';
 
 // Valores iniciais (modo edit) — datas já serializadas para o input
@@ -42,6 +43,10 @@ export interface PatientFormInitial {
   postalCode: string;
   city: string;
   profession: string;
+  maritalStatus: string;
+  nationality: string;
+  referredBy: string;
+  deceased: boolean;
   preferredChannel: string;
   preferredDoctorId: string;
   notes: string;
@@ -56,6 +61,10 @@ const EMPTY: PatientFormInitial = {
   nif: '',
   phone: '',
   email: '',
+  maritalStatus: '',
+  nationality: '',
+  referredBy: '',
+  deceased: false,
   street: '',
   postalCode: '',
   city: '',
@@ -315,6 +324,36 @@ export function PatientForm({
               maxLength={100}
               defaultValue={values.profession}
             />
+            <Select
+              id='maritalStatus'
+              name='maritalStatus'
+              label='Estado civil'
+              defaultValue={values.maritalStatus}
+            >
+              <option value=''>—</option>
+              {MARITAL_STATUSES.map(m => (
+                <option key={m} value={m}>
+                  {MARITAL_STATUS_LABEL[m]}
+                </option>
+              ))}
+            </Select>
+            <Input
+              id='nationality'
+              name='nationality'
+              label='Nacionalidade'
+              maxLength={60}
+              defaultValue={values.nationality}
+              placeholder='Portuguesa'
+            />
+            <Input
+              id='referredBy'
+              name='referredBy'
+              label='Indicado por'
+              maxLength={120}
+              defaultValue={values.referredBy}
+              placeholder='Outro paciente, Google, seguro...'
+              help='Como conheceu a clínica — alimenta o relatório de origem'
+            />
           </div>
         </section>
 
@@ -467,6 +506,20 @@ export function PatientForm({
             help='Visível à receção (ex.: “faturar em nome do pai”). Alertas clínicos vão na anamnese.'
           />
         </section>
+
+        {mode === 'edit' && (
+          <section
+            style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
+          >
+            <Checkbox
+              id='deceased'
+              name='deceased'
+              label='Paciente falecido'
+              defaultChecked={values.deceased}
+              help='Ao marcar: os recalls abertos são dispensados e nenhum novo convite/lembrete será gerado. A ficha e o histórico mantêm-se intactos.'
+            />
+          </section>
+        )}
 
         {/* --- RGPD ----------------------------------------------------------- */}
         <section

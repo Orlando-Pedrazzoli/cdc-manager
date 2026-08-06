@@ -15,17 +15,22 @@ import { useActionState, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
+  Camera,
   Copy,
   KeyRound,
   MessageCircle,
   Phone,
   Mail,
+  Trash2,
   UserX,
   UserCheck,
 } from 'lucide-react';
 import {
   sendPatientInviteAction,
   setPatientStatusAction,
+  createPatientPhotoTicketAction,
+  setPatientPhotoAction,
+  removePatientPhotoAction,
   type InviteFormState,
 } from '@/actions/patients';
 import { Button } from '@/components/ui/Button';
@@ -42,6 +47,11 @@ export interface PatientHeaderData {
   phone: string | null;
   email: string | null;
   portalStatus: 'none' | 'invited' | 'active';
+  /** thumbnail assinada da foto (null = sem foto) */
+  photoThumbUrl: string | null;
+  deceased: boolean;
+  firstConsultLabel: string | null;
+  lastConsultLabel: string | null;
 }
 
 function ageFrom(iso: string | null): number | null {
@@ -53,6 +63,166 @@ function ageFrom(iso: string | null): number | null {
   const m = now.getMonth() - b.getMonth();
   if (m < 0 || (m === 0 && now.getDate() < b.getDate())) age--;
   return age;
+}
+
+// -----------------------------------------------------------------------------
+// Avatar com foto (paridade Dentoral). Clique na câmara: carrega/substitui;
+// no lixo: remove. Fluxo em 3 passos dos documentos (upload direto).
+// -----------------------------------------------------------------------------
+function PatientPhoto({
+  patientId,
+  name,
+  photoThumbUrl,
+}: {
+  patientId: string;
+  name: string;
+  photoThumbUrl: string | null;
+}) {
+  const router = useRouter();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(w => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
+  const upload = async (file: File | null) => {
+    if (!file || busy) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Foto com mais de 10 MB — reduza a resolução.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const t = await createPatientPhotoTicketAction({ patientId });
+      if (!t.ok) {
+        toast.error(t.error);
+        return;
+      }
+      const fd = new FormData();
+      fd.append('file', file);
+      for (const [k, v] of Object.entries(t.ticket.fields)) {
+        fd.append(k, String(v));
+      }
+      const res = await fetch(t.ticket.uploadUrl, { method: 'POST', body: fd });
+      if (!res.ok) {
+        toast.error('O upload falhou — tente novamente.');
+        return;
+      }
+      const set = await setPatientPhotoAction({ patientId });
+      if (!set.ok) {
+        toast.error(set.error);
+        return;
+      }
+      toast.success('Foto atualizada');
+      router.refresh();
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const remove = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await removePatientPhotoAction({ patientId });
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success('Foto removida');
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '4px',
+        flexShrink: 0,
+      }}
+    >
+      <div
+        style={{
+          width: 64,
+          height: 64,
+          borderRadius: '50%',
+          border: '2px solid #E4EBFF',
+          backgroundColor: '#F4F6FB',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+        }}
+      >
+        {photoThumbUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- URL assinada dinâmica
+          <img
+            src={photoThumbUrl}
+            alt={name}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <span style={{ fontSize: '20px', fontWeight: 700, color: '#8A93B0' }}>
+            {initials || '?'}
+          </span>
+        )}
+      </div>
+      <input
+        ref={fileRef}
+        type='file'
+        accept='image/*'
+        style={{ display: 'none' }}
+        onChange={e => upload(e.target.files?.[0] ?? null)}
+      />
+      <span style={{ display: 'flex', gap: '8px' }}>
+        <button
+          type='button'
+          title={photoThumbUrl ? 'Substituir foto' : 'Adicionar foto'}
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          style={{
+            border: 'none',
+            background: 'none',
+            padding: 0,
+            cursor: busy ? 'default' : 'pointer',
+            color: '#2743A6',
+            opacity: busy ? 0.5 : 1,
+          }}
+        >
+          <Camera size={15} />
+        </button>
+        {photoThumbUrl && (
+          <button
+            type='button'
+            title='Remover foto'
+            onClick={remove}
+            disabled={busy}
+            style={{
+              border: 'none',
+              background: 'none',
+              padding: 0,
+              cursor: busy ? 'default' : 'pointer',
+              color: '#B3261E',
+              opacity: busy ? 0.5 : 1,
+            }}
+          >
+            <Trash2 size={15} />
+          </button>
+        )}
+      </span>
+    </div>
+  );
 }
 
 export function PatientHeader({ patient }: { patient: PatientHeaderData }) {
@@ -125,85 +295,115 @@ export function PatientHeader({ patient }: { patient: PatientHeaderData }) {
       }}
     >
       {/* Identidade */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            flexWrap: 'wrap',
-          }}
-        >
-          <h1
+      <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+        <PatientPhoto
+          patientId={patient.id}
+          name={patient.name}
+          photoThumbUrl={patient.photoThumbUrl}
+        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div
             style={{
-              margin: 0,
-              fontSize: '22px',
-              fontWeight: 700,
-              color: '#1B2A6B',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              flexWrap: 'wrap',
             }}
           >
-            {patient.name}
-          </h1>
-          <PatientStatusBadge status={patient.status} />
-        </div>
-        <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
-          Processo nº <strong>{patient.processNumber}</strong>
-          {age !== null ? ` · ${age} anos` : ''}
-          {patient.portalStatus === 'active'
-            ? ' · Portal ativo'
-            : patient.portalStatus === 'invited'
-              ? ' · Convite do portal pendente'
-              : ''}
-        </p>
-        <div
-          style={{
-            display: 'flex',
-            gap: '16px',
-            flexWrap: 'wrap',
-            fontSize: '13px',
-            color: '#3A3F4A',
-            marginTop: '2px',
-          }}
-        >
-          {patient.phone && (
-            <span
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            <h1
+              style={{
+                margin: 0,
+                fontSize: '22px',
+                fontWeight: 700,
+                color: '#1B2A6B',
+              }}
             >
-              <Phone size={14} style={{ color: '#9AA1B4' }} />
-              <a
-                href={`tel:${patient.phone}`}
-                style={{ color: '#3A3F4A', textDecoration: 'none' }}
-              >
-                {patient.phone}
-              </a>
-              {/* WhatsApp direto — convite/contacto v1 é manual (padrão Recalls) */}
-              <a
-                href={`https://wa.me/${patient.phone.replace(/\D/g, '')}`}
-                target='_blank'
-                rel='noopener noreferrer'
-                title='Abrir conversa no WhatsApp'
+              {patient.name}
+            </h1>
+            <PatientStatusBadge status={patient.status} />
+            {patient.deceased && (
+              <span
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  color: '#0F7B4D',
-                  fontWeight: 600,
-                  textDecoration: 'none',
+                  borderRadius: '999px',
+                  padding: '2px 10px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  backgroundColor: '#3D4257',
+                  color: '#FFFFFF',
                 }}
               >
-                <MessageCircle size={14} />
-                WhatsApp
-              </a>
-            </span>
+                Falecido
+              </span>
+            )}
+          </div>
+          <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
+            Processo nº <strong>{patient.processNumber}</strong>
+            {age !== null ? ` · ${age} anos` : ''}
+            {patient.portalStatus === 'active'
+              ? ' · Portal ativo'
+              : patient.portalStatus === 'invited'
+                ? ' · Convite do portal pendente'
+                : ''}
+          </p>
+          {(patient.firstConsultLabel || patient.lastConsultLabel) && (
+            <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
+              {patient.firstConsultLabel &&
+                `1.ª consulta: ${patient.firstConsultLabel}`}
+              {patient.firstConsultLabel && patient.lastConsultLabel && ' · '}
+              {patient.lastConsultLabel &&
+                `Última: ${patient.lastConsultLabel}`}
+            </p>
           )}
-          {patient.email && (
-            <span
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <Mail size={14} style={{ color: '#9AA1B4' }} />
-              {patient.email}
-            </span>
-          )}
+          <div
+            style={{
+              display: 'flex',
+              gap: '16px',
+              flexWrap: 'wrap',
+              fontSize: '13px',
+              color: '#3A3F4A',
+              marginTop: '2px',
+            }}
+          >
+            {patient.phone && (
+              <span
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <Phone size={14} style={{ color: '#9AA1B4' }} />
+                <a
+                  href={`tel:${patient.phone}`}
+                  style={{ color: '#3A3F4A', textDecoration: 'none' }}
+                >
+                  {patient.phone}
+                </a>
+                {/* WhatsApp direto — convite/contacto v1 é manual (padrão Recalls) */}
+                <a
+                  href={`https://wa.me/${patient.phone.replace(/\D/g, '')}`}
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  title='Abrir conversa no WhatsApp'
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    color: '#0F7B4D',
+                    fontWeight: 600,
+                    textDecoration: 'none',
+                  }}
+                >
+                  <MessageCircle size={14} />
+                  WhatsApp
+                </a>
+              </span>
+            )}
+            {patient.email && (
+              <span
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <Mail size={14} style={{ color: '#9AA1B4' }} />
+                {patient.email}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

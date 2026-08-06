@@ -18,6 +18,7 @@
 // =============================================================================
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
+import { MARITAL_STATUSES } from '@/lib/domain';
 
 export const PATIENT_STATUS = ['active', 'inactive', 'anonymized'] as const;
 export type PatientStatus = (typeof PATIENT_STATUS)[number];
@@ -79,6 +80,33 @@ const PatientSchema = new Schema(
     profession: {
       type: String,
       trim: true,
+      default: null,
+    },
+    maritalStatus: {
+      type: String,
+      enum: MARITAL_STATUSES,
+      default: null,
+    },
+    nationality: {
+      type: String,
+      trim: true,
+      maxlength: 60,
+      default: null, // texto livre; "Portuguesa" sugerido no form
+    },
+    // "Indicado por" — fonte de referência (Dentoral): outro paciente,
+    // Google, seguradora... Dado comercial: alimenta o futuro relatório
+    // de origem de pacientes.
+    referredBy: {
+      type: String,
+      trim: true,
+      maxlength: 120,
+      default: null,
+    },
+    // Falecido (Dentoral: flag "Falecido"). Data em vez de boolean (quando
+    // se soube). Efeitos: badge na ficha/lista, recalls suprimidos
+    // (spawnRecallForProcedure) e ciclos abertos dispensados ao marcar.
+    deceasedAt: {
+      type: Date,
       default: null,
     },
     // Foto de perfil (Cloudinary public_id — o Dentoral também tinha foto)

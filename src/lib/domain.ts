@@ -256,6 +256,28 @@ export const MANUAL_OUT_TYPES = [
 // categorias em runtime no select de upload; o model importa daqui e
 // RE-EXPORTA, código server continua a importar do model)
 // -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// ESTADO CIVIL do paciente (paridade Dentoral — ficha do paciente)
+// -----------------------------------------------------------------------------
+export const MARITAL_STATUSES = [
+  'solteiro',
+  'casado',
+  'uniao-de-facto',
+  'divorciado',
+  'viuvo',
+  'outro',
+] as const;
+export type MaritalStatus = (typeof MARITAL_STATUSES)[number];
+
+export const MARITAL_STATUS_LABEL: Record<MaritalStatus, string> = {
+  solteiro: 'Solteiro(a)',
+  casado: 'Casado(a)',
+  'uniao-de-facto': 'União de facto',
+  divorciado: 'Divorciado(a)',
+  viuvo: 'Viúvo(a)',
+  outro: 'Outro',
+};
+
 export const DOCUMENT_CATEGORIES = [
   'xray', // radiografia (periapical, panorâmica)
   'cbct', // TAC / CBCT

@@ -19,6 +19,7 @@
 // =============================================================================
 
 import { z } from 'zod';
+import { MARITAL_STATUSES } from '@/lib/domain';
 
 // -----------------------------------------------------------------------------
 // NIF — validação com dígito de controlo (módulo 11)
@@ -173,6 +174,12 @@ export const createPatientSchema = z.object({
   postalCode: postalCodeField.default(null),
   city: optionalText(100).default(null),
   profession: optionalText(100).default(null),
+  maritalStatus: z.preprocess(
+    v => (typeof v === 'string' && v.trim() === '' ? null : v),
+    z.enum(MARITAL_STATUSES).nullable().default(null),
+  ),
+  nationality: optionalText(60).default(null),
+  referredBy: optionalText(120).default(null),
   preferredChannel: z
     .enum(['whatsapp', 'sms', 'email', 'phone'])
     .default('whatsapp'),
@@ -194,7 +201,11 @@ export type CreatePatientInput = z.infer<typeof createPatientSchema>;
 // -----------------------------------------------------------------------------
 export const updatePatientSchema = createPatientSchema
   .omit({ sendActivationInvite: true })
-  .partial();
+  .partial()
+  .extend({
+    // Falecido — só faz sentido em edição (nunca no registo de balcão)
+    deceased: z.coerce.boolean().default(false),
+  });
 
 export type UpdatePatientInput = z.infer<typeof updatePatientSchema>;
 

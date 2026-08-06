@@ -31,6 +31,13 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import Patient from '@/models/Patient';
+import Recall from '@/models/Recall';
+import {
+  signDocumentUpload,
+  fetchDocumentAssetInfo,
+  destroyDocumentAsset,
+  type CloudinaryUploadTicket,
+} from '@/lib/cloudinary';
 import User from '@/models/User';
 import { createActivationCode } from '@/lib/activation';
 import { sendActivationEmail } from '@/lib/resend';
@@ -231,6 +238,9 @@ export async function createPatientAction(
       city: data.city,
     },
     profession: data.profession,
+    maritalStatus: data.maritalStatus,
+    nationality: data.nationality,
+    referredBy: data.referredBy,
     preferredChannel: data.preferredChannel,
     preferredDoctorId: data.preferredDoctorId,
     notes: data.notes,
@@ -359,6 +369,9 @@ export async function updatePatientAction(
     'address.postalCode': data.postalCode,
     'address.city': data.city,
     profession: data.profession,
+    maritalStatus: data.maritalStatus,
+    nationality: data.nationality,
+    referredBy: data.referredBy,
     preferredChannel: data.preferredChannel,
     preferredDoctorId: data.preferredDoctorId,
     notes: data.notes,
@@ -382,6 +395,23 @@ export async function updatePatientAction(
   if (data.consentMarketing && !patient.consents?.marketingAt) {
     $set['consents.marketingAt'] = now;
     changed.push('consents.marketingAt');
+  }
+
+  // Falecido: marcar regista a data e DISPENSA os recalls abertos (ninguém
+  // convida a família para uma destartarização); desmarcar corrige engano.
+  if (data.deceased && !patient.deceasedAt) {
+    $set['deceasedAt'] = now;
+    changed.push('deceasedAt');
+    await Recall.updateMany(
+      {
+        patientId: patient._id,
+        status: { $in: ['scheduled', 'due', 'contacted'] },
+      },
+      { status: 'dismissed' },
+    );
+  } else if (!data.deceased && patient.deceasedAt) {
+    $set['deceasedAt'] = null;
+    changed.push('deceasedAt');
   }
 
   if (changed.length === 0) {
@@ -505,4 +535,118 @@ export async function sendPatientInviteAction(
     };
   }
   return { success: true };
+}
+
+// -----------------------------------------------------------------------------
+// FOTO DO PACIENTE (paridade Dentoral) — mesmo fluxo em 3 passos dos
+// documentos (lib/cloudinary.ts). Foto de identificação, não clínica:
+// leva incoming transformation (o Cloudinary guarda já reduzida) e a
+// remoção apaga o asset. Public ID opaco: {root}/pacientes-foto/{id}.
+// -----------------------------------------------------------------------------
+
+function patientPhotoPublicId(patientId: string): string {
+  const root = process.env.CLOUDINARY_FOLDER || 'cdc-manager';
+  return `${root}/pacientes-foto/${patientId}`;
+}
+
+export async function createPatientPhotoTicketAction(input: {
+  patientId: string;
+}): Promise<
+  { ok: true; ticket: CloudinaryUploadTicket } | { ok: false; error: string }
+> {
+  const staff = await requireStaff();
+  if (!staff) return { ok: false, error: 'Sem permissões.' };
+
+  if (!/^[0-9a-fA-F]{24}$/.test(input.patientId)) {
+    return { ok: false, error: 'Paciente inválido.' };
+  }
+  await dbConnect();
+  const patient = await Patient.findById(input.patientId).select('_id').lean();
+  if (!patient) return { ok: false, error: 'Paciente não encontrado.' };
+
+  try {
+    const ticket = signDocumentUpload(patientPhotoPublicId(input.patientId), {
+      incomingTransformation: 'c_limit,w_800,q_auto',
+    });
+    return { ok: true, ticket };
+  } catch (err) {
+    console.error('[patients] assinatura de foto falhou:', err);
+    return {
+      ok: false,
+      error: 'Cloudinary não configurado — verifique as variáveis de ambiente.',
+    };
+  }
+}
+
+export async function setPatientPhotoAction(input: {
+  patientId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const staff = await requireStaff();
+  if (!staff) return { ok: false, error: 'Sem permissões.' };
+
+  if (!/^[0-9a-fA-F]{24}$/.test(input.patientId)) {
+    return { ok: false, error: 'Paciente inválido.' };
+  }
+  await dbConnect();
+  const patient = await Patient.findById(input.patientId);
+  if (!patient) return { ok: false, error: 'Paciente não encontrado.' };
+
+  const publicId = patientPhotoPublicId(input.patientId);
+  const asset = await fetchDocumentAssetInfo(publicId);
+  if (!asset) {
+    return { ok: false, error: 'Upload não encontrado — tente novamente.' };
+  }
+  if (asset.resourceType !== 'image') {
+    await destroyDocumentAsset(publicId, asset.resourceType);
+    return { ok: false, error: 'A foto tem de ser uma imagem (JPEG/PNG).' };
+  }
+
+  patient.photoPublicId = publicId;
+  await patient.save();
+
+  await logAudit({
+    userId: staff.id,
+    action: 'update',
+    entityType: 'Patient',
+    entityId: input.patientId,
+    patientId: input.patientId,
+    summary: 'Foto do paciente atualizada',
+    changedFields: ['photoPublicId'],
+  });
+
+  revalidatePath(`/admin/pacientes/${input.patientId}`);
+  return { ok: true };
+}
+
+export async function removePatientPhotoAction(input: {
+  patientId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const staff = await requireStaff();
+  if (!staff) return { ok: false, error: 'Sem permissões.' };
+
+  if (!/^[0-9a-fA-F]{24}$/.test(input.patientId)) {
+    return { ok: false, error: 'Paciente inválido.' };
+  }
+  await dbConnect();
+  const patient = await Patient.findById(input.patientId);
+  if (!patient || !patient.photoPublicId) {
+    return { ok: false, error: 'Paciente sem foto.' };
+  }
+
+  await destroyDocumentAsset(patient.photoPublicId, 'image');
+  patient.photoPublicId = null;
+  await patient.save();
+
+  await logAudit({
+    userId: staff.id,
+    action: 'update',
+    entityType: 'Patient',
+    entityId: input.patientId,
+    patientId: input.patientId,
+    summary: 'Foto do paciente removida',
+    changedFields: ['photoPublicId'],
+  });
+
+  revalidatePath(`/admin/pacientes/${input.patientId}`);
+  return { ok: true };
 }

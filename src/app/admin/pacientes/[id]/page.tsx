@@ -15,11 +15,13 @@
 
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import mongoose from 'mongoose';
 import { ArrowLeft } from 'lucide-react';
 import { dbConnect } from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
 import User from '@/models/User';
+import Appointment from '@/models/Appointment';
 import {
   PatientHeader,
   type PatientHeaderData,
@@ -72,6 +74,33 @@ export default async function PatientPage({
   ]);
   if (!patient || patient.status === 'anonymized') notFound();
 
+  // 1ª/última consulta derivadas das marcações concluídas (paridade Dentoral)
+  const consultBounds = await Appointment.aggregate<{
+    first: Date | null;
+    last: Date | null;
+  }>([
+    {
+      $match: {
+        patientId: new mongoose.Types.ObjectId(id),
+        status: { $in: ['completed'] },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        first: { $min: '$startAt' },
+        last: { $max: '$startAt' },
+      },
+    },
+  ]);
+  const lisbonShort = new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'Europe/Lisbon',
+  });
+  const bounds = consultBounds[0] ?? null;
+
   const header: PatientHeaderData = {
     id,
     processNumber: patient.processNumber,
@@ -80,6 +109,12 @@ export default async function PatientPage({
     birthDate: patient.birthDate ? patient.birthDate.toISOString() : null,
     phone: patient.phone ?? null,
     email: patient.email ?? null,
+    photoThumbUrl: patient.photoPublicId
+      ? signedPreviewUrl(patient.photoPublicId, { width: 192 })
+      : null,
+    deceased: Boolean(patient.deceasedAt),
+    firstConsultLabel: bounds?.first ? lisbonShort.format(bounds.first) : null,
+    lastConsultLabel: bounds?.last ? lisbonShort.format(bounds.last) : null,
     portalStatus:
       portalUser?.status === 'active'
         ? 'active'
@@ -146,6 +181,10 @@ export default async function PatientPage({
     nif: patient.nif ?? '',
     phone: patient.phone ?? '',
     email: patient.email ?? '',
+    maritalStatus: patient.maritalStatus ?? '',
+    nationality: patient.nationality ?? '',
+    referredBy: patient.referredBy ?? '',
+    deceased: Boolean(patient.deceasedAt),
     street: patient.address?.street ?? '',
     postalCode: patient.address?.postalCode ?? '',
     city: patient.address?.city ?? '',
