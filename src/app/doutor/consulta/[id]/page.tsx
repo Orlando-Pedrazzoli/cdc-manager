@@ -256,6 +256,34 @@ export default async function ConsultationPage({
             {treatmentName} · {clinic?.name ?? '—'}
             {appt.note ? ` · ${appt.note}` : ''}
           </p>
+          {/* Atalhos clínicos — o que o médico abre a meio do atendimento */}
+          <p
+            style={{
+              margin: '6px 0 0',
+              fontSize: '13px',
+              fontWeight: 600,
+              display: 'flex',
+              gap: '14px',
+              flexWrap: 'wrap',
+            }}
+          >
+            {(
+              [
+                ['', 'Anamnese'],
+                ['/odontograma', 'Odontograma'],
+                ['/plano', 'Plano'],
+                ['?tab=documentos', 'Documentos'],
+              ] as const
+            ).map(([suffix, label]) => (
+              <Link
+                key={label}
+                href={`/doutor/pacientes/${String(appt.patientId)}${suffix}`}
+                style={{ color: '#2743A6', textDecoration: 'none' }}
+              >
+                {label} →
+              </Link>
+            ))}
+          </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span

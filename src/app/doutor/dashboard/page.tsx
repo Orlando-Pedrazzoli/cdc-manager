@@ -480,11 +480,10 @@ export default async function DoctorDashboardPage() {
                     </p>
                   </div>
                   <Badge bg={cl.bg} fg={cl.fg}>
-                    {a.clinicSlug === 'colombo'
-                      ? 'Colombo'
-                      : a.clinicSlug === 'buraca'
-                        ? 'Buraca'
-                        : a.clinicName}
+                    {a.clinicSlug
+                      ? a.clinicSlug.charAt(0).toUpperCase() +
+                        a.clinicSlug.slice(1)
+                      : a.clinicName}
                   </Badge>
                   <Badge bg={st.bg} fg={st.fg}>
                     {STATUS_LABEL[a.status] ?? a.status}
