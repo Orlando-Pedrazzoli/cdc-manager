@@ -105,10 +105,31 @@ const treatmentTypeBaseSchema = z.object({
     .min(3, 'Nome demasiado curto')
     .max(160, 'Nome demasiado longo'),
   specialty: z.enum(SPECIALTIES, { error: 'Selecione a especialidade' }),
+  // Tipo de tratamento (categorias Dentoral) — texto livre com datalist,
+  // como as famílias do stock; '' = sem categoria
+  category: z.preprocess(
+    emptyToNull,
+    z.string().trim().max(60, 'Categoria demasiado longa').nullable(),
+  ),
+  // Código de nomenclatura/entidade (ex.: A1.01.01.01) — informativo,
+  // NÃO único (o mesmo ato existe em várias categorias)
+  entityCode: z.preprocess(
+    emptyToNull,
+    z.string().trim().max(20, 'Código demasiado longo').nullable(),
+  ),
   durationMin: durationField,
   bufferMin: bufferField,
   // priceCents no output — o form envia euros no campo 'priceEuros'
   priceCents: priceEurosField,
+  // costCents no output — o form envia euros no campo 'costEuros';
+  // '' = 0 (custo não definido)
+  costCents: z.preprocess(
+    v => (typeof v === 'string' && v.trim() === '' ? 0 : v),
+    priceEurosField,
+  ),
+  // Flags de paridade Dentoral
+  controlsTooth: checkboxField,
+  requiresRxConsent: checkboxField,
   bookableOnline: checkboxField,
   requiresEvaluation: checkboxField,
   recallIntervalMonths: recallMonthsField.default(null),

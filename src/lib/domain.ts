@@ -31,6 +31,11 @@ export const SPECIALTIES = [
   'proteses-dentarias',
   'higiene-oral',
   'harmonizacao-orofacial',
+  // Acrescentadas na importação da tabela real do Dentoral (ago/2026):
+  // CIRURGIA ORAL tem 111 atos e IMAGIOLOGIA 36 — especialidades reais
+  // sem correspondência no enum original.
+  'cirurgia-oral',
+  'imagiologia',
 ] as const;
 export type Specialty = (typeof SPECIALTIES)[number];
 
@@ -174,13 +179,53 @@ export const LOWER_TEETH = [
 /** Granularidade da grelha de slots (minutos) — regra global do motor */
 export const SLOT_GRANULARITY_MIN = 15;
 
-export const DURATION_SOURCES = ['benchmark', 'clinic-confirmed'] as const;
+export const DURATION_SOURCES = [
+  'benchmark',
+  'clinic-confirmed',
+  // Atos vindos da tabela de preços real do Dentoral (import ago/2026).
+  // Ficam com banner amarelo no catálogo até a clínica confirmar
+  // duração/flags → passam a 'clinic-confirmed'.
+  'imported',
+] as const;
 export type DurationSource = (typeof DURATION_SOURCES)[number];
 
 export const DURATION_SOURCE_LABEL: Record<DurationSource, string> = {
   benchmark: 'Benchmark',
   'clinic-confirmed': 'Confirmado pela clínica',
+  imported: 'Importado do Dentoral',
 };
+
+/**
+ * Tipos de tratamento do Dentoral (22 categorias, verbatim do report da
+ * tabela de preços). Guardados em TreatmentType.category como TEXTO (não
+ * enum) — fidelidade total ao sistema antigo, familiares ao Victor, e a
+ * clínica pode criar categorias novas sem deploy (datalist no form, como
+ * as famílias do stock). Esta lista alimenta o datalist e os filtros.
+ */
+export const TREATMENT_CATEGORIES = [
+  'CIRURGIA ORAL',
+  'CONSULTAS',
+  'DENTISTERIA OPERATORIA',
+  'DIVERSOS DE PROTESE',
+  'ENDODONTIA - SESSAO MULTIPLA',
+  'ENDODONTIA - SESSAO UNICA',
+  'HARMONIZAÇÃO OROFACIAL',
+  'IMAGIOLOGIA',
+  'IMPLANTOLOGIA',
+  'MEDICINA DENTARIA PREVENTIVA',
+  'MICROCIRURGIA ENDODÔNTICA',
+  'OCLUSAO',
+  'ORTODONTIA',
+  'PERIODONTOLOGIA',
+  'PROTESE ACRILICA',
+  'PROTESE CROMO COBALTO',
+  'PROTESE EM NYLON',
+  'PROTESE EM TITANIO',
+  'PROTESE FIXA',
+  'RETRATAMENTO - SESSAO MULTIPLA',
+  'RETRATAMENTO - SESSAO UNICA',
+  'TRATAMENTO FACIAL',
+] as const;
 
 // =============================================================================
 // COBRANÇA — meios de pagamento no balcão (client: CheckoutModal)

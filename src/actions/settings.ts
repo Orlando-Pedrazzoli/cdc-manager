@@ -93,12 +93,17 @@ export async function createTreatmentTypeAction(
     const parsed = createTreatmentTypeSchema.safeParse({
       name: formData.get('name'),
       specialty: formData.get('specialty'),
+      category: formData.get('category'),
+      entityCode: formData.get('entityCode'),
       durationMin: formData.get('durationMin'),
       bufferMin: formData.get('bufferMin'),
       // O form fala em euros; o schema converte para cêntimos inteiros
       priceCents: formData.get('priceEuros'),
+      costCents: formData.get('costEuros'),
       bookableOnline: formData.get('bookableOnline'),
       requiresEvaluation: formData.get('requiresEvaluation'),
+      controlsTooth: formData.get('controlsTooth'),
+      requiresRxConsent: formData.get('requiresRxConsent'),
       recallIntervalMonths: formData.get('recallIntervalMonths'),
       notes: formData.get('notes'),
       clinicConfirmed: formData.get('clinicConfirmed'),
@@ -122,11 +127,16 @@ export async function createTreatmentTypeAction(
           slug,
           name: data.name,
           specialty: data.specialty,
+          category: data.category,
+          entityCode: data.entityCode,
           durationMin: data.durationMin,
           bufferMin: data.bufferMin,
           priceCents: data.priceCents,
+          costCents: data.costCents,
           bookableOnline: data.bookableOnline,
           requiresEvaluation: data.requiresEvaluation,
+          controlsTooth: data.controlsTooth,
+          requiresRxConsent: data.requiresRxConsent,
           recallIntervalMonths: data.recallIntervalMonths,
           notes: data.notes,
           source: durationSourceFromFlag(data.clinicConfirmed),
@@ -175,11 +185,16 @@ export async function updateTreatmentTypeAction(
       id: formData.get('id'),
       name: formData.get('name'),
       specialty: formData.get('specialty'),
+      category: formData.get('category'),
+      entityCode: formData.get('entityCode'),
       durationMin: formData.get('durationMin'),
       bufferMin: formData.get('bufferMin'),
       priceCents: formData.get('priceEuros'),
+      costCents: formData.get('costEuros'),
       bookableOnline: formData.get('bookableOnline'),
       requiresEvaluation: formData.get('requiresEvaluation'),
+      controlsTooth: formData.get('controlsTooth'),
+      requiresRxConsent: formData.get('requiresRxConsent'),
       recallIntervalMonths: formData.get('recallIntervalMonths'),
       notes: formData.get('notes'),
       clinicConfirmed: formData.get('clinicConfirmed'),
@@ -197,17 +212,30 @@ export async function updateTreatmentTypeAction(
     // Diff só para o audit (snapshots de Procedure NUNCA são afetados por
     // mudanças de preço — regra dos snapshots imutáveis)
     const changedFields: string[] = [];
+    // source: confirmado vence sempre; sem confirmação, um ato 'imported'
+    // MANTÉM a proveniência (banner amarelo até o Victor validar) — só os
+    // restantes voltam a 'benchmark'
+    const nextSource = data.clinicConfirmed
+      ? ('clinic-confirmed' as const)
+      : doc.source === 'imported'
+        ? ('imported' as const)
+        : ('benchmark' as const);
     const next = {
       name: data.name,
       specialty: data.specialty,
+      category: data.category,
+      entityCode: data.entityCode,
       durationMin: data.durationMin,
       bufferMin: data.bufferMin,
       priceCents: data.priceCents,
+      costCents: data.costCents,
       bookableOnline: data.bookableOnline,
       requiresEvaluation: data.requiresEvaluation,
+      controlsTooth: data.controlsTooth,
+      requiresRxConsent: data.requiresRxConsent,
       recallIntervalMonths: data.recallIntervalMonths,
       notes: data.notes,
-      source: durationSourceFromFlag(data.clinicConfirmed),
+      source: nextSource,
     } as const;
     for (const [key, value] of Object.entries(next)) {
       if (doc.get(key) !== value) changedFields.push(key);

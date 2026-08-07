@@ -29,6 +29,7 @@ import {
 import {
   SPECIALTIES,
   SLOT_GRANULARITY_MIN,
+  TREATMENT_CATEGORIES,
   type Specialty,
 } from '@/lib/domain';
 import { SPECIALTY_LABEL } from '@/lib/labels';
@@ -44,14 +45,23 @@ export interface CatalogTreatment {
   slug: string;
   name: string;
   specialty: Specialty;
+  /** Tipo de tratamento Dentoral (texto verbatim, ex.: 'CIRURGIA ORAL') */
+  category: string | null;
+  /** Código de nomenclatura/entidade (ex.: 'A1.01.01.01') — não único */
+  entityCode: string | null;
+  /** Código interno do Dentoral (001-748) — só nos importados, imutável */
+  dentoralCode: string | null;
   durationMin: number;
   bufferMin: number;
   priceCents: number;
+  costCents: number;
   bookableOnline: boolean;
   requiresEvaluation: boolean;
+  controlsTooth: boolean;
+  requiresRxConsent: boolean;
   recallIntervalMonths: number | null;
   notes: string | null;
-  source: 'benchmark' | 'clinic-confirmed';
+  source: 'benchmark' | 'clinic-confirmed' | 'imported';
   active: boolean;
 }
 
@@ -187,7 +197,40 @@ function TreatmentModal({
                 ))}
               </Select>
             </div>
-            <div style={{ width: 160 }}>
+            <div style={{ flex: 1 }}>
+              {/* Texto livre com datalist (como as famílias do stock):
+                  categorias Dentoral sugeridas, mas a clínica pode criar
+                  novas sem deploy */}
+              <Input
+                id='ttype-category'
+                name='category'
+                label='Tipo de tratamento'
+                defaultValue={editing?.category ?? ''}
+                placeholder='Ex.: CIRURGIA ORAL'
+                maxLength={60}
+                list='ttype-category-options'
+              />
+              <datalist id='ttype-category-options'>
+                {TREATMENT_CATEGORIES.map(c => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ flex: 1 }}>
+              <Input
+                id='ttype-entity-code'
+                name='entityCode'
+                label='Cód. nomenclatura'
+                defaultValue={editing?.entityCode ?? ''}
+                placeholder='A1.01.01.01'
+                maxLength={20}
+                help='Código de entidade (informativo)'
+              />
+            </div>
+            <div style={{ flex: 1 }}>
               <Input
                 id='ttype-price'
                 name='priceEuros'
@@ -198,6 +241,21 @@ function TreatmentModal({
                 placeholder='45,00'
                 inputMode='decimal'
                 required
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Input
+                id='ttype-cost'
+                name='costEuros'
+                label='Custo (€)'
+                defaultValue={
+                  editing && editing.costCents > 0
+                    ? centsToEditableEuros(editing.costCents)
+                    : ''
+                }
+                placeholder='0,00'
+                inputMode='decimal'
+                help='Materiais/laboratório (margem)'
               />
             </div>
           </div>
@@ -260,6 +318,18 @@ function TreatmentModal({
               defaultChecked={editing?.requiresEvaluation ?? true}
             />
             <Checkbox
+              id='ttype-tooth'
+              name='controlsTooth'
+              label='Controla dente (exige nº de dente ao registar o ato)'
+              defaultChecked={editing?.controlsTooth ?? false}
+            />
+            <Checkbox
+              id='ttype-rx'
+              name='requiresRxConsent'
+              label='Exige consentimento RX assinado'
+              defaultChecked={editing?.requiresRxConsent ?? false}
+            />
+            <Checkbox
               id='ttype-confirmed'
               name='clinicConfirmed'
               label='Duração e preço confirmados pela clínica'
@@ -312,29 +382,45 @@ export function CatalogTable({
 }) {
   const [search, setSearch] = useState('');
   const [specialty, setSpecialty] = useState<'' | Specialty>('');
+  const [category, setCategory] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [modal, setModal] = useState<
     { mode: 'create' } | { mode: 'edit'; treatment: CatalogTreatment } | null
   >(null);
+
+  // Categorias realmente presentes nos dados (não a lista canónica) —
+  // com 749 atos importados, filtrar por tipo é o gesto principal do Victor
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of treatments) if (t.category) set.add(t.category);
+    return [...set].sort((a, b) => a.localeCompare(b, 'pt'));
+  }, [treatments]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return treatments.filter(t => {
       if (!showInactive && !t.active) return false;
       if (specialty && t.specialty !== specialty) return false;
-      if (q && !t.name.toLowerCase().includes(q)) return false;
+      if (category && t.category !== category) return false;
+      if (
+        q &&
+        !t.name.toLowerCase().includes(q) &&
+        !(t.entityCode ?? '').toLowerCase().includes(q) &&
+        !(t.dentoralCode ?? '').includes(q)
+      )
+        return false;
       return true;
     });
-  }, [treatments, search, specialty, showInactive]);
+  }, [treatments, search, specialty, category, showInactive]);
 
-  const benchmarkCount = treatments.filter(
-    t => t.active && t.source === 'benchmark',
+  const unconfirmedCount = treatments.filter(
+    t => t.active && t.source !== 'clinic-confirmed',
   ).length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       {/* Aviso: quantos atos ainda têm valores de benchmark por confirmar */}
-      {benchmarkCount > 0 && (
+      {unconfirmedCount > 0 && (
         <div
           style={{
             backgroundColor: '#FEF3E0',
@@ -345,11 +431,10 @@ export function CatalogTable({
             color: '#B06000',
           }}
         >
-          {benchmarkCount === 1
-            ? '1 ato ativo tem duração/preço de benchmark por confirmar'
-            : `${benchmarkCount} atos ativos têm durações/preços de benchmark por confirmar`}{' '}
-          — quando a matriz real chegar, edite e marque «confirmado pela
-          clínica».
+          {unconfirmedCount === 1
+            ? '1 ato ativo está por confirmar pela clínica'
+            : `${unconfirmedCount} atos ativos estão por confirmar pela clínica`}{' '}
+          — reveja duração, preço e flags e marque «confirmado pela clínica».
         </div>
       )}
 
@@ -371,7 +456,7 @@ export function CatalogTable({
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <div style={{ width: 220 }}>
+        <div style={{ width: 200 }}>
           <Select
             id='catalog-specialty'
             label='Especialidade'
@@ -386,6 +471,23 @@ export function CatalogTable({
             ))}
           </Select>
         </div>
+        {categories.length > 0 && (
+          <div style={{ width: 240 }}>
+            <Select
+              id='catalog-category'
+              label='Tipo de tratamento'
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+            >
+              <option value=''>Todos</option>
+              {categories.map(c => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
         <div style={{ paddingBottom: '10px' }}>
           <Checkbox
             id='catalog-inactive'
@@ -489,7 +591,13 @@ export function CatalogTable({
                       color: '#9AA1B4',
                     }}
                   >
-                    {t.slug}
+                    {/* Importados: código Dentoral + nomenclatura (a
+                        linguagem do Victor); restantes: slug técnico */}
+                    {t.dentoralCode
+                      ? [t.dentoralCode, t.entityCode]
+                          .filter(Boolean)
+                          .join(' · ')
+                      : t.slug}
                   </p>
                 </td>
                 <td
@@ -552,7 +660,9 @@ export function CatalogTable({
                   >
                     {t.source === 'clinic-confirmed'
                       ? 'Confirmado'
-                      : 'Benchmark'}
+                      : t.source === 'imported'
+                        ? 'Importado'
+                        : 'Benchmark'}
                   </Badge>
                 </td>
                 <td style={{ padding: '10px 14px' }}>

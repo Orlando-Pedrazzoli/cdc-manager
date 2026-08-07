@@ -88,22 +88,32 @@ export default async function ConfiguracoesPage({
 
   if (activeTab === 'catalogo') {
     const docs = await TreatmentType.find({})
-      .sort({ specialty: 1, name: 1 })
+      .sort({ category: 1, specialty: 1, name: 1 })
       .lean();
     treatments = docs.map(d => ({
       id: String(d._id),
       slug: d.slug,
       name: d.name,
       specialty: d.specialty as CatalogTreatment['specialty'],
+      category: d.category ?? null,
+      entityCode: d.entityCode ?? null,
+      dentoralCode: d.dentoralCode ?? null,
       durationMin: d.durationMin,
       bufferMin: d.bufferMin,
       priceCents: d.priceCents,
+      costCents: d.costCents ?? 0,
       bookableOnline: !!d.bookableOnline,
       requiresEvaluation: !!d.requiresEvaluation,
+      controlsTooth: !!d.controlsTooth,
+      requiresRxConsent: !!d.requiresRxConsent,
       recallIntervalMonths: d.recallIntervalMonths ?? null,
       notes: d.notes ?? null,
       source:
-        d.source === 'clinic-confirmed' ? 'clinic-confirmed' : 'benchmark',
+        d.source === 'clinic-confirmed'
+          ? 'clinic-confirmed'
+          : d.source === 'imported'
+            ? 'imported'
+            : 'benchmark',
       active: !!d.active,
     }));
   } else {

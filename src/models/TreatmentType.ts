@@ -70,6 +70,52 @@ const TreatmentTypeSchema = new Schema(
       required: true,
       index: true,
     },
+    // --- Paridade Dentoral (Bloco A.3) --------------------------------------
+    // Código interno do Dentoral (001-748). ÚNICO entre os importados —
+    // chave de idempotência do script de importação. sparse: atos criados
+    // no admin não têm (null não colide no índice).
+    dentoralCode: {
+      type: String,
+      trim: true,
+      default: null,
+      unique: true,
+      sparse: true,
+      immutable: true,
+    },
+    // Código de nomenclatura/entidade (ex.: 'A1.01.01.01'). NÃO é único:
+    // o mesmo ato clínico existe em várias categorias (endo sessão única/
+    // múltipla/retratamentos partilham nomenclatura) — 78 duplicados na
+    // tabela real. Obrigatório em comunicações com entidades; informativo
+    // enquanto a clínica for 100% particular.
+    entityCode: {
+      type: String,
+      trim: true,
+      maxlength: 20,
+      default: null,
+      index: true,
+    },
+    // Tipo de tratamento do Dentoral (texto verbatim, ex.: 'CIRURGIA ORAL').
+    // TEXTO e não enum: fidelidade ao sistema antigo + clínica pode criar
+    // categorias sem deploy (datalist alimentado por TREATMENT_CATEGORIES).
+    category: {
+      type: String,
+      trim: true,
+      maxlength: 60,
+      default: null,
+      index: true,
+    },
+    // Flag 'Controla Dente' do Dentoral: o ato EXIGE nº de dente ao registar
+    // o procedimento (ex.: extração, endodontia — não faz sentido sem dente).
+    controlsTooth: {
+      type: Boolean,
+      default: false,
+    },
+    // O ato exige consentimento RX assinado (liga ao módulo de documentos
+    // no fluxo da consulta — Bloco B.6).
+    requiresRxConsent: {
+      type: Boolean,
+      default: false,
+    },
     // --- Agenda -------------------------------------------------------------
     durationMin: {
       type: Number,
@@ -104,6 +150,14 @@ const TreatmentTypeSchema = new Schema(
     // Cêntimos evitam os erros de vírgula flutuante (0.1 + 0.2 !== 0.3)
     // em somas de contas — regra de ouro em qualquer sistema com dinheiro.
     priceCents: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
+    },
+    // Custo do tratamento em cêntimos (materiais/laboratório — campo do
+    // Dentoral). Base para análise de margem; 0 = não definido.
+    costCents: {
       type: Number,
       required: true,
       min: 0,

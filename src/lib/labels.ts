@@ -19,6 +19,8 @@ export const SPECIALTY_LABEL: Record<Specialty, string> = {
   'proteses-dentarias': 'Próteses Dentárias',
   'higiene-oral': 'Higiene Oral',
   'harmonizacao-orofacial': 'Harmonização Orofacial',
+  'cirurgia-oral': 'Cirurgia Oral',
+  imagiologia: 'Imagiologia',
 };
 
 /** Ordem de exibição da semana nas UIs (Seg…Dom) */
