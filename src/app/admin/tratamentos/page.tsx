@@ -15,8 +15,10 @@
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import TreatmentType from '@/models/TreatmentType';
+import Product from '@/models/Product';
 import {
   CatalogTable,
+  type CatalogProduct,
   type CatalogTreatment,
 } from '@/components/configuracoes/CatalogTable';
 
@@ -59,9 +61,16 @@ export default async function TratamentosPage() {
 
   await dbConnect();
 
-  const docs = await TreatmentType.find({})
-    .sort({ category: 1, specialty: 1, name: 1 })
-    .lean();
+  const [docs, productDocs] = await Promise.all([
+    TreatmentType.find({}).sort({ category: 1, specialty: 1, name: 1 }).lean(),
+    // Produtos ativos para o editor de BOM (materiais consumidos)
+    Product.find({ active: true }).select('name unit').sort({ name: 1 }).lean(),
+  ]);
+  const products: CatalogProduct[] = productDocs.map(p => ({
+    id: String(p._id),
+    name: p.name,
+    unit: p.unit,
+  }));
   const treatments: CatalogTreatment[] = docs.map(d => ({
     id: String(d._id),
     slug: d.slug,
@@ -80,6 +89,10 @@ export default async function TratamentosPage() {
     requiresRxConsent: !!d.requiresRxConsent,
     recallIntervalMonths: d.recallIntervalMonths ?? null,
     notes: d.notes ?? null,
+    bom: (d.bom ?? []).map((b: { productId: unknown; quantity: number }) => ({
+      productId: String(b.productId),
+      quantity: b.quantity,
+    })),
     source:
       d.source === 'clinic-confirmed'
         ? 'clinic-confirmed'
@@ -115,7 +128,7 @@ export default async function TratamentosPage() {
         </p>
       </div>
 
-      <CatalogTable treatments={treatments} />
+      <CatalogTable treatments={treatments} products={products} />
     </div>
   );
 }

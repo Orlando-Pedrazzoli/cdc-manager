@@ -42,6 +42,7 @@ import {
   type MinRange,
 } from '@/lib/availability';
 import TreatmentType from '@/models/TreatmentType';
+import Product from '@/models/Product';
 import Clinic from '@/models/Clinic';
 import Appointment, { BLOCKING_STATUS } from '@/models/Appointment';
 
@@ -107,6 +108,7 @@ export async function createTreatmentTypeAction(
       recallIntervalMonths: formData.get('recallIntervalMonths'),
       notes: formData.get('notes'),
       clinicConfirmed: formData.get('clinicConfirmed'),
+      bom: formData.get('bom'),
     });
     if (!parsed.success) return { error: firstIssue(parsed.error) };
     const data = parsed.data;
@@ -123,6 +125,17 @@ export async function createTreatmentTypeAction(
     for (let attempt = 0; attempt < 5 && !created; attempt++) {
       const slug = attempt === 0 ? base : `${base}-${attempt + 1}`;
       try {
+        // Todos os produtos da BOM têm de existir e estar ativos
+        if (data.bom.length > 0) {
+          const found = await Product.countDocuments({
+            _id: { $in: data.bom.map(b => b.productId) },
+            active: true,
+          });
+          if (found !== data.bom.length) {
+            return { error: 'A lista de materiais inclui produtos inválidos.' };
+          }
+        }
+
         created = await TreatmentType.create({
           slug,
           name: data.name,
@@ -137,6 +150,7 @@ export async function createTreatmentTypeAction(
           requiresEvaluation: data.requiresEvaluation,
           controlsTooth: data.controlsTooth,
           requiresRxConsent: data.requiresRxConsent,
+          bom: data.bom,
           recallIntervalMonths: data.recallIntervalMonths,
           notes: data.notes,
           source: durationSourceFromFlag(data.clinicConfirmed),
@@ -163,7 +177,7 @@ export async function createTreatmentTypeAction(
       summary: `Ato criado: ${data.name} (${(data.priceCents / 100).toFixed(2)} €, ${data.durationMin}+${data.bufferMin} min)`,
     });
 
-    revalidatePath('/admin/configuracoes');
+    revalidatePath('/admin/tratamentos');
     revalidatePath('/marcar');
     return { success: true };
   } catch (err) {
@@ -198,6 +212,7 @@ export async function updateTreatmentTypeAction(
       recallIntervalMonths: formData.get('recallIntervalMonths'),
       notes: formData.get('notes'),
       clinicConfirmed: formData.get('clinicConfirmed'),
+      bom: formData.get('bom'),
     });
     if (!parsed.success) return { error: firstIssue(parsed.error) };
     const data = parsed.data;
@@ -240,6 +255,29 @@ export async function updateTreatmentTypeAction(
     for (const [key, value] of Object.entries(next)) {
       if (doc.get(key) !== value) changedFields.push(key);
     }
+    // BOM à parte (array — comparação por conteúdo, não por referência)
+    const prevBom = (doc.bom ?? []).map(
+      (b: { productId: unknown; quantity: number }) =>
+        `${String(b.productId)}:${b.quantity}`,
+    );
+    const nextBom = data.bom.map(b => `${b.productId}:${b.quantity}`);
+    if (
+      prevBom.length !== nextBom.length ||
+      prevBom.some((v: string, i: number) => v !== nextBom[i])
+    ) {
+      // Todos os produtos da BOM têm de existir e estar ativos
+      if (data.bom.length > 0) {
+        const found = await Product.countDocuments({
+          _id: { $in: data.bom.map(b => b.productId) },
+          active: true,
+        });
+        if (found !== data.bom.length) {
+          return { error: 'A lista de materiais inclui produtos inválidos.' };
+        }
+      }
+      doc.set('bom', data.bom);
+      changedFields.push('bom');
+    }
     doc.set(next);
     await doc.save();
 
@@ -252,7 +290,7 @@ export async function updateTreatmentTypeAction(
       changedFields,
     });
 
-    revalidatePath('/admin/configuracoes');
+    revalidatePath('/admin/tratamentos');
     revalidatePath('/marcar');
     return { success: true };
   } catch (err) {
@@ -298,7 +336,7 @@ export async function toggleTreatmentActiveAction(
       changedFields: ['active'],
     });
 
-    revalidatePath('/admin/configuracoes');
+    revalidatePath('/admin/tratamentos');
     revalidatePath('/marcar');
     return { success: true };
   } catch (err) {

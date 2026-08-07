@@ -29,6 +29,10 @@ import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import { resolveCommissionRate, commissionCentsOf } from '@/lib/commissions';
 import {
+  consumeStockForAppointment,
+  reverseStockForProcedure,
+} from '@/lib/stock-consumption';
+import {
   spawnRecallForProcedure,
   cancelRecallForProcedure,
 } from '@/lib/recalls';
@@ -180,7 +184,7 @@ export async function addProcedureAction(
 
     // Paridade Dentoral «Controla Dente»: este ato não faz sentido clínico
     // sem dente (extração, endodontia, restauração…) — exige ≥1 dente FDI.
-    // A flag vive no catálogo (Configurações) e é o Victor quem a define.
+    // A flag vive no catálogo (Tratamentos) e é o Victor quem a define.
     if (treatment.controlsTooth && data.toothNumbers.length === 0) {
       return {
         error: `«${treatment.name}» exige indicar o(s) dente(s) — preencha o campo Dentes (notação FDI).`,
@@ -294,6 +298,14 @@ export async function voidProcedureAction(
     // Ato anulado não deve convidar ninguém: fecha o ciclo de recall que
     // este ato originou (best-effort)
     await cancelRecallForProcedure(String(proc._id));
+
+    // Se a consulta já tinha sido concluída (stock consumido), devolve os
+    // materiais — estorno pelos movimentos REAIS, idempotente, best-effort
+    await reverseStockForProcedure({
+      procedureId: String(proc._id),
+      userId: session.user.id,
+      reason: parsed.data.reason,
+    });
 
     if (proc.appointmentId) {
       revalidatePath(`/doutor/consulta/${String(proc.appointmentId)}`);
@@ -416,6 +428,16 @@ export async function completeConsultationAction(
       patientId: String(appt.patientId),
       clinicId: String(appt.clinicId),
       summary: `Consulta concluída (${actsCount} ato${actsCount === 1 ? '' : 's'})`,
+    });
+
+    // Baixa automática de stock pelas BOM dos atos (best-effort: nunca
+    // reverte a conclusão; armazém default da clínica; idempotente).
+    // A baixa é AQUI e não na cobrança: os materiais consomem-se quando o
+    // ato é executado — o pagamento pode ser mais tarde ou parcial.
+    await consumeStockForAppointment({
+      appointmentId: String(appt._id),
+      clinicId: String(appt.clinicId),
+      userId,
     });
 
     revalidatePath(`/doutor/consulta/${parsed.data.appointmentId}`);

@@ -40,6 +40,13 @@ import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea, Checkbox } from '@/components/ui/Input';
 
 // Forma serializada vinda do server (page.tsx faz o mapeamento)
+/** Produto disponível para o editor de BOM (materiais consumidos) */
+export interface CatalogProduct {
+  id: string;
+  name: string;
+  unit: string;
+}
+
 export interface CatalogTreatment {
   id: string;
   slug: string;
@@ -61,6 +68,8 @@ export interface CatalogTreatment {
   requiresRxConsent: boolean;
   recallIntervalMonths: number | null;
   notes: string | null;
+  /** Materiais consumidos por execução (baixa automática ao concluir consulta) */
+  bom: { productId: string; quantity: number }[];
   source: 'benchmark' | 'clinic-confirmed' | 'imported';
   active: boolean;
 }
@@ -121,14 +130,29 @@ function ActiveToggle({ treatment }: { treatment: CatalogTreatment }) {
 // =============================================================================
 function TreatmentModal({
   editing,
+  products,
   onClose,
 }: {
   /** null = criar novo; objeto = editar */
   editing: CatalogTreatment | null;
+  products: CatalogProduct[];
   onClose: () => void;
 }) {
   const router = useRouter();
   const isEdit = editing !== null;
+
+  // --- Editor de BOM (materiais consumidos por execução) --------------------
+  // Estado local; serializado como JSON num hidden input. A baixa acontece
+  // automaticamente ao concluir a consulta, no armazém default da clínica.
+  const [bom, setBom] = useState<{ productId: string; quantity: number }[]>(
+    editing?.bom ?? [],
+  );
+  const productById = new Map(products.map(p => [p.id, p] as const));
+  const addBomRow = () => {
+    const firstFree = products.find(p => !bom.some(b => b.productId === p.id));
+    if (!firstFree) return;
+    setBom([...bom, { productId: firstFree.id, quantity: 1 }]);
+  };
 
   // Duas actions distintas → dois hooks; só um form é submetido de cada vez
   const [createState, createAction, createPending] = useActionState<
@@ -347,6 +371,160 @@ function TreatmentModal({
             rows={2}
           />
 
+          {/* --- Materiais consumidos (BOM) --------------------------------- */}
+          <div
+            style={{
+              border: '1px solid #E4E8F2',
+              borderRadius: '10px',
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: '#1C2233',
+                  }}
+                >
+                  Materiais consumidos por execução
+                </p>
+                <p
+                  style={{
+                    margin: '2px 0 0',
+                    fontSize: '12px',
+                    color: '#9AA1B4',
+                  }}
+                >
+                  Baixa automática no stock ao concluir a consulta (armazém
+                  principal da clínica)
+                </p>
+              </div>
+              <Button
+                type='button'
+                variant='secondary'
+                onClick={addBomRow}
+                disabled={products.length === 0 || bom.length >= 40}
+              >
+                + Material
+              </Button>
+            </div>
+
+            {products.length === 0 && (
+              <p style={{ margin: 0, fontSize: '12px', color: '#9AA1B4' }}>
+                Sem produtos ativos no stock — crie-os primeiro em Stock.
+              </p>
+            )}
+
+            {bom.map((row, idx) => {
+              const unit = productById.get(row.productId)?.unit ?? '';
+              return (
+                <div
+                  key={`${row.productId}-${idx}`}
+                  style={{ display: 'flex', gap: '8px', alignItems: 'center' }}
+                >
+                  <select
+                    aria-label='Produto'
+                    value={row.productId}
+                    onChange={e =>
+                      setBom(
+                        bom.map((b, i) =>
+                          i === idx ? { ...b, productId: e.target.value } : b,
+                        ),
+                      )
+                    }
+                    style={{
+                      flex: 1,
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid #E4E8F2',
+                      fontSize: '13px',
+                      color: '#1C2233',
+                      backgroundColor: '#FFFFFF',
+                    }}
+                  >
+                    {products.map(p => (
+                      <option
+                        key={p.id}
+                        value={p.id}
+                        disabled={
+                          p.id !== row.productId &&
+                          bom.some(b => b.productId === p.id)
+                        }
+                      >
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    aria-label='Quantidade'
+                    type='number'
+                    min={0.001}
+                    step='any'
+                    value={row.quantity}
+                    onChange={e =>
+                      setBom(
+                        bom.map((b, i) =>
+                          i === idx
+                            ? { ...b, quantity: Number(e.target.value) }
+                            : b,
+                        ),
+                      )
+                    }
+                    style={{
+                      width: 90,
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid #E4E8F2',
+                      fontSize: '13px',
+                      color: '#1C2233',
+                    }}
+                  />
+                  <span
+                    style={{ fontSize: '12px', color: '#9AA1B4', width: 40 }}
+                  >
+                    {unit}
+                  </span>
+                  <button
+                    type='button'
+                    aria-label='Remover material'
+                    onClick={() => setBom(bom.filter((_, i) => i !== idx))}
+                    style={{
+                      border: 'none',
+                      background: 'none',
+                      color: '#B4232A',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      padding: '4px 6px',
+                    }}
+                  >
+                    Remover
+                  </button>
+                </div>
+              );
+            })}
+
+            {/* Serialização para a server action (validada por Zod) */}
+            <input
+              type='hidden'
+              name='bom'
+              value={JSON.stringify(
+                bom.filter(b => b.productId && b.quantity > 0),
+              )}
+            />
+          </div>
+
           <div
             style={{
               display: 'flex',
@@ -377,8 +555,10 @@ function TreatmentModal({
 // =============================================================================
 export function CatalogTable({
   treatments,
+  products,
 }: {
   treatments: CatalogTreatment[];
+  products: CatalogProduct[];
 }) {
   const [search, setSearch] = useState('');
   const [specialty, setSpecialty] = useState<'' | Specialty>('');
@@ -690,6 +870,7 @@ export function CatalogTable({
         <TreatmentModal
           key={modal.mode === 'edit' ? modal.treatment.id : 'create'}
           editing={modal.mode === 'edit' ? modal.treatment : null}
+          products={products}
           onClose={() => setModal(null)}
         />
       )}

@@ -130,6 +130,43 @@ const treatmentTypeBaseSchema = z.object({
   // Flags de paridade Dentoral
   controlsTooth: checkboxField,
   requiresRxConsent: checkboxField,
+  // BOM (materiais consumidos por execução): o editor no modal serializa
+  // JSON num hidden input. Valida ids e quantidades; máx. 40 itens.
+  bom: z.preprocess(
+    v => {
+      if (typeof v !== 'string' || v.trim() === '') return [];
+      try {
+        return JSON.parse(v);
+      } catch {
+        return 'invalid';
+      }
+    },
+    z
+      .array(
+        z.object({
+          productId: z.string().regex(OBJECT_ID, 'Produto inválido'),
+          quantity: z.coerce
+            .number()
+            .positive('Quantidade da BOM deve ser positiva')
+            .max(10000, 'Quantidade da BOM demasiado alta'),
+        }),
+        { error: 'Lista de materiais inválida' },
+      )
+      .max(40, 'Máximo de 40 materiais por ato')
+      .superRefine((items, ctx) => {
+        const seen = new Set<string>();
+        for (const it of items) {
+          if (seen.has(it.productId)) {
+            ctx.addIssue({
+              code: 'custom',
+              message: 'Produto repetido na lista de materiais',
+            });
+            return;
+          }
+          seen.add(it.productId);
+        }
+      }),
+  ),
   bookableOnline: checkboxField,
   requiresEvaluation: checkboxField,
   recallIntervalMonths: recallMonthsField.default(null),
