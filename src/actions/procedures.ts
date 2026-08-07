@@ -178,6 +178,15 @@ export async function addProcedureAction(
     if (!doctor || !clinic)
       return { error: 'Dados de comissão indisponíveis.' };
 
+    // Paridade Dentoral «Controla Dente»: este ato não faz sentido clínico
+    // sem dente (extração, endodontia, restauração…) — exige ≥1 dente FDI.
+    // A flag vive no catálogo (Configurações) e é o Victor quem a define.
+    if (treatment.controlsTooth && data.toothNumbers.length === 0) {
+      return {
+        error: `«${treatment.name}» exige indicar o(s) dente(s) — preencha o campo Dentes (notação FDI).`,
+      };
+    }
+
     // Cadeia: override (médico×ato) > taxa base do médico > default da clínica
     const rate = resolveCommissionRate({
       overrides: doctor.commissionOverrides,

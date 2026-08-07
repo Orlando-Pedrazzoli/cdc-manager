@@ -129,7 +129,7 @@ export default async function ConsultationPage({
       .lean(),
     getClinicById(String(appt.clinicId)),
     TreatmentType.find({ active: true })
-      .select('name priceCents')
+      .select('name priceCents controlsTooth')
       .sort({ name: 1 })
       .lean(),
     Procedure.find({ appointmentId: appt._id }).sort({ createdAt: 1 }).lean(),
@@ -161,6 +161,7 @@ export default async function ConsultationPage({
     id: String(t._id),
     name: t.name,
     priceCents: t.priceCents,
+    controlsTooth: !!t.controlsTooth,
   }));
 
   // Notas clínicas DESTA consulta (a ficha completa é o passo seguinte do sprint)

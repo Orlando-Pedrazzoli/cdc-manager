@@ -44,6 +44,8 @@ export interface TreatmentOption {
   id: string;
   name: string;
   priceCents: number;
+  /** Paridade Dentoral «Controla Dente»: o ato exige nº de dente (FDI) */
+  controlsTooth: boolean;
 }
 
 export interface NoteItem {
@@ -86,8 +88,11 @@ export function ProcedureList({
   }, [addState]);
 
   // Escolher o ato preenche o preço de tabela (editável)
+  const [selected, setSelected] = useState<TreatmentOption | null>(null);
+
   const onTreatmentChange = (id: string) => {
-    const t = treatments.find(x => x.id === id);
+    const t = treatments.find(x => x.id === id) ?? null;
+    setSelected(t);
     setPrice(t ? (t.priceCents / 100).toFixed(2).replace('.', ',') : '');
   };
 
@@ -187,8 +192,14 @@ export function ProcedureList({
           />
           <Input
             name='toothNumbers'
-            label='Dentes (FDI)'
+            label={selected?.controlsTooth ? 'Dentes (FDI) *' : 'Dentes (FDI)'}
             placeholder='ex.: 11, 26'
+            required={selected?.controlsTooth ?? false}
+            help={
+              selected?.controlsTooth
+                ? 'Este ato controla dente — obrigatório'
+                : undefined
+            }
           />
           <div style={{ gridColumn: '1 / span 2' }}>
             <Input name='notes' label='Observações' placeholder='Opcional' />

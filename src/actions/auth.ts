@@ -378,3 +378,88 @@ export async function resetPasswordAction(
   }
   redirect(HOME_BY_ROLE[user.role] ?? '/login');
 }
+
+// =============================================================================
+// Mudança de password pelo PRÓPRIO utilizador autenticado (Configurações →
+// A minha conta). Diferente do reset por código: aqui a prova de identidade
+// é a password ATUAL (sessão sozinha não chega — sessão aberta num computador
+// da clínica não pode permitir trocar a password sem a saber).
+// =============================================================================
+
+export type ChangePasswordState =
+  | { error: string }
+  | { success: true }
+  | undefined;
+
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Indique a password atual'),
+    // Mesma política da ativação/reset (min 10)
+    newPassword: z
+      .string()
+      .min(10, 'A nova password deve ter pelo menos 10 caracteres')
+      .max(200, 'Password demasiado longa'),
+    confirm: z.string(),
+  })
+  .refine(d => d.newPassword === d.confirm, {
+    message: 'As passwords não coincidem',
+    path: ['confirm'],
+  })
+  .refine(d => d.newPassword !== d.currentPassword, {
+    message: 'A nova password tem de ser diferente da atual',
+    path: ['newPassword'],
+  });
+
+export async function changeOwnPasswordAction(
+  _prev: ChangePasswordState,
+  formData: FormData,
+): Promise<ChangePasswordState> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: 'Sessão inválida. Volte a entrar.' };
+
+  const parsed = changePasswordSchema.safeParse({
+    currentPassword: formData.get('currentPassword'),
+    newPassword: formData.get('newPassword'),
+    confirm: formData.get('confirm'),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+  const { currentPassword, newPassword } = parsed.data;
+
+  await dbConnect();
+
+  // passwordHash tem select:false — pedir explicitamente
+  const user = await User.findById(session.user.id).select('+passwordHash');
+  if (!user || user.status !== 'active' || !user.passwordHash) {
+    return { error: 'Conta não encontrada ou inativa.' };
+  }
+
+  const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!ok) {
+    // Auditar tentativas falhadas: password atual errada numa sessão aberta
+    // é sinal a vigiar (computador partilhado da clínica)
+    await logAudit({
+      userId: user._id.toString(),
+      action: 'login-failed',
+      entityType: 'User',
+      entityId: user._id.toString(),
+      summary: 'Mudança de password recusada: password atual incorreta',
+    });
+    return { error: 'A password atual está incorreta.' };
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  await User.updateOne({ _id: user._id }, { $set: { passwordHash } });
+
+  await logAudit({
+    userId: user._id.toString(),
+    action: 'update',
+    entityType: 'User',
+    entityId: user._id.toString(),
+    summary: 'Password alterada pelo próprio (Configurações → A minha conta)',
+    changedFields: ['passwordHash'],
+  });
+
+  return { success: true };
+}

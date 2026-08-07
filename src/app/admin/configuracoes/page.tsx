@@ -3,10 +3,12 @@
 // CDC Manager — Admin: Configurações
 // -----------------------------------------------------------------------------
 // Server Component com separadores por ?tab= (convenção do projeto):
-//   · catalogo — catálogo de atos (CatalogTable): o Victor carrega a matriz
-//     real de preços aqui, sem deploys
 //   · clinicas — dados/políticas + horários por clínica (ClinicSettingsForm),
 //     com sub-seletor ?clinic= (mesmo param da agenda/cobrança)
+//   · conta — segurança da conta do próprio (mudança de password); padrão
+//     preparado para crescer (gestão de utilizadores, sessões, etc.)
+// O catálogo de atos foi PROMOVIDO a /admin/tratamentos (entidade de gestão
+// própria após a importação da matriz real) — ?tab=catalogo redireciona.
 //
 // RBAC: o proxy deixa entrar admin+receção em /admin, mas Configurações é
 // ADMIN-ONLY (preços, comissões e horários não são da receção) — guard
@@ -14,25 +16,22 @@
 // =============================================================================
 
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
-import TreatmentType from '@/models/TreatmentType';
 import Clinic from '@/models/Clinic';
-import {
-  CatalogTable,
-  type CatalogTreatment,
-} from '@/components/configuracoes/CatalogTable';
 import {
   ClinicSettingsForm,
   type ClinicSettings,
 } from '@/components/configuracoes/ClinicSettingsForm';
+import { ChangePasswordForm } from '@/components/configuracoes/ChangePasswordForm';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Configurações' };
 
 const TABS = [
-  { key: 'catalogo', label: 'Catálogo de atos' },
   { key: 'clinicas', label: 'Clínicas & horários' },
+  { key: 'conta', label: 'A minha conta' },
 ] as const;
 
 export default async function ConfiguracoesPage({
@@ -41,7 +40,11 @@ export default async function ConfiguracoesPage({
   searchParams: Promise<{ tab?: string; clinic?: string }>;
 }) {
   const { tab, clinic: clinicParam } = await searchParams;
-  const activeTab = tab === 'clinicas' ? 'clinicas' : 'catalogo';
+
+  // Memória muscular/bookmarks: o catálogo viveu aqui até ago/2026
+  if (tab === 'catalogo') redirect('/admin/tratamentos');
+
+  const activeTab = tab === 'conta' ? 'conta' : 'clinicas';
 
   const session = await auth();
   if (!session?.user) return null;
@@ -82,41 +85,10 @@ export default async function ConfiguracoesPage({
   // ---------------------------------------------------------------------------
   // Dados por separador (fetch só do que o separador ativo precisa)
   // ---------------------------------------------------------------------------
-  let treatments: CatalogTreatment[] = [];
   let clinicPanels: ClinicSettings[] = [];
   let activeClinicSlug = '';
 
-  if (activeTab === 'catalogo') {
-    const docs = await TreatmentType.find({})
-      .sort({ category: 1, specialty: 1, name: 1 })
-      .lean();
-    treatments = docs.map(d => ({
-      id: String(d._id),
-      slug: d.slug,
-      name: d.name,
-      specialty: d.specialty as CatalogTreatment['specialty'],
-      category: d.category ?? null,
-      entityCode: d.entityCode ?? null,
-      dentoralCode: d.dentoralCode ?? null,
-      durationMin: d.durationMin,
-      bufferMin: d.bufferMin,
-      priceCents: d.priceCents,
-      costCents: d.costCents ?? 0,
-      bookableOnline: !!d.bookableOnline,
-      requiresEvaluation: !!d.requiresEvaluation,
-      controlsTooth: !!d.controlsTooth,
-      requiresRxConsent: !!d.requiresRxConsent,
-      recallIntervalMonths: d.recallIntervalMonths ?? null,
-      notes: d.notes ?? null,
-      source:
-        d.source === 'clinic-confirmed'
-          ? 'clinic-confirmed'
-          : d.source === 'imported'
-            ? 'imported'
-            : 'benchmark',
-      active: !!d.active,
-    }));
-  } else {
+  if (activeTab === 'clinicas') {
     // Todas as clínicas (incl. inativas — settings é o sítio para as ver)
     const docs = await Clinic.find({}).sort({ slug: 1 }).lean();
     clinicPanels = docs.map(d => ({
@@ -174,7 +146,7 @@ export default async function ConfiguracoesPage({
           Configurações
         </h1>
         <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6A7186' }}>
-          Catálogo de atos, dados das clínicas e horários de funcionamento.
+          Dados das clínicas, horários de funcionamento e segurança da conta.
         </p>
       </div>
 
@@ -210,8 +182,8 @@ export default async function ConfiguracoesPage({
         })}
       </div>
 
-      {activeTab === 'catalogo' ? (
-        <CatalogTable treatments={treatments} />
+      {activeTab === 'conta' ? (
+        <ChangePasswordForm email={session.user.email ?? ''} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/* Sub-seletor de clínica (?clinic=, mesmo param da agenda) */}

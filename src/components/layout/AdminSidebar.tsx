@@ -18,6 +18,7 @@ import { usePathname } from 'next/navigation';
 import {
   BarChart3,
   CalendarDays,
+  ClipboardList,
   FileText,
   LayoutDashboard,
   Package,
@@ -56,6 +57,14 @@ const NAV: { section: string; items: NavItem[] }[] = [
     section: 'Gestão',
     items: [
       { href: '/admin/medicos', label: 'Corpo Clínico', icon: Stethoscope },
+      // Catálogo de atos promovido de Configurações a entidade própria:
+      // com a matriz real importada (749 atos Dentoral) é gestão viva
+      // (durações, flags, confirmações), não configuração pontual
+      {
+        href: '/admin/tratamentos',
+        label: 'Tratamentos',
+        icon: ClipboardList,
+      },
       {
         href: '/admin/faturacao',
         label: 'Faturação',
