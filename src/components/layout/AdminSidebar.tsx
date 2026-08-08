@@ -21,6 +21,8 @@ import {
   ClipboardList,
   FileText,
   LayoutDashboard,
+  Mail,
+  ExternalLink,
   Package,
   RefreshCcw,
   Settings,
@@ -36,6 +38,8 @@ type NavItem = {
   icon: ComponentType<{ size?: number | string; style?: React.CSSProperties }>;
   /** Item ainda por construir → desativado com hint do sprint */
   soon?: string;
+  /** Link externo → abre em separador novo, sem estado ativo */
+  external?: boolean;
 };
 
 const NAV: { section: string; items: NavItem[] }[] = [
@@ -81,6 +85,15 @@ const NAV: { section: string; items: NavItem[] }[] = [
         href: '/admin/configuracoes',
         label: 'Configurações',
         icon: Settings,
+      },
+      // Webmail da clínica (contacto@centrodentariocolombo.com) — atalho
+      // externo: abre a Hostinger em separador novo; credenciais da caixa
+      // são pedidas lá (não há SSO)
+      {
+        href: 'https://mail.hostinger.com/mailboxes/INBOX',
+        label: 'Email da clínica',
+        icon: Mail,
+        external: true,
       },
     ],
   },
@@ -212,6 +225,32 @@ export function AdminSidebar() {
                         {item.soon}
                       </span>
                     </span>
+                  );
+                }
+
+                if (item.external) {
+                  return (
+                    <a
+                      key={item.href}
+                      href={item.href}
+                      target='_blank'
+                      rel='noopener noreferrer'
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '9px 10px',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        fontWeight: 500,
+                        textDecoration: 'none',
+                        color: '#C9D4FF',
+                      }}
+                    >
+                      <Icon size={17} />
+                      <span style={{ flex: 1 }}>{item.label}</span>
+                      <ExternalLink size={13} style={{ opacity: 0.7 }} />
+                    </a>
                   );
                 }
 

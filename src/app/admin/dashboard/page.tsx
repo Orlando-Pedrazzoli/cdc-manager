@@ -26,6 +26,8 @@ import Patient from '@/models/Patient';
 import Procedure from '@/models/Procedure';
 import Recall from '@/models/Recall';
 import Product from '@/models/Product';
+import Doctor from '@/models/Doctor';
+import TreatmentType from '@/models/TreatmentType';
 import { getActiveClinics } from '@/models/Clinic';
 import { lisbonToUtc, todayLisbon } from '@/lib/availability';
 import { formatCents } from '@/lib/commissions';
@@ -54,6 +56,23 @@ export default async function AdminDashboardPage() {
   const dayEnd = lisbonToUtc(today, 24 * 60);
   const now = new Date();
 
+  // Períodos mensais para o KPI de faturação: mês corrente ATÉ HOJE vs o
+  // MESMO intervalo de dias do mês anterior (dia 1–N contra dia 1–N — nunca
+  // contra o mês anterior inteiro, que seria uma comparação desonesta a
+  // meio do mês). Dia N ajustado ao tamanho do mês anterior (31 mar → 28 fev).
+  const [yStr, mStr, dStr] = today.split('-');
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const d = Number(dStr);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const monthStart = lisbonToUtc(`${yStr}-${mStr}-01`, 0);
+  const prevY = m === 1 ? y - 1 : y;
+  const prevM = m === 1 ? 12 : m - 1;
+  const prevMonthDays = new Date(Date.UTC(prevY, prevM, 0)).getUTCDate();
+  const prevD = Math.min(d, prevMonthDays);
+  const prevStart = lisbonToUtc(`${prevY}-${pad(prevM)}-01`, 0);
+  const prevEnd = lisbonToUtc(`${prevY}-${pad(prevM)}-${pad(prevD)}`, 24 * 60);
+
   const [
     clinics,
     apptsByClinic,
@@ -62,6 +81,10 @@ export default async function AdminDashboardPage() {
     toCollect,
     recallsDue,
     stockLow,
+    monthAgg,
+    prevMonthAgg,
+    catalogUnconfirmed,
+    upcomingRaw,
   ] = await Promise.all([
     getActiveClinics(),
     // Marcações de hoje agrupadas por clínica × estado
@@ -129,6 +152,46 @@ export default async function AdminDashboardPage() {
       { $match: { $expr: { $lt: ['$total', '$minStock'] } } },
       { $count: 'n' },
     ]),
+    // Faturado este mês (executado, não pago): mês corrente até hoje
+    Procedure.aggregate<{ _id: null; n: number; cents: number }>([
+      {
+        $match: {
+          status: { $in: ['completed', 'invoiced'] },
+          executedAt: { $gte: monthStart, $lt: dayEnd },
+        },
+      },
+      { $group: { _id: null, n: { $sum: 1 }, cents: { $sum: '$priceCents' } } },
+    ]),
+    // Mesmo período do mês anterior (dia 1–N) para comparação honesta
+    Procedure.aggregate<{ _id: null; n: number; cents: number }>([
+      {
+        $match: {
+          status: { $in: ['completed', 'invoiced'] },
+          executedAt: { $gte: prevStart, $lt: prevEnd },
+        },
+      },
+      { $group: { _id: null, n: { $sum: 1 }, cents: { $sum: '$priceCents' } } },
+    ]),
+    // Catálogo por confirmar (o trabalho atual pós-importação Dentoral)
+    TreatmentType.countDocuments({
+      active: true,
+      source: { $ne: 'clinic-confirmed' },
+    }),
+    // A seguir hoje: em curso/espera sempre; pendentes/confirmadas futuras
+    Appointment.find({
+      startAt: { $gte: dayStart, $lt: dayEnd },
+      $or: [
+        { status: { $in: ['in-progress', 'checked-in'] } },
+        {
+          status: { $in: ['pending', 'confirmed'] },
+          startAt: { $gte: now },
+        },
+      ],
+    })
+      .select('startAt status patientId doctorId clinicId')
+      .sort({ startAt: 1 })
+      .limit(7)
+      .lean(),
   ]);
 
   // Reorganizar agregações
@@ -150,6 +213,66 @@ export default async function AdminDashboardPage() {
   const collectTotalCents = toCollect.reduce((s, r) => s + r.cents, 0);
   const collectTotalN = toCollect.reduce((s, r) => s + r.n, 0);
   const stockLowN = stockLow[0]?.n ?? 0;
+
+  // --- Faturação mensal ------------------------------------------------------
+  const monthCents = monthAgg[0]?.cents ?? 0;
+  const monthN = monthAgg[0]?.n ?? 0;
+  const prevCents = prevMonthAgg[0]?.cents ?? 0;
+
+  // --- A seguir hoje: resolver nomes (mesmo padrão da agenda) ----------------
+  const upPatientIds = [...new Set(upcomingRaw.map(a => String(a.patientId)))];
+  const upDoctorIds = [
+    ...new Set(
+      upcomingRaw.filter(a => a.doctorId).map(a => String(a.doctorId)),
+    ),
+  ];
+  const [upPatients, upDoctors] = await Promise.all([
+    upPatientIds.length
+      ? Patient.find({ _id: { $in: upPatientIds } })
+          .select('name')
+          .lean()
+      : [],
+    upDoctorIds.length
+      ? Doctor.find({ _id: { $in: upDoctorIds } })
+          .select('name')
+          .lean()
+      : [],
+  ]);
+  const patientNameById = new Map(
+    upPatients.map(p => [String(p._id), p.name] as const),
+  );
+  const doctorNameById = new Map(
+    upDoctors.map(dd => [String(dd._id), dd.name] as const),
+  );
+  const clinicSlugById = new Map(
+    clinics.map(c => [String(c._id), c.slug] as const),
+  );
+  const timeFmt = new Intl.DateTimeFormat('pt-PT', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Lisbon',
+  });
+  const UP_STATUS: Record<string, { label: string; bg: string; fg: string }> = {
+    'in-progress': { label: 'Em curso', bg: '#E7F5EC', fg: '#186A3B' },
+    'checked-in': { label: 'Em espera', bg: '#FFF4E0', fg: '#8A5A00' },
+    confirmed: { label: 'Confirmada', bg: '#E4EBFF', fg: '#1B2A6B' },
+    pending: { label: 'Pendente', bg: '#EAECF3', fg: '#3D4257' },
+  };
+  const upcoming = upcomingRaw.map(a => ({
+    id: String(a._id),
+    time: timeFmt.format(a.startAt as Date),
+    patientId: String(a.patientId),
+    patientName: patientNameById.get(String(a.patientId)) ?? '(paciente)',
+    doctorName: a.doctorId
+      ? (doctorNameById.get(String(a.doctorId)) ?? '(médico)')
+      : 'Por atribuir',
+    clinicSlug: clinicSlugById.get(String(a.clinicId)) ?? '',
+    status: UP_STATUS[a.status as string] ?? {
+      label: a.status as string,
+      bg: '#EAECF3',
+      fg: '#3D4257',
+    },
+  }));
 
   const rawDate = new Intl.DateTimeFormat('pt-PT', {
     weekday: 'long',
@@ -198,6 +321,16 @@ export default async function AdminDashboardPage() {
       sub: formatCents(executedTotalCents),
     },
     {
+      label: 'Faturado este mês',
+      value: formatCents(monthCents),
+      // Comparação honesta: mesmo intervalo de dias (1–N) do mês anterior
+      sub:
+        prevCents > 0
+          ? `${monthCents >= prevCents ? '▲' : '▼'} vs ${formatCents(prevCents)} no mesmo período do mês passado`
+          : `${monthN} ato${monthN === 1 ? '' : 's'} executado${monthN === 1 ? '' : 's'}`,
+      href: '/admin/relatorios',
+    },
+    {
       label: 'Por cobrar',
       value: formatCents(collectTotalCents),
       sub:
@@ -235,24 +368,82 @@ export default async function AdminDashboardPage() {
           }
         : {}),
     },
+    {
+      label: 'Catálogo por confirmar',
+      value: String(catalogUnconfirmed),
+      sub:
+        catalogUnconfirmed > 0
+          ? 'Rever duração, preço e flags'
+          : 'Catálogo confirmado',
+      href: '/admin/tratamentos',
+      ...(catalogUnconfirmed > 0
+        ? {
+            accentBg: '#FFF9EE',
+            accentBorder: '#F2DEB6',
+            valueColor: '#8A5A00',
+          }
+        : {}),
+    },
   ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: '22px',
-            fontWeight: 700,
-            color: '#1B2A6B',
-          }}
-        >
-          {firstName ? `Olá, ${firstName}` : 'Dashboard'}
-        </h1>
-        <p style={{ margin: '4px 0 0', fontSize: '14px', color: '#6A7186' }}>
-          {dateLabel}
-        </p>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: '12px',
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: '22px',
+              fontWeight: 700,
+              color: '#1B2A6B',
+            }}
+          >
+            {firstName ? `Olá, ${firstName}` : 'Dashboard'}
+          </h1>
+          <p style={{ margin: '4px 0 0', fontSize: '14px', color: '#6A7186' }}>
+            {dateLabel}
+          </p>
+        </div>
+        {/* Ações rápidas: os dois gestos mais frequentes da administração */}
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <Link
+            href='/admin/agenda'
+            style={{
+              padding: '9px 16px',
+              borderRadius: '10px',
+              backgroundColor: '#2743A6',
+              color: '#FFFFFF',
+              fontSize: '13px',
+              fontWeight: 600,
+              textDecoration: 'none',
+            }}
+          >
+            + Nova marcação
+          </Link>
+          <Link
+            href='/admin/pacientes/novo'
+            style={{
+              padding: '9px 16px',
+              borderRadius: '10px',
+              backgroundColor: '#FFFFFF',
+              color: '#2743A6',
+              border: '1px solid #C9D4FF',
+              fontSize: '13px',
+              fontWeight: 600,
+              textDecoration: 'none',
+            }}
+          >
+            + Novo paciente
+          </Link>
+        </div>
       </div>
 
       {/* KPIs globais + alertas operacionais */}
@@ -333,6 +524,127 @@ export default async function AdminDashboardPage() {
             <div key={kpi.label}>{body}</div>
           );
         })}
+      </div>
+
+      {/* A seguir hoje: quem é o próximo, em que clínica, com que médico */}
+      <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '13px 20px',
+            borderBottom: '1px solid #EEF1F8',
+          }}
+        >
+          <span style={{ fontSize: '14px', fontWeight: 700, color: '#1B2A6B' }}>
+            A seguir hoje
+          </span>
+          <Link
+            href='/admin/agenda'
+            style={{
+              fontSize: '13px',
+              fontWeight: 600,
+              color: '#2743A6',
+              textDecoration: 'none',
+            }}
+          >
+            Abrir agenda →
+          </Link>
+        </div>
+        {upcoming.length === 0 ? (
+          <p
+            style={{
+              margin: 0,
+              padding: '16px 20px',
+              fontSize: '13px',
+              color: '#9AA1B4',
+            }}
+          >
+            Sem mais consultas hoje.
+          </p>
+        ) : (
+          <div>
+            {upcoming.map((u, i) => {
+              const cl = CLINIC_STYLE[u.clinicSlug] ?? {
+                bg: '#EAECF3',
+                fg: '#3D4257',
+              };
+              return (
+                <div
+                  key={u.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '14px',
+                    padding: '10px 20px',
+                    borderTop: i === 0 ? 'none' : '1px solid #F4F6FB',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: '14px',
+                      fontWeight: 700,
+                      color: '#1B2A6B',
+                      width: 46,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {u.time}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Link
+                      href={`/admin/pacientes/${u.patientId}`}
+                      style={{
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        color: '#1C2233',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      {u.patientName}
+                    </Link>
+                    <p
+                      style={{
+                        margin: '1px 0 0',
+                        fontSize: '12px',
+                        color: '#6A7186',
+                      }}
+                    >
+                      {u.doctorName}
+                    </p>
+                  </div>
+                  <span
+                    style={{
+                      borderRadius: '999px',
+                      padding: '2px 10px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      backgroundColor: cl.bg,
+                      color: cl.fg,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {slugLabel(u.clinicSlug)}
+                  </span>
+                  <span
+                    style={{
+                      borderRadius: '999px',
+                      padding: '2px 10px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      backgroundColor: u.status.bg,
+                      color: u.status.fg,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {u.status.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* O dia por clínica */}
