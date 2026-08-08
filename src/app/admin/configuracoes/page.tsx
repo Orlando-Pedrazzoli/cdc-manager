@@ -25,12 +25,18 @@ import {
   type ClinicSettings,
 } from '@/components/configuracoes/ClinicSettingsForm';
 import { ChangePasswordForm } from '@/components/configuracoes/ChangePasswordForm';
+import {
+  UsersPanel,
+  type TeamUser,
+} from '@/components/configuracoes/UsersPanel';
+import User from '@/models/User';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Configurações' };
 
 const TABS = [
   { key: 'clinicas', label: 'Clínicas & horários' },
+  { key: 'utilizadores', label: 'Utilizadores' },
   { key: 'conta', label: 'A minha conta' },
 ] as const;
 
@@ -44,7 +50,12 @@ export default async function ConfiguracoesPage({
   // Memória muscular/bookmarks: o catálogo viveu aqui até ago/2026
   if (tab === 'catalogo') redirect('/admin/tratamentos');
 
-  const activeTab = tab === 'conta' ? 'conta' : 'clinicas';
+  const activeTab =
+    tab === 'conta'
+      ? 'conta'
+      : tab === 'utilizadores'
+        ? 'utilizadores'
+        : 'clinicas';
 
   const session = await auth();
   if (!session?.user) return null;
@@ -87,8 +98,32 @@ export default async function ConfiguracoesPage({
   // ---------------------------------------------------------------------------
   let clinicPanels: ClinicSettings[] = [];
   let activeClinicSlug = '';
+  let teamUsers: TeamUser[] = [];
 
-  if (activeTab === 'clinicas') {
+  if (activeTab === 'utilizadores') {
+    // Só contas da equipa (admin/receção); médicos e pacientes têm fluxos
+    // próprios. Ordem: ativas primeiro, depois convidadas, depois desativadas.
+    const docs = await User.find({
+      role: { $in: ['admin', 'receptionist'] },
+    })
+      .select('name email role status createdAt')
+      .sort({ status: 1, name: 1 })
+      .lean();
+    const dateFmt = new Intl.DateTimeFormat('pt-PT', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      timeZone: 'Europe/Lisbon',
+    });
+    teamUsers = docs.map(u => ({
+      id: String(u._id),
+      name: u.name,
+      email: u.email ?? '',
+      role: u.role as TeamUser['role'],
+      status: u.status as TeamUser['status'],
+      createdAt: dateFmt.format(u.createdAt as Date),
+    }));
+  } else if (activeTab === 'clinicas') {
     // Todas as clínicas (incl. inativas — settings é o sítio para as ver)
     const docs = await Clinic.find({}).sort({ slug: 1 }).lean();
     clinicPanels = docs.map(d => ({
@@ -182,7 +217,9 @@ export default async function ConfiguracoesPage({
         })}
       </div>
 
-      {activeTab === 'conta' ? (
+      {activeTab === 'utilizadores' ? (
+        <UsersPanel users={teamUsers} currentUserId={session.user.id ?? ''} />
+      ) : activeTab === 'conta' ? (
         <ChangePasswordForm email={session.user.email ?? ''} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
