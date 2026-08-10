@@ -23,6 +23,14 @@
 //   clicável. Match dia+mês feito no Mongo com timezone Europe/Lisbon.
 // · <AutoRefresh/>: a receção deixa a página aberta o dia todo — refresh
 //   silencioso a cada 90s (pausa com separador oculto).
+// · Sparkline de produção: 30 dias civis (Lisboa) em SVG puro no KPI —
+//   zeros preenchidos, hoje em destaque verde. Tendência que o Dentoral
+//   nunca deu.
+// · Ocupação por clínica: minutos bloqueantes de hoje ÷ (abertura ×
+//   gabinetes). Antecipa o C.8 com leitura simples.
+// · KPI "Novos pacientes": createdAt no mês 1–N vs anterior. ATENÇÃO
+//   pós-migração Dentoral: o import em massa infla este número no mês da
+//   migração (createdAt = data de inserção).
 // =============================================================================
 
 import Link from 'next/link';
@@ -30,7 +38,7 @@ import AutoRefresh from '@/components/ui/AutoRefresh';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import mongoose from 'mongoose';
-import Appointment from '@/models/Appointment';
+import Appointment, { BLOCKING_STATUS } from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import Procedure from '@/models/Procedure';
 import Recall from '@/models/Recall';
@@ -38,7 +46,13 @@ import Product from '@/models/Product';
 import Doctor from '@/models/Doctor';
 import TreatmentType from '@/models/TreatmentType';
 import { getActiveClinics } from '@/models/Clinic';
-import { lisbonToUtc, todayLisbon } from '@/lib/availability';
+import {
+  lisbonToUtc,
+  todayLisbon,
+  dateRange,
+  weekdayOf,
+  hhmmToMin,
+} from '@/lib/availability';
 import { formatCents } from '@/lib/commissions';
 
 export const dynamic = 'force-dynamic';
@@ -89,6 +103,12 @@ export default async function AdminDashboardPage() {
     .slice(0, 10);
   const tomorrowEnd = lisbonToUtc(tomorrowStr, 24 * 60);
 
+  // Janela do sparkline de produção: últimos 30 dias civis (incl. hoje)
+  const spark30StartStr = new Date(Date.UTC(y, m - 1, d - 29))
+    .toISOString()
+    .slice(0, 10);
+  const spark30Start = lisbonToUtc(spark30StartStr, 0);
+
   const [
     clinics,
     apptsByClinic,
@@ -104,6 +124,10 @@ export default async function AdminDashboardPage() {
     pendingTomorrow,
     missedRaw,
     birthdaysRaw,
+    sparkAgg,
+    newPatientsMonth,
+    newPatientsPrev,
+    occupancyRaw,
   ] = await Promise.all([
     getActiveClinics(),
     // Marcações de hoje agrupadas por clínica × estado
@@ -263,6 +287,39 @@ export default async function AdminDashboardPage() {
       { $sort: { name: 1 } },
       { $limit: 12 },
     ]),
+    // Produção diária dos últimos 30 dias — alimenta o sparkline do KPI.
+    // Agrupamento por dia civil de LISBOA (timezone no $dateToString).
+    Procedure.aggregate<{ _id: string; cents: number }>([
+      {
+        $match: {
+          status: { $in: ['completed', 'invoiced'] },
+          executedAt: { $gte: spark30Start, $lt: dayEnd },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: '%Y-%m-%d',
+              date: '$executedAt',
+              timezone: 'Europe/Lisbon',
+            },
+          },
+          cents: { $sum: '$priceCents' },
+        },
+      },
+    ]),
+    // Novos pacientes: mês corrente até hoje vs mesmo intervalo 1–N anterior
+    Patient.countDocuments({ createdAt: { $gte: monthStart, $lt: dayEnd } }),
+    Patient.countDocuments({ createdAt: { $gte: prevStart, $lt: prevEnd } }),
+    // Ocupação: marcações bloqueantes de hoje com o intervalo real ocupado
+    // (endAt já inclui buffer — reflete o tempo de gabinete indisponível)
+    Appointment.find({
+      startAt: { $gte: dayStart, $lt: dayEnd },
+      status: { $in: BLOCKING_STATUS },
+    })
+      .select('clinicId startAt endAt')
+      .lean(),
   ]);
 
   // Reorganizar agregações
@@ -289,6 +346,47 @@ export default async function AdminDashboardPage() {
   const monthCents = monthAgg[0]?.cents ?? 0;
   const monthN = monthAgg[0]?.n ?? 0;
   const prevCents = prevMonthAgg[0]?.cents ?? 0;
+
+  // --- Sparkline de produção (30 dias, zeros preenchidos) --------------------
+  const sparkByDay = new Map(sparkAgg.map(r => [r._id, r.cents] as const));
+  const spark = dateRange(spark30StartStr, today).map(
+    ds => sparkByDay.get(ds) ?? 0,
+  );
+
+  // --- Ocupação de hoje por clínica ------------------------------------------
+  // Capacidade = minutos de abertura de hoje × gabinetes simultâneos.
+  // Ocupado = soma dos intervalos das marcações bloqueantes (com clamp ao
+  // dia). Leitura simples e honesta — não desconta sobreposições entre
+  // gabinetes porque a capacidade já as multiplica.
+  const weekdayToday = weekdayOf(today);
+  const usedMinByClinic = new Map<string, number>();
+  for (const a of occupancyRaw) {
+    const s = Math.max((a.startAt as Date).getTime(), dayStart.getTime());
+    const e = Math.min((a.endAt as Date).getTime(), dayEnd.getTime());
+    if (e > s) {
+      const key = String(a.clinicId);
+      usedMinByClinic.set(
+        key,
+        (usedMinByClinic.get(key) ?? 0) + Math.round((e - s) / 60_000),
+      );
+    }
+  }
+  const occupancyByClinic = new Map<
+    string,
+    { pct: number; openMin: number } // openMin 0 = clínica fechada hoje
+  >();
+  for (const c of clinics) {
+    const day = c.openingHours.find(o => o.weekday === weekdayToday);
+    const baseMin = (day?.ranges ?? []).reduce(
+      (s, r) => s + (hhmmToMin(r.end) - hhmmToMin(r.start)),
+      0,
+    );
+    const openMin = baseMin * (c.maxConcurrentAppointments ?? 1);
+    const used = usedMinByClinic.get(String(c._id)) ?? 0;
+    const pct =
+      openMin > 0 ? Math.min(100, Math.round((used / openMin) * 100)) : 0;
+    occupancyByClinic.set(String(c._id), { pct, openMin });
+  }
 
   // --- Resolver nomes de "A seguir hoje" + faltas numa só passagem ----------
   const nameSourceAppts = [...upcomingRaw, ...missedRaw];
@@ -420,8 +518,21 @@ export default async function AdminDashboardPage() {
     accentBg?: string;
     accentBorder?: string;
     valueColor?: string;
+    /** Série diária para mini-gráfico de barras (SVG inline, sem libs) */
+    spark?: number[];
   }> = [
     { label: 'Pacientes ativos', value: String(patientsTotal) },
+    {
+      label: 'Novos pacientes este mês',
+      value: String(newPatientsMonth),
+      sub:
+        newPatientsPrev > 0
+          ? `${newPatientsMonth >= newPatientsPrev ? '▲' : '▼'} vs ${newPatientsPrev} no mesmo período do mês passado`
+          : newPatientsMonth > 0
+            ? 'Primeiros registos do período'
+            : 'Sem registos novos',
+      href: '/admin/pacientes',
+    },
     {
       label: 'Atos executados hoje',
       value: String(executedTotalN),
@@ -433,6 +544,7 @@ export default async function AdminDashboardPage() {
       // passa a ter significado próprio e este nome evita a confusão.
       label: 'Produção este mês',
       value: formatCents(monthCents),
+      spark,
       // Comparação honesta: mesmo intervalo de dias (1–N) do mês anterior
       sub:
         prevCents > 0
@@ -579,6 +691,7 @@ export default async function AdminDashboardPage() {
         }}
       >
         {kpis.map(kpi => {
+          const sparkMax = kpi.spark ? Math.max(...kpi.spark) : 0;
           const body = (
             <div
               style={{
@@ -621,6 +734,41 @@ export default async function AdminDashboardPage() {
                 >
                   {kpi.sub}
                 </p>
+              )}
+              {kpi.spark && sparkMax > 0 && (
+                // 30 barras = 30 dias; a última (hoje) em destaque.
+                // viewBox fixo + preserveAspectRatio none → estica à largura
+                // do cartão sem media queries.
+                <svg
+                  viewBox={`0 0 ${kpi.spark.length * 5} 30`}
+                  preserveAspectRatio='none'
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    height: '30px',
+                    marginTop: '8px',
+                  }}
+                  aria-hidden='true'
+                >
+                  {kpi.spark.map((v, i) => {
+                    const h =
+                      v > 0 ? Math.max(2, Math.round((v / sparkMax) * 28)) : 1;
+                    const isToday = i === kpi.spark!.length - 1;
+                    return (
+                      <rect
+                        key={i}
+                        x={i * 5}
+                        y={30 - h}
+                        width={4}
+                        height={h}
+                        rx={1}
+                        fill={
+                          v === 0 ? '#E8EBF4' : isToday ? '#0F7B4D' : '#2743A6'
+                        }
+                      />
+                    );
+                  })}
+                </svg>
               )}
               {kpi.href && (
                 <p
@@ -677,16 +825,29 @@ export default async function AdminDashboardPage() {
           </Link>
         </div>
         {upcoming.length === 0 ? (
-          <p
+          <div
             style={{
-              margin: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '14px',
               padding: '16px 20px',
-              fontSize: '13px',
-              color: '#9AA1B4',
             }}
           >
-            Sem mais consultas hoje.
-          </p>
+            <p style={{ margin: 0, fontSize: '13px', color: '#9AA1B4' }}>
+              Sem mais consultas hoje.
+            </p>
+            <Link
+              href='/admin/agenda'
+              style={{
+                fontSize: '13px',
+                fontWeight: 600,
+                color: '#2743A6',
+                textDecoration: 'none',
+              }}
+            >
+              + Nova marcação
+            </Link>
+          </div>
         ) : (
           <div>
             {upcoming.map((u, i) => {
@@ -967,6 +1128,10 @@ export default async function AdminDashboardPage() {
           const cl = CLINIC_STYLE[c.slug] ?? { bg: '#EAECF3', fg: '#3D4257' };
           const inProgress = stats.byStatus['in-progress'] ?? 0;
           const waiting = stats.byStatus['checked-in'] ?? 0;
+          const occ = occupancyByClinic.get(String(c._id)) ?? {
+            pct: 0,
+            openMin: 0,
+          };
           return (
             <div
               key={c.slug}
@@ -1011,6 +1176,52 @@ export default async function AdminDashboardPage() {
                   gap: '8px',
                 }}
               >
+                {occ.openMin > 0 ? (
+                  <div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'baseline',
+                        marginBottom: '4px',
+                      }}
+                    >
+                      <span style={{ fontSize: '12px', color: '#6A7186' }}>
+                        Ocupação hoje
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          color: '#1B2A6B',
+                        }}
+                      >
+                        {occ.pct}%
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        height: '6px',
+                        borderRadius: '999px',
+                        backgroundColor: '#EEF1F8',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: '100%',
+                          width: `${occ.pct}%`,
+                          borderRadius: '999px',
+                          backgroundColor: '#2743A6',
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <p style={{ margin: 0, fontSize: '12px', color: '#9AA1B4' }}>
+                    Fechada hoje
+                  </p>
+                )}
                 <p style={{ margin: 0, fontSize: '14px', color: '#3D4257' }}>
                   <strong style={{ color: '#1B2A6B' }}>
                     {activeOf(stats.byStatus)}
