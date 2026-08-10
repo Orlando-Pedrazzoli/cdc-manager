@@ -22,6 +22,7 @@ import {
   FileText,
   LayoutDashboard,
   Mail,
+  Star,
   ExternalLink,
   Package,
   RefreshCcw,
@@ -93,6 +94,17 @@ const NAV: { section: string; items: NavItem[] }[] = [
         href: 'https://mail.hostinger.com/mailboxes/INBOX',
         label: 'Email da clínica',
         icon: Mail,
+        external: true,
+      },
+      // Gestor de reviews do Google Business Profile — responder rápido a
+      // avaliações pesa no ranking local e na confiança dos pacientes.
+      // Requer sessão Google com acesso às fichas; se a conta da clínica
+      // gerir Colombo E Buraca, esta página lista as duas.
+      // (Reviews DENTRO da app c/ badge = GBP API, aprovação Google — Sprint 6)
+      {
+        href: 'https://business.google.com/reviews',
+        label: 'Google Reviews',
+        icon: Star,
         external: true,
       },
     ],
