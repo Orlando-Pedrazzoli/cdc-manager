@@ -15,9 +15,18 @@
 //   casas abaixo do mínimo (mesma regra do badge "Repor" da StockTable).
 // · Badge da clínica: derivado do slug (capitalizado) — 3.ª clínica = zero
 //   código, como nas colunas dinâmicas do Stock.
+// · KPI "Por confirmar amanhã": marcações pending de amanhã — o gesto diário
+//   da receção (ligar a confirmar presença) com visibilidade e um clique.
+// · "Faltas e cancelamentos hoje": lista acionável (paciente → ficha,
+//   Remarcar → agenda da clínica) — o Dentoral mostrava a falta; aqui age-se.
+// · "Aniversários hoje": fidelização barata — nome, idade e telefone
+//   clicável. Match dia+mês feito no Mongo com timezone Europe/Lisbon.
+// · <AutoRefresh/>: a receção deixa a página aberta o dia todo — refresh
+//   silencioso a cada 90s (pausa com separador oculto).
 // =============================================================================
 
 import Link from 'next/link';
+import AutoRefresh from '@/components/ui/AutoRefresh';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import mongoose from 'mongoose';
@@ -73,6 +82,13 @@ export default async function AdminDashboardPage() {
   const prevStart = lisbonToUtc(`${prevY}-${pad(prevM)}-01`, 0);
   const prevEnd = lisbonToUtc(`${prevY}-${pad(prevM)}-${pad(prevD)}`, 24 * 60);
 
+  // Amanhã (data civil Lisboa) — para o KPI "Por confirmar amanhã".
+  // dayEnd JÁ É a meia-noite de amanhã; só falta o fim do dia seguinte.
+  const tomorrowStr = new Date(Date.UTC(y, m - 1, d + 1))
+    .toISOString()
+    .slice(0, 10);
+  const tomorrowEnd = lisbonToUtc(tomorrowStr, 24 * 60);
+
   const [
     clinics,
     apptsByClinic,
@@ -85,6 +101,9 @@ export default async function AdminDashboardPage() {
     prevMonthAgg,
     catalogUnconfirmed,
     upcomingRaw,
+    pendingTomorrow,
+    missedRaw,
+    birthdaysRaw,
   ] = await Promise.all([
     getActiveClinics(),
     // Marcações de hoje agrupadas por clínica × estado
@@ -192,6 +211,58 @@ export default async function AdminDashboardPage() {
       .sort({ startAt: 1 })
       .limit(7)
       .lean(),
+    // Marcações de amanhã ainda pending — a receção liga hoje a confirmar
+    Appointment.countDocuments({
+      startAt: { $gte: dayEnd, $lt: tomorrowEnd },
+      status: 'pending',
+    }),
+    // Faltas e cancelamentos de HOJE — lista acionável (remarcar)
+    Appointment.find({
+      startAt: { $gte: dayStart, $lt: dayEnd },
+      status: { $in: ['no-show', 'cancelled'] },
+    })
+      .select('startAt status patientId doctorId clinicId')
+      .sort({ startAt: 1 })
+      .limit(8)
+      .lean(),
+    // Aniversários de hoje: match dia+mês no Mongo (timezone Lisboa) —
+    // nunca traz a coleção inteira para o Node
+    Patient.aggregate<{
+      _id: mongoose.Types.ObjectId;
+      name: string;
+      phone: string | null;
+      birthDate: Date;
+    }>([
+      { $match: { status: 'active', birthDate: { $ne: null } } },
+      {
+        $match: {
+          $expr: {
+            $and: [
+              {
+                $eq: [
+                  {
+                    $dayOfMonth: {
+                      date: '$birthDate',
+                      timezone: 'Europe/Lisbon',
+                    },
+                  },
+                  d,
+                ],
+              },
+              {
+                $eq: [
+                  { $month: { date: '$birthDate', timezone: 'Europe/Lisbon' } },
+                  m,
+                ],
+              },
+            ],
+          },
+        },
+      },
+      { $project: { name: 1, phone: 1, birthDate: 1 } },
+      { $sort: { name: 1 } },
+      { $limit: 12 },
+    ]),
   ]);
 
   // Reorganizar agregações
@@ -219,11 +290,14 @@ export default async function AdminDashboardPage() {
   const monthN = monthAgg[0]?.n ?? 0;
   const prevCents = prevMonthAgg[0]?.cents ?? 0;
 
-  // --- A seguir hoje: resolver nomes (mesmo padrão da agenda) ----------------
-  const upPatientIds = [...new Set(upcomingRaw.map(a => String(a.patientId)))];
+  // --- Resolver nomes de "A seguir hoje" + faltas numa só passagem ----------
+  const nameSourceAppts = [...upcomingRaw, ...missedRaw];
+  const upPatientIds = [
+    ...new Set(nameSourceAppts.map(a => String(a.patientId))),
+  ];
   const upDoctorIds = [
     ...new Set(
-      upcomingRaw.filter(a => a.doctorId).map(a => String(a.doctorId)),
+      nameSourceAppts.filter(a => a.doctorId).map(a => String(a.doctorId)),
     ),
   ];
   const [upPatients, upDoctors] = await Promise.all([
@@ -274,6 +348,39 @@ export default async function AdminDashboardPage() {
     },
   }));
 
+  // --- Faltas e cancelamentos de hoje (acionáveis) ---------------------------
+  const MISSED_STATUS: Record<
+    string,
+    { label: string; bg: string; fg: string }
+  > = {
+    'no-show': { label: 'Falta', bg: '#FDF3F2', fg: '#B3261E' },
+    cancelled: { label: 'Cancelada', bg: '#EAECF3', fg: '#3D4257' },
+  };
+  const missed = missedRaw.map(a => ({
+    id: String(a._id),
+    time: timeFmt.format(a.startAt as Date),
+    patientId: String(a.patientId),
+    patientName: patientNameById.get(String(a.patientId)) ?? '(paciente)',
+    doctorName: a.doctorId
+      ? (doctorNameById.get(String(a.doctorId)) ?? '(médico)')
+      : 'Por atribuir',
+    clinicSlug: clinicSlugById.get(String(a.clinicId)) ?? '',
+    status: MISSED_STATUS[a.status as string] ?? {
+      label: a.status as string,
+      bg: '#EAECF3',
+      fg: '#3D4257',
+    },
+  }));
+
+  // --- Aniversários de hoje --------------------------------------------------
+  const birthdays = birthdaysRaw.map(p => ({
+    id: String(p._id),
+    name: p.name,
+    phone: p.phone ?? null,
+    // É hoje o aniversário → idade = ano corrente − ano de nascimento
+    age: y - p.birthDate.getUTCFullYear(),
+  }));
+
   const rawDate = new Intl.DateTimeFormat('pt-PT', {
     weekday: 'long',
     day: 'numeric',
@@ -321,7 +428,10 @@ export default async function AdminDashboardPage() {
       sub: formatCents(executedTotalCents),
     },
     {
-      label: 'Faturado este mês',
+      // "Produção" e não "Faturado": mede atos EXECUTADOS (executedAt), não
+      // documentos fiscais — quando o Moloni entrar (Sprint 4), "faturado"
+      // passa a ter significado próprio e este nome evita a confusão.
+      label: 'Produção este mês',
       value: formatCents(monthCents),
       // Comparação honesta: mesmo intervalo de dias (1–N) do mês anterior
       sub:
@@ -339,6 +449,18 @@ export default async function AdminDashboardPage() {
           : 'Tudo cobrado',
       href: '/admin/cobranca',
       ...(collectTotalCents > 0
+        ? { accentBg: '#F5F8FF', accentBorder: '#C9D4FF' }
+        : {}),
+    },
+    {
+      label: 'Por confirmar amanhã',
+      value: String(pendingTomorrow),
+      sub:
+        pendingTomorrow > 0
+          ? 'Ligar a confirmar presença'
+          : 'Amanhã confirmado',
+      href: `/admin/agenda?date=${tomorrowStr}`,
+      ...(pendingTomorrow > 0
         ? { accentBg: '#F5F8FF', accentBorder: '#C9D4FF' }
         : {}),
     },
@@ -388,6 +510,8 @@ export default async function AdminDashboardPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* Dados frescos sem F5: a página vive aberta na receção o dia todo */}
+      <AutoRefresh intervalMs={90_000} />
       <div
         style={{
           display: 'flex',
@@ -646,6 +770,184 @@ export default async function AdminDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Faltas de hoje (acionáveis) + aniversários — só quando existem */}
+      {(missed.length > 0 || birthdays.length > 0) && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+            gap: '12px',
+          }}
+        >
+          {missed.length > 0 && (
+            <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+              <div
+                style={{
+                  padding: '13px 20px',
+                  borderBottom: '1px solid #EEF1F8',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    color: '#B3261E',
+                  }}
+                >
+                  Faltas e cancelamentos hoje
+                </span>
+              </div>
+              <div>
+                {missed.map((f, i) => {
+                  return (
+                    <div
+                      key={f.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '14px',
+                        padding: '10px 20px',
+                        borderTop: i === 0 ? 'none' : '1px solid #F4F6FB',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          color: '#3D4257',
+                          width: 46,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {f.time}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Link
+                          href={`/admin/pacientes/${f.patientId}`}
+                          style={{
+                            fontSize: '14px',
+                            fontWeight: 600,
+                            color: '#1C2233',
+                            textDecoration: 'none',
+                          }}
+                        >
+                          {f.patientName}
+                        </Link>
+                        <p
+                          style={{
+                            margin: '1px 0 0',
+                            fontSize: '12px',
+                            color: '#6A7186',
+                          }}
+                        >
+                          {f.doctorName}
+                        </p>
+                      </div>
+                      <span
+                        style={{
+                          borderRadius: '999px',
+                          padding: '2px 10px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          backgroundColor: f.status.bg,
+                          color: f.status.fg,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {f.status.label}
+                      </span>
+                      <Link
+                        href={`/admin/agenda?clinic=${f.clinicSlug}`}
+                        style={{
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: '#2743A6',
+                          textDecoration: 'none',
+                          flexShrink: 0,
+                        }}
+                      >
+                        Remarcar →
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {birthdays.length > 0 && (
+            <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+              <div
+                style={{
+                  padding: '13px 20px',
+                  borderBottom: '1px solid #EEF1F8',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    color: '#1B2A6B',
+                  }}
+                >
+                  Aniversários hoje 🎂
+                </span>
+              </div>
+              <div>
+                {birthdays.map((b, i) => (
+                  <div
+                    key={b.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '14px',
+                      padding: '10px 20px',
+                      borderTop: i === 0 ? 'none' : '1px solid #F4F6FB',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <Link
+                        href={`/admin/pacientes/${b.id}`}
+                        style={{
+                          fontSize: '14px',
+                          fontWeight: 600,
+                          color: '#1C2233',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        {b.name}
+                      </Link>
+                      <p
+                        style={{
+                          margin: '1px 0 0',
+                          fontSize: '12px',
+                          color: '#6A7186',
+                        }}
+                      >
+                        Faz {b.age} anos
+                      </p>
+                    </div>
+                    {b.phone && (
+                      <a
+                        href={`tel:${b.phone}`}
+                        style={{
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: '#2743A6',
+                          textDecoration: 'none',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {b.phone}
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* O dia por clínica */}
       <div

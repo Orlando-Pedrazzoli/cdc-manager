@@ -28,9 +28,11 @@ Sistema de gestão clínica full-stack para clínicas dentárias multi-unidade, 
 
 **Recalls** — Geração automática de ciclos de reativação na conclusão de atos com intervalo de recall configurado, com um único ciclo aberto por paciente e tipo de ato. Fila de gestão por clínica com promoção automática por data, registo de tentativas de contacto e máquina de transições validada.
 
-**Stock** — Catálogo de produtos com taxonomia emergente (famílias em texto livre com sugestão automática), existências por clínica materializadas a partir de um ledger imutável de movimentos, alertas de stock mínimo, entradas, saídas com motivo obrigatório em acertos e quebras, e transferências entre clínicas registadas como par atómico de movimentos numa única transação.
+**Tratamentos** — Catálogo de atos como entidade de gestão própria, com a matriz real de preços da clínica importada do sistema legado (749 atos em 22 categorias, com código interno, nomenclatura de entidade, categoria, custo e flags clínicas). Importação idempotente por script com dry-run e relatório de contagens; atos importados entram por confirmar e a clínica valida duração, preço e flags no próprio catálogo. Flags de paridade com o legado: «Controla Dente» (o registo do ato exige número de dente FDI — imposto no servidor e refletido na UI da consulta) e «Exige consentimento RX» (extraída automaticamente dos 31 atos de imagiologia cujo texto legal vinha embutido no nome). Cada ato pode definir a sua ficha técnica de materiais (BOM) com editor no próprio catálogo.
 
-**Configurações** — Edição do catálogo de atos (preços, durações, buffers, recall, marcação online) e dos dados, políticas e horários de cada clínica, com aviso não destrutivo de marcações futuras afetadas por alterações de horário.
+**Stock** — Catálogo de produtos com taxonomia emergente (famílias em texto livre com sugestão automática), existências por clínica materializadas a partir de um ledger imutável de movimentos, alertas de stock mínimo, entradas, saídas com motivo obrigatório em acertos e quebras, e transferências entre clínicas registadas como par atómico de movimentos numa única transação. **Baixa automática por BOM**: ao concluir a consulta, os materiais da ficha técnica de cada ato são consumidos no armazém principal da clínica (movimentos `consumption` valorizados ao custo corrente, rastreados ao procedimento); a anulação de um ato já consumido devolve o stock por estorno baseado nos movimentos reais. O consumo automático nunca bloqueia o fluxo clínico — saldo negativo é sinal de inventário a corrigir, visível no dashboard.
+
+**Configurações** — Dados, políticas e horários de cada clínica (com aviso não destrutivo de marcações futuras afetadas por alterações de horário), gestão de utilizadores da equipa (convite de administradores e rececionistas por email com código de ativação de uso único, desativação sem apagar, guardas contra auto-bloqueio e contra remoção do último administrador) e segurança da própria conta (mudança de password com verificação da password atual).
 
 **Notificações** — Emails transacionais de confirmação de marcação via Resend, condicionados ao consentimento RGPD do paciente e enviados em regime best-effort (uma falha de envio nunca reverte a operação principal).
 
@@ -80,6 +82,9 @@ src/
     seed/           Seed de demonstração
   models/           Modelos Mongoose (20+, todos com clinicId quando
                     operacionais)
+scripts/
+  import-precos.ts  Importação idempotente da matriz real de preços
+  data/             Fonte canónica versionada (JSON gerado do export legado)
 ```
 
 ## Começar
@@ -105,15 +110,18 @@ A aplicação fica disponível em `http://localhost:3000`.
 
 Definidas em `.env.local` (nunca versionado):
 
-| Variável              | Descrição                                                    |
-| --------------------- | ------------------------------------------------------------ |
-| `MONGODB_URI`         | String de ligação ao MongoDB Atlas                           |
-| `AUTH_SECRET`         | Segredo do NextAuth (gerar com `npx auth secret`)            |
-| `AUTH_URL`            | URL base da aplicação                                        |
-| `RESEND_API_KEY`      | Chave da API do Resend                                       |
-| `EMAIL_FROM`          | Remetente dos emails transacionais (domínio verificado)      |
-| `NEXT_PUBLIC_APP_URL` | URL pública usada nos links dos emails                       |
-| `SEED_DEMO_EMAIL`     | Email que recebe as notificações no ambiente de demonstração |
+| Variável                                                                 | Descrição                                                    |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| `MONGODB_URI`                                                            | String de ligação ao MongoDB Atlas                           |
+| `AUTH_SECRET`                                                            | Segredo do NextAuth (gerar com `npx auth secret`)            |
+| `AUTH_URL`                                                               | URL base da aplicação                                        |
+| `RESEND_API_KEY`                                                         | Chave da API do Resend                                       |
+| `EMAIL_FROM`                                                             | Remetente dos emails transacionais (domínio verificado)      |
+| `NEXT_PUBLIC_APP_URL`                                                    | URL pública usada nos links dos emails                       |
+| `AUTH_TRUST_HOST`                                                        | `true` em produção atrás de proxy (Vercel)                   |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Credenciais Cloudinary (assets privados)                     |
+| `CLOUDINARY_FOLDER`                                                      | Pasta raiz dos uploads do projeto                            |
+| `SEED_DEMO_EMAIL`                                                        | Email que recebe as notificações no ambiente de demonstração |
 
 ## Seed de demonstração
 
@@ -128,6 +136,19 @@ npx tsx --env-file=.env.local src/lib/seed/demo.ts --confirmar
 ```
 
 O script aborta automaticamente se a base contiver mais de 100 pacientes, como proteção contra execução acidental sobre dados reais.
+
+## Importação da matriz de preços
+
+A tabela real de preços (export do sistema legado) vive versionada em `scripts/data/tab-precos-colombo.json` e importa-se com:
+
+```bash
+# Dry-run: valida o dataset (contagens, códigos, limites) e imprime o relatório
+npx tsx --env-file=.env.local scripts/import-precos.ts --dry-run
+
+# Import real: upsert idempotente por código interno; nunca apaga; não toca
+# em atos já confirmados pela clínica
+npx tsx --env-file=.env.local scripts/import-precos.ts
+```
 
 ## Convenções de domínio
 
@@ -144,10 +165,10 @@ A lógica pura (conversões monetárias, aritmética de datas com clamp de fim d
 
 ## Deployment
 
-O projeto está preparado para deployment na Vercel:
+O projeto está em produção na Vercel (build do preset Next.js, sem `vercel.json` — o ficheiro só será criado quando os cron jobs dos recalls o exigirem). Para replicar o deployment:
 
-1. Importar o repositório na Vercel.
-2. Configurar as variáveis de ambiente da tabela acima no projeto Vercel.
+1. Importar o repositório na Vercel (preset Next.js).
+2. Configurar as variáveis de ambiente da tabela acima (valores de produção próprios: `AUTH_SECRET` distinto do de desenvolvimento; `NEXT_PUBLIC_APP_URL` com o domínio real, sem barra final e sem aspas nos campos da UI).
 3. Autorizar o acesso de rede da Vercel no MongoDB Atlas (Network Access).
 4. Opcionalmente, configurar um domínio personalizado.
 
