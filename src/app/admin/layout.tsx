@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 import { auth } from '@/lib/auth';
 import { logoutAction } from '@/actions/auth';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
+import { QuickPatientSearch } from '@/components/layout/QuickPatientSearch';
 
 const ROLE_LABEL: Record<string, string> = {
   admin: 'Administração',
@@ -45,51 +46,62 @@ export default async function AdminLayout({
           flexDirection: 'column',
         }}
       >
-        {/* Barra superior */}
+        {/* Barra superior: pesquisa de paciente (o gesto nº 1 do balcão,
+            disponível em qualquer página) + identificação e logout */}
         <header
           style={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'flex-end',
+            justifyContent: 'space-between',
             gap: '16px',
             padding: '12px 24px',
             backgroundColor: '#FFFFFF',
             borderBottom: '1px solid #EEF1F8',
           }}
         >
-          <div style={{ textAlign: 'right' }}>
-            <p
-              style={{
-                margin: 0,
-                fontSize: '14px',
-                fontWeight: 600,
-                color: '#1B2A6B',
-                lineHeight: 1.3,
-              }}
-            >
-              {name}
-            </p>
-            <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
-              {roleLabel}
-            </p>
+          <QuickPatientSearch />
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '16px',
+              flexShrink: 0,
+            }}
+          >
+            <div style={{ textAlign: 'right' }}>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  color: '#1B2A6B',
+                  lineHeight: 1.3,
+                }}
+              >
+                {name}
+              </p>
+              <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
+                {roleLabel}
+              </p>
+            </div>
+            <form action={logoutAction}>
+              <button
+                type='submit'
+                style={{
+                  borderRadius: '8px',
+                  border: '1px solid #D8DEEF',
+                  padding: '7px 14px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: '#1B2A6B',
+                  backgroundColor: '#FFFFFF',
+                  cursor: 'pointer',
+                }}
+              >
+                Sair
+              </button>
+            </form>
           </div>
-          <form action={logoutAction}>
-            <button
-              type='submit'
-              style={{
-                borderRadius: '8px',
-                border: '1px solid #D8DEEF',
-                padding: '7px 14px',
-                fontSize: '13px',
-                fontWeight: 600,
-                color: '#1B2A6B',
-                backgroundColor: '#FFFFFF',
-                cursor: 'pointer',
-              }}
-            >
-              Sair
-            </button>
-          </form>
         </header>
 
         <main style={{ flex: 1, padding: '24px' }}>{children}</main>
