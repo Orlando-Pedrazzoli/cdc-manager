@@ -37,6 +37,16 @@ export const createRxRequestSchema = z.object({
     emptyToNull,
     z.string().trim().max(300, 'Nota demasiado longa').nullable(),
   ),
+  // B.6: consentimento por exposição — assinatura do paciente (PNG do
+  // SignaturePad). Limite ~300k chars ≈ 225KB: uma assinatura real tem
+  // ~20KB; o teto trava payloads abusivos sem alguma vez travar uso normal.
+  consentSignature: z
+    .string()
+    .regex(
+      /^data:image\/png;base64,[A-Za-z0-9+/=]+$/,
+      'Assinatura do consentimento em falta',
+    )
+    .max(300_000, 'Assinatura demasiado grande'),
 });
 export type CreateRxRequestInput = z.infer<typeof createRxRequestSchema>;
 

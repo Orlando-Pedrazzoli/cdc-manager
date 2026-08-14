@@ -19,10 +19,12 @@ import {
   cancelRxRequestAction,
   type RxActionState,
 } from '@/actions/rx';
+import { SignaturePad } from '@/components/clinico/SignaturePad';
 import {
   RX_MODALITIES,
   RX_MODALITY_LABEL,
   RX_STATUS_LABEL,
+  RX_CONSENT_LEGAL_TEXT,
   type RxModality,
   type RxStatus,
 } from '@/lib/domain';
@@ -62,6 +64,9 @@ export function RxRequestPanel({
   >(cancelRxRequestAction, undefined);
 
   const [modality, setModality] = useState<RxModality>('periapical');
+  // B.6: o pedido só sai com consentimento assinado — passo intermédio
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [signature, setSignature] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const handledRef = useRef<RxActionState>(undefined);
 
@@ -72,6 +77,13 @@ export function RxRequestPanel({
       if ('success' in createState) {
         formRef.current?.reset();
         setModality('periapical');
+        setConsentOpen(false);
+        setSignature(null);
+      }
+      if ('error' in createState) {
+        // Erro do servidor: voltar ao formulário para corrigir
+        setConsentOpen(false);
+        setSignature(null);
       }
     }
   }, [createState]);
@@ -306,9 +318,15 @@ export function RxRequestPanel({
               }}
             />
           </label>
+          <input
+            type='hidden'
+            name='consentSignature'
+            value={signature ?? ''}
+          />
           <button
-            type='submit'
-            disabled={creating}
+            type='button'
+            onClick={() => setConsentOpen(true)}
+            disabled={creating || consentOpen}
             style={{
               borderRadius: '8px',
               border: 'none',
@@ -316,11 +334,11 @@ export function RxRequestPanel({
               fontSize: '13px',
               fontWeight: 600,
               color: '#FFFFFF',
-              backgroundColor: creating ? '#8FA0DC' : '#2743A6',
-              cursor: creating ? 'default' : 'pointer',
+              backgroundColor: creating || consentOpen ? '#8FA0DC' : '#2743A6',
+              cursor: creating || consentOpen ? 'default' : 'pointer',
             }}
           >
-            {creating ? 'A enviar…' : 'Pedir RX'}
+            Pedir RX
           </button>
           {error && (
             <p
@@ -333,6 +351,87 @@ export function RxRequestPanel({
             >
               {error}
             </p>
+          )}
+
+          {/* B.6 — Consentimento por exposição: texto legal + assinatura.
+              O pedido SÓ é submetido daqui, com a assinatura preenchida. */}
+          {consentOpen && (
+            <div
+              style={{
+                width: '100%',
+                marginTop: '4px',
+                border: '1px solid #C9D4FF',
+                borderRadius: '12px',
+                backgroundColor: '#F5F8FF',
+                padding: '16px 18px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  color: '#1B2A6B',
+                }}
+              >
+                Consentimento informado — {RX_MODALITY_LABEL[modality]}
+              </p>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: '13px',
+                  color: '#3D4257',
+                  lineHeight: 1.5,
+                }}
+              >
+                {RX_CONSENT_LEGAL_TEXT}
+              </p>
+              <SignaturePad onChange={setSignature} />
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type='submit'
+                  disabled={creating || !signature}
+                  style={{
+                    borderRadius: '8px',
+                    border: 'none',
+                    padding: '9px 18px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#FFFFFF',
+                    backgroundColor:
+                      creating || !signature ? '#8FA0DC' : '#0F7B4D',
+                    cursor: creating || !signature ? 'default' : 'pointer',
+                  }}
+                >
+                  {creating
+                    ? 'A enviar…'
+                    : 'Confirmar consentimento e pedir RX'}
+                </button>
+                <button
+                  type='button'
+                  onClick={() => {
+                    setConsentOpen(false);
+                    setSignature(null);
+                  }}
+                  disabled={creating}
+                  style={{
+                    borderRadius: '8px',
+                    border: '1px solid #D8DEEF',
+                    padding: '9px 16px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#1B2A6B',
+                    backgroundColor: '#FFFFFF',
+                    cursor: creating ? 'default' : 'pointer',
+                  }}
+                >
+                  Voltar
+                </button>
+              </div>
+            </div>
           )}
         </form>
       )}

@@ -251,3 +251,24 @@ export async function destroyDocumentAsset(
     return false;
   }
 }
+
+/**
+ * Upload SERVER-SIDE de um data URL (PNG pequeno — assinaturas de
+ * consentimento). Ao contrário dos documentos grandes (ticket + POST direto
+ * do browser), a assinatura (~20KB) sobe pelo servidor na própria action:
+ * uma só viagem, sem segundo passo de confirmação. Asset `authenticated`
+ * como todos os dados de saúde.
+ */
+export async function uploadAuthenticatedDataUrl(
+  publicId: string,
+  dataUrl: string,
+): Promise<{ format: string | null; bytes: number }> {
+  const c = cld();
+  const res = await c.uploader.upload(dataUrl, {
+    public_id: publicId,
+    type: 'authenticated',
+    resource_type: 'image',
+    overwrite: false,
+  });
+  return { format: res.format ?? null, bytes: res.bytes ?? 0 };
+}

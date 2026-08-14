@@ -15,12 +15,23 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import mongoose from 'mongoose';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import Appointment from '@/models/Appointment';
 import RxRequest from '@/models/RxRequest';
-import { canTransitionRx, type RxStatus } from '@/lib/domain';
+import ClinicalDocument from '@/models/Document';
+import {
+  patientDocumentPublicId,
+  uploadAuthenticatedDataUrl,
+} from '@/lib/cloudinary';
+import {
+  canTransitionRx,
+  RX_MODALITY_LABEL,
+  RX_CONSENT_LEGAL_TEXT,
+  type RxStatus,
+} from '@/lib/domain';
 import {
   createRxRequestSchema,
   advanceRxRequestSchema,
@@ -76,11 +87,13 @@ export async function createRxRequestAction(
       modality: formData.get('modality'),
       toothNumbers: formData.get('toothNumbers'),
       notes: formData.get('notes'),
+      consentSignature: formData.get('consentSignature'),
     });
     if (!parsed.success) {
       return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
     }
-    const { appointmentId, modality, toothNumbers, notes } = parsed.data;
+    const { appointmentId, modality, toothNumbers, notes, consentSignature } =
+      parsed.data;
 
     const { userId, doctorId, appt } =
       await requireOwnAppointment(appointmentId);
@@ -92,6 +105,49 @@ export async function createRxRequestAction(
     // Panorâmica não leva dentes-alvo (limpar em vez de recusar)
     const teeth = modality === 'panoramica' ? [] : toothNumbers;
 
+    // --- B.6: consentimento POR EXPOSIÇÃO, assinado ANTES do pedido --------
+    // 1) Assinatura sobe para o Cloudinary (authenticated, id opaco)
+    // 2) Document categoria 'consent' com snapshot do texto legal
+    // 3) Só então nasce o RxRequest, já ligado ao consentimento
+    // Se (1) falhar, NÃO há pedido — RX sem consentimento não existe.
+    // Se (3) falhar após (2), fica um consentimento órfão auditado —
+    // inofensivo e visível nos Documentos; nunca o inverso.
+    const consentDocId = new mongoose.Types.ObjectId();
+    const publicId = patientDocumentPublicId(String(consentDocId));
+    const asset = await uploadAuthenticatedDataUrl(publicId, consentSignature);
+
+    const dateLabel = new Intl.DateTimeFormat('pt-PT', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      timeZone: 'Europe/Lisbon',
+    }).format(new Date());
+
+    await ClinicalDocument.create({
+      _id: consentDocId,
+      patientId: appt.patientId,
+      category: 'consent',
+      title: `Consentimento RX — ${RX_MODALITY_LABEL[modality]} — ${dateLabel}`,
+      publicId,
+      resourceType: 'image',
+      format: asset.format,
+      bytes: asset.bytes,
+      visibleToPatient: true, // o paciente pode rever o que assinou no portal
+      uploadedByUserId: userId,
+      appointmentId: appt._id,
+      note: RX_CONSENT_LEGAL_TEXT, // snapshot imutável do texto apresentado
+    });
+
+    await logAudit({
+      userId,
+      action: 'create',
+      entityType: 'Document',
+      entityId: String(consentDocId),
+      patientId: String(appt.patientId),
+      clinicId: String(appt.clinicId),
+      summary: `Consentimento RX assinado (${modality})`,
+    });
+
     const created = await RxRequest.create({
       clinicId: appt.clinicId,
       patientId: appt.patientId,
@@ -100,6 +156,7 @@ export async function createRxRequestAction(
       modality,
       toothNumbers: teeth,
       notes,
+      consentDocumentId: consentDocId,
     });
 
     await logAudit({

@@ -386,3 +386,11 @@ export const RX_TRANSITIONS: Record<RxStatus, RxStatus[]> = {
 export function canTransitionRx(from: RxStatus, to: RxStatus): boolean {
   return RX_TRANSITIONS[from]?.includes(to) ?? false;
 }
+
+// Texto legal do consentimento RX (art. 101º DL 108/2018) — o MESMO que o
+// Dentoral embutia no nome dos 31 atos de imagiologia (desdobrado na
+// importação para TreatmentType.notes). Snapshot guardado no Document de
+// cada consentimento assinado — prova imutável do texto apresentado.
+export const RX_CONSENT_LEGAL_TEXT =
+  'Paciente consente o exame consoante as orientações de benefícios e ' +
+  'riscos (cfr. artigo 101º do DL 108/2018).';
