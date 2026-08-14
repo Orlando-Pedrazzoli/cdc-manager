@@ -24,8 +24,14 @@ import Patient from '@/models/Patient';
 import TreatmentType from '@/models/TreatmentType';
 import Procedure from '@/models/Procedure';
 import ClinicalRecord from '@/models/ClinicalRecord';
+import RxRequest from '@/models/RxRequest';
 import { getClinicById } from '@/models/Clinic';
 import { minToHhmm } from '@/lib/availability';
+import type { RxModality, RxStatus } from '@/lib/domain';
+import {
+  RxRequestPanel,
+  type RxItem,
+} from '@/components/clinico/RxRequestPanel';
 import {
   ProcedureList,
   ClinicalNotes,
@@ -123,20 +129,24 @@ export default async function ConsultationPage({
   // Não pertence ao médico → mesma resposta que inexistente (não vazar)
   if (!appt || String(appt.doctorId) !== doctorId) return <NotFound />;
 
-  const [patient, clinic, treatments, procedures, record] = await Promise.all([
-    Patient.findById(appt.patientId)
-      .select('name processNumber phone birthDate')
-      .lean(),
-    getClinicById(String(appt.clinicId)),
-    TreatmentType.find({ active: true })
-      .select('name priceCents controlsTooth')
-      .sort({ name: 1 })
-      .lean(),
-    Procedure.find({ appointmentId: appt._id }).sort({ createdAt: 1 }).lean(),
-    ClinicalRecord.findOne({ patientId: appt.patientId })
-      .select('allergies currentMedications notes')
-      .lean(),
-  ]);
+  const [patient, clinic, treatments, procedures, record, rxRequests] =
+    await Promise.all([
+      Patient.findById(appt.patientId)
+        .select('name processNumber phone birthDate')
+        .lean(),
+      getClinicById(String(appt.clinicId)),
+      TreatmentType.find({ active: true })
+        .select('name priceCents controlsTooth')
+        .sort({ name: 1 })
+        .lean(),
+      Procedure.find({ appointmentId: appt._id }).sort({ createdAt: 1 }).lean(),
+      ClinicalRecord.findOne({ patientId: appt.patientId })
+        .select('allergies currentMedications notes')
+        .lean(),
+      RxRequest.find({ appointmentId: appt._id })
+        .sort({ requestedAt: 1 })
+        .lean(),
+    ]);
 
   const status = appt.status as AppointmentStatus;
   const st = STATUS_STYLE[status] ?? { bg: '#EAECF3', fg: '#3D4257' };
@@ -178,6 +188,15 @@ export default async function ConsultationPage({
   const allergies = record?.allergies ?? [];
   const medications = record?.currentMedications ?? [];
   const canEdit = status === 'in-progress';
+
+  const rxItems: RxItem[] = rxRequests.map(r => ({
+    id: String(r._id),
+    modality: r.modality as RxModality,
+    toothNumbers: (r.toothNumbers as string[]) ?? [],
+    notes: (r.notes as string | null) ?? null,
+    status: r.status as RxStatus,
+    requestedAtLabel: r.requestedAt ? lisbonHhmm(r.requestedAt) : '—',
+  }));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -370,6 +389,13 @@ export default async function ConsultationPage({
               appointmentId={id}
               procedures={procedureItems}
               treatments={treatmentOptions}
+              canEdit={canEdit}
+            />
+          )}
+          {(canEdit || rxItems.length > 0) && (
+            <RxRequestPanel
+              appointmentId={id}
+              items={rxItems}
               canEdit={canEdit}
             />
           )}

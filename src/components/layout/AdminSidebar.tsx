@@ -16,6 +16,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
+  ScanLine,
   BarChart3,
   CalendarDays,
   ClipboardList,
@@ -51,6 +52,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: '/admin/pacientes', label: 'Pacientes', icon: Users },
       { href: '/admin/agenda', label: 'Agenda', icon: CalendarDays },
       { href: '/admin/cobranca', label: 'Cobrança', icon: ReceiptEuro },
+      { href: '/admin/rx', label: 'Raio-X', icon: ScanLine },
       {
         href: '/admin/recalls',
         label: 'Recalls',

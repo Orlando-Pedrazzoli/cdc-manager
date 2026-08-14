@@ -159,9 +159,16 @@ export const createDoctorSchema = z.object({
     .trim()
     .min(3, 'Nome demasiado curto')
     .max(120, 'Nome demasiado longo'),
+  // Cédula profissional (OMD) — numérica. Opcional no registo, mas será
+  // exigida quando o médico emitir receitas/consentimentos (B.6): a UI
+  // sinaliza quem não a tem para o admin regularizar antes disso.
   licenseNumber: z.preprocess(
     emptyToNull,
-    z.string().trim().max(30).nullable(),
+    z
+      .string()
+      .trim()
+      .regex(/^\d{1,10}$/, 'Cédula inválida — apenas dígitos (máx. 10)')
+      .nullable(),
   ),
   specialties: specialtiesField,
   clinicSchedules: clinicSchedulesField,

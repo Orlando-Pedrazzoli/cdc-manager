@@ -16,16 +16,36 @@
 //
 // Os cartões (destaque e lista) linkam para /doutor/consulta/[id] — o
 // fluxo da consulta (iniciar → registar → concluir).
+//
+// Acrescentos desta iteração:
+//   4. "O meu mês" — produção própria (sparkline 30 dias + comparação
+//      honesta dia 1–N vs mês anterior) e comissão materializada dos
+//      snapshots. APENAS do próprio médico — comissões de colegas nunca
+//      saem daqui. Self-service que o Dentoral nunca deu.
+//   5. "Consultas por fechar" — in-progress/checked-in de dias ANTERIORES
+//      esquecidas abertas. Importante: a baixa de stock por BOM e a fila
+//      de cobrança disparam no CONCLUIR — consulta esquecida = stock e
+//      cobrança errados. Alerta âmbar acionável.
+//   6. <AutoRefresh/> — a página vive aberta entre consultas.
 // =============================================================================
 
 import Link from 'next/link';
+import mongoose from 'mongoose';
+import AutoRefresh from '@/components/ui/AutoRefresh';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import Appointment, { type AppointmentStatus } from '@/models/Appointment';
 import Patient from '@/models/Patient';
+import Procedure from '@/models/Procedure';
 import TreatmentType from '@/models/TreatmentType';
 import { getActiveClinics } from '@/models/Clinic';
-import { lisbonToUtc, todayLisbon, minToHhmm } from '@/lib/availability';
+import {
+  lisbonToUtc,
+  todayLisbon,
+  minToHhmm,
+  dateRange,
+} from '@/lib/availability';
+import { formatCents } from '@/lib/commissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -140,23 +160,109 @@ export default async function DoctorDashboardPage() {
   const dayStartUtc = lisbonToUtc(today, 0);
   const dayEndUtc = lisbonToUtc(today, 24 * 60);
 
+  // --- Janelas do "O meu mês" (mesma comparação honesta 1–N da admin) -------
+  const [y, m, d] = today.split('-').map(Number);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const monthStart = lisbonToUtc(`${y}-${pad(m)}-01`, 0);
+  const prevY = m === 1 ? y - 1 : y;
+  const prevM = m === 1 ? 12 : m - 1;
+  const prevMonthDays = new Date(Date.UTC(prevY, prevM, 0)).getUTCDate();
+  const prevD = Math.min(d, prevMonthDays); // clamp fim de mês (31→28/29/30)
+  const prevStart = lisbonToUtc(`${prevY}-${pad(prevM)}-01`, 0);
+  const prevEnd = lisbonToUtc(`${prevY}-${pad(prevM)}-${pad(prevD)}`, 24 * 60);
+  const spark30StartStr = new Date(Date.UTC(y, m - 1, d - 29))
+    .toISOString()
+    .slice(0, 10);
+  const spark30Start = lisbonToUtc(spark30StartStr, 0);
+
   // Marcações de HOJE do médico, nas duas clínicas, todos os estados —
   // canceladas/faltas aparecem esbatidas na lista (contexto do dia completo)
-  const [appointments, clinics] = await Promise.all([
-    Appointment.find({
-      doctorId,
-      startAt: { $gte: dayStartUtc, $lt: dayEndUtc },
-    })
-      .sort({ startAt: 1 })
-      .lean(),
-    getActiveClinics(),
-  ]);
+  const [appointments, clinics, monthAgg, prevAgg, sparkAgg, staleRaw] =
+    await Promise.all([
+      Appointment.find({
+        doctorId,
+        startAt: { $gte: dayStartUtc, $lt: dayEndUtc },
+      })
+        .sort({ startAt: 1 })
+        .lean(),
+      getActiveClinics(),
+      // Produção e comissão do PRÓPRIO médico: mês corrente até hoje.
+      // Snapshots imutáveis (priceCents/commissionCents congelados na
+      // execução) — somar sem recalcular, como nos relatórios.
+      Procedure.aggregate<{
+        _id: null;
+        cents: number;
+        comm: number;
+        n: number;
+      }>([
+        {
+          $match: {
+            doctorId: new mongoose.Types.ObjectId(doctorId),
+            status: { $in: ['completed', 'invoiced'] },
+            executedAt: { $gte: monthStart, $lt: dayEndUtc },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            cents: { $sum: '$priceCents' },
+            comm: { $sum: '$commissionCents' },
+            n: { $sum: 1 },
+          },
+        },
+      ]),
+      // Mesmo intervalo de dias (1–N) do mês anterior
+      Procedure.aggregate<{ _id: null; cents: number }>([
+        {
+          $match: {
+            doctorId: new mongoose.Types.ObjectId(doctorId),
+            status: { $in: ['completed', 'invoiced'] },
+            executedAt: { $gte: prevStart, $lt: prevEnd },
+          },
+        },
+        { $group: { _id: null, cents: { $sum: '$priceCents' } } },
+      ]),
+      // Produção diária dos últimos 30 dias (sparkline, dia civil Lisboa)
+      Procedure.aggregate<{ _id: string; cents: number }>([
+        {
+          $match: {
+            doctorId: new mongoose.Types.ObjectId(doctorId),
+            status: { $in: ['completed', 'invoiced'] },
+            executedAt: { $gte: spark30Start, $lt: dayEndUtc },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: '%Y-%m-%d',
+                date: '$executedAt',
+                timezone: 'Europe/Lisbon',
+              },
+            },
+            cents: { $sum: '$priceCents' },
+          },
+        },
+      ]),
+      // Consultas de dias ANTERIORES esquecidas abertas — stock e cobrança
+      // só disparam no concluir; isto é dívida operacional a fechar
+      Appointment.find({
+        doctorId,
+        startAt: { $lt: dayStartUtc },
+        status: { $in: ['in-progress', 'checked-in'] },
+      })
+        .sort({ startAt: -1 })
+        .limit(6)
+        .lean(),
+    ]);
 
   const clinicById = new Map(
     clinics.map(c => [String(c._id), { slug: c.slug, name: c.name }]),
   );
 
-  const patientIds = [...new Set(appointments.map(a => String(a.patientId)))];
+  const patientIds = [
+    ...new Set([...appointments, ...staleRaw].map(a => String(a.patientId))),
+  ];
   const treatmentIds = [
     ...new Set(appointments.map(a => String(a.treatmentTypeId))),
   ];
@@ -230,8 +336,41 @@ export default async function DoctorDashboardPage() {
 
   const highlight = inProgress ?? nextUp;
 
+  // --- O meu mês -------------------------------------------------------------
+  const monthCents = monthAgg[0]?.cents ?? 0;
+  const monthComm = monthAgg[0]?.comm ?? 0;
+  const monthN = monthAgg[0]?.n ?? 0;
+  const prevCents = prevAgg[0]?.cents ?? 0;
+  const deltaUp = monthCents >= prevCents;
+  const sparkByDay = new Map(sparkAgg.map(r => [r._id, r.cents] as const));
+  const spark = dateRange(spark30StartStr, today).map(
+    ds => sparkByDay.get(ds) ?? 0,
+  );
+  const sparkMax = Math.max(...spark);
+
+  // --- Consultas por fechar (dias anteriores) --------------------------------
+  const staleDateFmt = new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: 'Europe/Lisbon',
+  });
+  const stale = staleRaw.map(a => {
+    const p = patientById.get(String(a.patientId));
+    const clinic = clinicById.get(String(a.clinicId));
+    return {
+      id: String(a._id),
+      dateLabel: staleDateFmt.format(a.startAt as Date),
+      time: minToHhmm(utcToLisbonMin(a.startAt as Date)),
+      patientLabel: p?.name ?? '(paciente removido)',
+      clinicSlug: clinic?.slug ?? '',
+      status: a.status as AppointmentStatus,
+    };
+  });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* A página vive aberta entre consultas — dados frescos sem F5 */}
+      <AutoRefresh intervalMs={90_000} />
       {/* Cabeçalho */}
       <div>
         <h1
@@ -254,6 +393,104 @@ export default async function DoctorDashboardPage() {
           {dateLabel}
         </p>
       </div>
+
+      {/* Consultas de dias anteriores esquecidas abertas — fechar liberta a
+          baixa de stock e a fila de cobrança. Só aparece quando existem. */}
+      {stale.length > 0 && (
+        <div
+          style={{
+            backgroundColor: '#FFF9EC',
+            border: '1px solid #F0DCB0',
+            borderRadius: '14px',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              padding: '12px 20px',
+              borderBottom: '1px solid #F0DCB0',
+              fontSize: '14px',
+              fontWeight: 700,
+              color: '#8A5A00',
+            }}
+          >
+            Consultas por fechar
+            <span
+              style={{
+                marginLeft: '8px',
+                fontSize: '12px',
+                fontWeight: 500,
+                color: '#8A5A00',
+              }}
+            >
+              — de dias anteriores; concluir regulariza o registo clínico, o
+              stock e a cobrança
+            </span>
+          </div>
+          {stale.map((s, i) => {
+            const cl = CLINIC_STYLE[s.clinicSlug] ?? {
+              bg: '#EAECF3',
+              fg: '#3D4257',
+            };
+            return (
+              <Link
+                key={s.id}
+                href={`/doutor/consulta/${s.id}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '14px',
+                  padding: '10px 20px',
+                  borderTop: i === 0 ? 'none' : '1px solid #F5EBD2',
+                  textDecoration: 'none',
+                }}
+              >
+                <span
+                  style={{
+                    fontVariantNumeric: 'tabular-nums',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: '#8A5A00',
+                    minWidth: '92px',
+                  }}
+                >
+                  {s.dateLabel} · {s.time}
+                </span>
+                <span
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: '#1B2A6B',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {s.patientLabel}
+                </span>
+                <Badge bg={cl.bg} fg={cl.fg}>
+                  {s.clinicSlug
+                    ? s.clinicSlug.charAt(0).toUpperCase() +
+                      s.clinicSlug.slice(1)
+                    : '—'}
+                </Badge>
+                <span
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#8A5A00',
+                    flexShrink: 0,
+                  }}
+                >
+                  Retomar →
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       {/* Destaque: consulta em curso / próximo paciente */}
       {highlight && (
@@ -373,6 +610,107 @@ export default async function DoctorDashboardPage() {
             </p>
           </div>
         ))}
+      </div>
+
+      {/* O meu mês — produção e comissão do PRÓPRIO médico (snapshots) */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: '12px',
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #EEF1F8',
+            borderRadius: '12px',
+            padding: '14px 18px',
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              fontSize: '26px',
+              fontWeight: 700,
+              color: '#1B2A6B',
+              lineHeight: 1.1,
+            }}
+          >
+            {formatCents(monthCents)}
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6A7186' }}>
+            A minha produção este mês · {monthN} {monthN === 1 ? 'ato' : 'atos'}
+          </p>
+          <p
+            style={{
+              margin: '4px 0 0',
+              fontSize: '12px',
+              color: deltaUp ? '#0F7B4D' : '#B3261E',
+              fontWeight: 600,
+            }}
+          >
+            {deltaUp ? '▲' : '▼'} vs {formatCents(prevCents)} no mesmo período
+            do mês passado
+          </p>
+          {sparkMax > 0 && (
+            <svg
+              viewBox={`0 0 ${spark.length * 5} 30`}
+              preserveAspectRatio='none'
+              style={{
+                display: 'block',
+                width: '100%',
+                height: '30px',
+                marginTop: '8px',
+              }}
+              aria-hidden='true'
+            >
+              {spark.map((v, i) => {
+                const h =
+                  v > 0 ? Math.max(2, Math.round((v / sparkMax) * 28)) : 1;
+                const isToday = i === spark.length - 1;
+                return (
+                  <rect
+                    key={i}
+                    x={i * 5}
+                    y={30 - h}
+                    width={4}
+                    height={h}
+                    rx={1}
+                    fill={v === 0 ? '#E8EBF4' : isToday ? '#0F7B4D' : '#2743A6'}
+                  />
+                );
+              })}
+            </svg>
+          )}
+        </div>
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #EEF1F8',
+            borderRadius: '12px',
+            padding: '14px 18px',
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              fontSize: '26px',
+              fontWeight: 700,
+              color: '#0F7B4D',
+              lineHeight: 1.1,
+            }}
+          >
+            {formatCents(monthComm)}
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6A7186' }}>
+            A minha comissão este mês
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#9AA1B4' }}>
+            Valores congelados no registo de cada ato — alterações de tabela não
+            afetam o já executado
+          </p>
+        </div>
       </div>
 
       {/* Lista cronológica do dia */}

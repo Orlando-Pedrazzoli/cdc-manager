@@ -206,7 +206,10 @@ export function DoctorForm({
               id='licenseNumber'
               name='licenseNumber'
               label='Cédula profissional (OMD)'
+              inputMode='numeric'
+              pattern='\d{1,10}'
               defaultValue={initial?.licenseNumber ?? ''}
+              help='Apenas dígitos. Necessária para receitas e consentimentos — profissionais sem cédula ficam sinalizados na listagem.'
             />
             <Input
               id='commissionRate'

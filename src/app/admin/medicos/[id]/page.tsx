@@ -184,6 +184,23 @@ export default async function DoctorPage({
       </div>
 
       {/* Conteúdo */}
+      {tab === 'dados' && !doctor.licenseNumber && (
+        <div
+          style={{
+            backgroundColor: '#FFF9EC',
+            border: '1px solid #F0DCB0',
+            borderRadius: '12px',
+            padding: '12px 20px',
+            fontSize: '13px',
+            color: '#8A5A00',
+            maxWidth: 860,
+          }}
+        >
+          Este profissional não tem cédula profissional registada. Será
+          necessária para emitir receitas e consentimentos — preencha o campo
+          abaixo.
+        </div>
+      )}
       <div
         style={{
           backgroundColor: '#FFFFFF',

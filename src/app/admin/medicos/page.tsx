@@ -173,6 +173,9 @@ export default async function DoctorsPage({
                       >
                         {d.name}
                       </Link>
+                      {!d.licenseNumber && (
+                        <Badge variant='warning'>Sem cédula</Badge>
+                      )}
                     </span>
                   </TD>
                   <TD>

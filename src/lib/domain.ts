@@ -343,3 +343,46 @@ export const DOCUMENT_CATEGORY_LABEL: Record<DocumentCategory, string> = {
   prescription: 'Receita',
   other: 'Outro',
 };
+
+// -----------------------------------------------------------------------------
+// Raio-X — pedidos do médico à sala de RX (módulo de imagiologia)
+// -----------------------------------------------------------------------------
+// Modalidades alinhadas com o equipamento real das clínicas (email PCM
+// 05/08/2026): sensores intraorais MyRay/RVG5200 (periapical, bitewing) e
+// panorâmica Kodak/Carestream.
+export const RX_MODALITIES = ['periapical', 'bitewing', 'panoramica'] as const;
+export type RxModality = (typeof RX_MODALITIES)[number];
+
+export const RX_MODALITY_LABEL: Record<RxModality, string> = {
+  periapical: 'Periapical',
+  bitewing: 'Bitewing (interproximal)',
+  panoramica: 'Panorâmica',
+};
+
+// Máquina de estados do pedido: o médico pede na consulta; o operador da
+// sala de RX inicia e conclui; o médico pode cancelar enquanto não iniciado.
+export const RX_STATUS = [
+  'requested', // pedido pelo médico; na fila da sala de RX
+  'in-progress', // operador iniciou a captação
+  'done', // captado; imagens ficarão associadas (ponte iRYS/CS Imaging)
+  'cancelled', // cancelado pelo médico antes de iniciado (nunca apagamos)
+] as const;
+export type RxStatus = (typeof RX_STATUS)[number];
+
+export const RX_STATUS_LABEL: Record<RxStatus, string> = {
+  requested: 'Pedido',
+  'in-progress': 'Em captação',
+  done: 'Concluído',
+  cancelled: 'Cancelado',
+};
+
+export const RX_TRANSITIONS: Record<RxStatus, RxStatus[]> = {
+  requested: ['in-progress', 'done', 'cancelled'], // done direto: captação rápida
+  'in-progress': ['done'],
+  done: [],
+  cancelled: [],
+};
+
+export function canTransitionRx(from: RxStatus, to: RxStatus): boolean {
+  return RX_TRANSITIONS[from]?.includes(to) ?? false;
+}
