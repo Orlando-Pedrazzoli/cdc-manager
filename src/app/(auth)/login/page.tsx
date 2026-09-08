@@ -6,9 +6,9 @@
 
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, Lock, Mail } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Lock, Mail } from 'lucide-react';
 import { loginAction, type AuthFormState } from '@/actions/auth';
 
 export default function LoginPage() {
@@ -16,6 +16,8 @@ export default function LoginPage() {
     loginAction,
     undefined,
   );
+  const [showPassword, setShowPassword] = useState(false);
+  const [capsLockOn, setCapsLockOn] = useState(false);
 
   return (
     <div>
@@ -45,6 +47,7 @@ export default function LoginPage() {
               name='email'
               type='email'
               autoComplete='email'
+              autoFocus
               required
               placeholder='o.seu.email@exemplo.pt'
               className='w-full rounded-lg border py-2.5 pl-10 pr-3 text-sm outline-none transition-shadow focus:ring-2'
@@ -81,17 +84,46 @@ export default function LoginPage() {
             <input
               id='password'
               name='password'
-              type='password'
+              type={showPassword ? 'text' : 'password'}
               autoComplete='current-password'
               required
               placeholder='••••••••••'
-              className='w-full rounded-lg border py-2.5 pl-10 pr-3 text-sm outline-none transition-shadow focus:ring-2'
+              onKeyUp={e =>
+                setCapsLockOn(e.getModifierState?.('CapsLock') ?? false)
+              }
+              onBlur={() => setCapsLockOn(false)}
+              className='w-full rounded-lg border py-2.5 pl-10 pr-11 text-sm outline-none transition-shadow focus:ring-2'
               style={{
                 borderColor: '#D8DEEF',
                 color: '#1B2A6B',
               }}
             />
+            <button
+              type='button'
+              onClick={() => setShowPassword(v => !v)}
+              aria-label={
+                showPassword ? 'Ocultar password' : 'Mostrar password'
+              }
+              tabIndex={-1}
+              className='absolute right-3 top-1/2 -translate-y-1/2'
+              style={{ color: '#9AA1B4', cursor: 'pointer' }}
+            >
+              {showPassword ? (
+                <EyeOff className='h-4 w-4' />
+              ) : (
+                <Eye className='h-4 w-4' />
+              )}
+            </button>
           </div>
+          {capsLockOn && (
+            <p
+              className='mt-1.5 text-xs font-medium'
+              style={{ color: '#8A5A00' }}
+              role='status'
+            >
+              ⚠ Caps Lock está ativo
+            </p>
+          )}
         </div>
 
         {state?.error && (

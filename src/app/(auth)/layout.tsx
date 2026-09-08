@@ -64,22 +64,47 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             CDC Manager
           </h1>
           <p className='mt-3 max-w-md text-lg' style={{ color: '#C9D4FF' }}>
-            A gestão completa do Centro Dentário Colombo — pacientes, agendas,
-            consultas e faturação num só lugar.
+            A gestão completa das clínicas Colombo e Buraca — pacientes,
+            agendas, consultas e faturação num só lugar.
           </p>
         </div>
 
         <p className='relative z-10 text-sm' style={{ color: '#9FB0F0' }}>
-          © {new Date().getFullYear()} Centro Dentário Colombo · Pedrazzoli
-          Digital
+          © {new Date().getFullYear()} Centro Dentário Colombo · Clínicas
+          Colombo e Buraca · Pedrazzoli Digital
         </p>
       </div>
 
       {/* Formulário */}
       <div
-        className='flex w-full items-center justify-center px-6 py-12 lg:w-1/2'
+        className='flex w-full flex-col items-center justify-center px-6 py-12 lg:w-1/2'
         style={{ backgroundColor: '#FFFFFF' }}
       >
+        {/* Branding só-mobile: o painel azul está oculto < 1024px e os
+            pacientes entram sobretudo pelo telemóvel — sem isto o
+            formulário aparecia sem identidade nenhuma */}
+        <div className='mb-8 flex flex-col items-center gap-2 lg:hidden'>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src='/logo-cdc.png'
+            alt='Centro Dentário Colombo'
+            style={{
+              height: '56px',
+              width: '56px',
+              objectFit: 'contain',
+              display: 'block',
+            }}
+          />
+          <span
+            className='text-center text-sm font-bold leading-tight'
+            style={{ color: '#1B2A6B' }}
+          >
+            CENTRO DENTÁRIO COLOMBO
+          </span>
+          <span className='text-xs' style={{ color: '#6A7186' }}>
+            Clínicas Colombo e Buraca
+          </span>
+        </div>
         <div className='w-full max-w-md'>{children}</div>
       </div>
     </div>
