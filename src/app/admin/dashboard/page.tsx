@@ -45,6 +45,7 @@ import Recall from '@/models/Recall';
 import Product from '@/models/Product';
 import Doctor from '@/models/Doctor';
 import TreatmentType from '@/models/TreatmentType';
+import RxRequest from '@/models/RxRequest';
 import { getActiveClinics } from '@/models/Clinic';
 import {
   lisbonToUtc,
@@ -128,6 +129,7 @@ export default async function AdminDashboardPage() {
     newPatientsMonth,
     newPatientsPrev,
     occupancyRaw,
+    rxPending,
   ] = await Promise.all([
     getActiveClinics(),
     // Marcações de hoje agrupadas por clínica × estado
@@ -320,6 +322,9 @@ export default async function AdminDashboardPage() {
     })
       .select('clinicId startAt endAt')
       .lean(),
+    // RX por captar: pedidos na fila da sala (qualquer dia — um pedido
+    // esquecido de ontem continua a dever captação)
+    RxRequest.countDocuments({ status: { $in: ['requested', 'in-progress'] } }),
   ]);
 
   // Reorganizar agregações
@@ -574,6 +579,21 @@ export default async function AdminDashboardPage() {
       href: `/admin/agenda?date=${tomorrowStr}`,
       ...(pendingTomorrow > 0
         ? { accentBg: '#F5F8FF', accentBorder: '#C9D4FF' }
+        : {}),
+    },
+    {
+      // Fila da sala de RX (requested + in-progress, qualquer dia) — âmbar
+      // quando há captações a dever; liga direto à fila /admin/rx
+      label: 'RX por captar',
+      value: String(rxPending),
+      sub: rxPending > 0 ? 'Na fila da sala de RX' : 'Fila vazia',
+      href: '/admin/rx',
+      ...(rxPending > 0
+        ? {
+            accentBg: '#FFF9EE',
+            accentBorder: '#F2DEB6',
+            valueColor: '#8A5A00',
+          }
         : {}),
     },
     {
