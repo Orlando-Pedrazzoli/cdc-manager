@@ -10,7 +10,7 @@
 // =============================================================================
 
 import Link from 'next/link';
-import { UserPlus } from 'lucide-react';
+import { Pencil, UserPlus } from 'lucide-react';
 import { dbConnect } from '@/lib/mongodb';
 import Doctor, { type Specialty } from '@/models/Doctor';
 import Clinic from '@/models/Clinic';
@@ -129,12 +129,15 @@ export default async function DoctorsPage({
             </TH>
             <TH width={120}>Conta</TH>
             <TH width={90}>Estado</TH>
+            <TH width={80} align='right'>
+              {/* coluna de ação */}
+            </TH>
           </TR>
         </THead>
         <TBody>
           {doctors.length === 0 ? (
             <TableEmpty
-              colSpan={6}
+              colSpan={7}
               message='Ainda não existem profissionais registados.'
             />
           ) : (
@@ -229,6 +232,29 @@ export default async function DoctorsPage({
                     ) : (
                       <Badge variant='neutral'>Inativo</Badge>
                     )}
+                  </TD>
+                  <TD align='right'>
+                    {/* Ação explícita: o nome também abre a ficha, mas sem
+                        um "Editar" visível ninguém descobre (UX da demo) */}
+                    <Link
+                      href={`/admin/medicos/${id}`}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        color: '#2743A6',
+                        textDecoration: 'none',
+                        border: '1px solid #C9D4FF',
+                        borderRadius: '8px',
+                        padding: '5px 10px',
+                        backgroundColor: '#F5F8FF',
+                      }}
+                    >
+                      <Pencil size={13} />
+                      Editar
+                    </Link>
                   </TD>
                 </TR>
               );
