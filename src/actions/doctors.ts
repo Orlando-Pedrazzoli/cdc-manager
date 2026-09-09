@@ -205,6 +205,55 @@ async function issueDoctorInvite(params: {
 }
 
 // -----------------------------------------------------------------------------
+// CONVIDAR CONTA DE MÉDICO EXISTENTE (ficha → painel "Conta de acesso")
+// -----------------------------------------------------------------------------
+// A criação do médico tem o convite embutido (sendActivationInvite), mas os
+// profissionais criados sem conta (ex.: seed) não tinham NENHUM caminho para
+// receber acesso — esta action fecha essa lacuna reutilizando o mesmo
+// issueDoctorInvite (código de uso único 7 dias, email, audit, fallback
+// manual). Também serve de "reenviar" quando o convite expira/perde-se.
+// O email é recebido aqui (o modelo Doctor não guarda email — vive no User).
+export async function inviteDoctorAccountAction(
+  doctorId: string,
+  emailRaw: string,
+): Promise<{ ok: true; manualCode?: string } | { error: string }> {
+  let admin;
+  try {
+    admin = await requireAdmin();
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+
+  if (!/^[0-9a-fA-F]{24}$/.test(doctorId)) {
+    return { error: 'Profissional inválido.' };
+  }
+  const email = emailRaw.toLowerCase().trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { error: 'Indique um email válido.' };
+  }
+
+  await dbConnect();
+  const doctor = await Doctor.findById(doctorId).select('name active').lean();
+  if (!doctor) return { error: 'Profissional não encontrado.' };
+  if (!doctor.active) {
+    return { error: 'Profissional inativo — reative-o antes de dar acesso.' };
+  }
+
+  const result = await issueDoctorInvite({
+    doctorId,
+    doctorName: doctor.name,
+    email,
+    adminUserId: admin.id,
+  });
+
+  if ('ok' in result) {
+    revalidatePath(`/admin/medicos/${doctorId}`);
+    revalidatePath('/admin/medicos');
+  }
+  return result;
+}
+
+// -----------------------------------------------------------------------------
 // CRIAR MÉDICO
 // -----------------------------------------------------------------------------
 export async function createDoctorAction(

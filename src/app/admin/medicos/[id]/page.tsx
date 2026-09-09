@@ -27,6 +27,7 @@ import {
 } from '@/components/medicos/DoctorExceptions';
 import { CommissionEditor } from '@/components/medicos/CommissionEditor';
 import DoctorStatusToggle from '@/components/medicos/DoctorStatusToggle';
+import DoctorInvitePanel from '@/components/medicos/DoctorInvitePanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -147,6 +148,16 @@ export default async function DoctorPage({
           </span>
         )}
       </div>
+
+      {/* Convite de acesso: só quando não há conta ativa/desligada — contas
+          'disabled' religam-se ao reativar o profissional, não por convite */}
+      {doctor.active && (!account || account.status === 'invited') && (
+        <DoctorInvitePanel
+          doctorId={id}
+          hasPendingInvite={account?.status === 'invited'}
+          currentEmail={account?.email ?? null}
+        />
+      )}
 
       {/* Separadores */}
       <div
