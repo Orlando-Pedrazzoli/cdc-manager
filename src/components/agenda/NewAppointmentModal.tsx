@@ -82,6 +82,9 @@ export function NewAppointmentModal({
   const [slots, setSlots] = useState<{ start: string }[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [start, setStart] = useState('');
+  const [channel, setChannel] = useState<'front-desk' | 'phone' | 'whatsapp'>(
+    'front-desk',
+  );
 
   useEffect(() => {
     setStart('');
@@ -128,6 +131,7 @@ export function NewAppointmentModal({
     setTreatmentId('');
     setDoctorId('');
     setStart('');
+    setChannel('front-desk');
   }, [state, router, onClose]);
 
   return (
@@ -269,6 +273,55 @@ export function NewAppointmentModal({
             help='Sem médico atribuído — a capacidade da clínica é verificada ao guardar.'
           />
         )}
+
+        {/* Origem do pedido — de onde chegou a marcação. Alimenta a
+            estatística de canais; 'website'/'system' são reservados a
+            fluxos automáticos futuros */}
+        <div>
+          <p
+            style={{
+              margin: '0 0 6px',
+              fontSize: '13px',
+              fontWeight: 600,
+              color: '#3A3F4A',
+            }}
+          >
+            Origem do pedido
+          </p>
+          <input type='hidden' name='channel' value={channel} />
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {(
+              [
+                ['front-desk', 'Balcão'],
+                ['phone', 'Telefone'],
+                ['whatsapp', 'WhatsApp'],
+              ] as const
+            ).map(([value, label]) => {
+              const active = channel === value;
+              return (
+                <button
+                  key={value}
+                  type='button'
+                  onClick={() => setChannel(value)}
+                  aria-pressed={active}
+                  style={{
+                    flex: 1,
+                    borderRadius: '10px',
+                    border: active ? '1px solid #1B2A6B' : '1px solid #D8DEEF',
+                    backgroundColor: active ? '#1B2A6B' : '#FFFFFF',
+                    color: active ? '#FFFFFF' : '#3A3F4A',
+                    padding: '8px 0',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         <Textarea
           id='ap-note'

@@ -30,7 +30,10 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
-import Appointment, { type AppointmentStatus } from '@/models/Appointment';
+import Appointment, {
+  STAFF_BOOKING_CHANNELS,
+  type AppointmentStatus,
+} from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
 import Clinic from '@/models/Clinic';
@@ -108,6 +111,8 @@ const createSchema = z.object({
       .nullable(),
   ),
   treatmentTypeId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Selecione o ato'),
+  // Origem do PEDIDO (balcão/telefone/whatsapp) — nunca canais automáticos
+  channel: z.enum(STAFF_BOOKING_CHANNELS).default('front-desk'),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
   start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Hora inválida'),
   note: z.preprocess(
@@ -204,7 +209,7 @@ export async function createAppointmentAction(
             startAt,
             endAt,
             status: 'pending',
-            channel: 'front-desk',
+            channel: data.channel,
             createdByUserId: staff.id,
             note: data.note,
           },
@@ -418,6 +423,8 @@ export async function rescheduleAppointmentAction(
             startAt,
             endAt,
             status: 'pending',
+            // Remarcação é sempre ação de staff sobre marcação existente —
+            // a estatística de origem interessa nas marcações NOVAS
             channel: 'front-desk',
             createdByUserId: staff.id,
             note: original.note,

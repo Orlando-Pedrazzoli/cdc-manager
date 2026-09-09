@@ -26,6 +26,7 @@ import {
   type ExceptionRow,
 } from '@/components/medicos/DoctorExceptions';
 import { CommissionEditor } from '@/components/medicos/CommissionEditor';
+import DoctorStatusToggle from '@/components/medicos/DoctorStatusToggle';
 
 export const dynamic = 'force-dynamic';
 
@@ -211,12 +212,19 @@ export default async function DoctorPage({
         }}
       >
         {tab === 'dados' && (
-          <DoctorForm
-            mode='edit'
-            doctorId={id}
-            initial={initial}
-            clinics={clinics}
-          />
+          <>
+            <DoctorForm
+              mode='edit'
+              doctorId={id}
+              initial={initial}
+              clinics={clinics}
+            />
+            <DoctorStatusToggle
+              doctorId={id}
+              doctorName={doctor.name}
+              active={doctor.active}
+            />
+          </>
         )}
 
         {tab === 'excecoes' && (
