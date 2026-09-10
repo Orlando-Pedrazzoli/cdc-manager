@@ -16,7 +16,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { CalendarDays, LayoutDashboard, Users } from 'lucide-react';
+import { CalendarDays, LayoutDashboard, ScanSearch, Users } from 'lucide-react';
 import type { ComponentType } from 'react';
 
 type NavItem = {
@@ -34,6 +34,8 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: '/doutor/dashboard', label: 'O meu dia', icon: LayoutDashboard },
       { href: '/doutor/agenda', label: 'Agenda', icon: CalendarDays },
       { href: '/doutor/pacientes', label: 'Pacientes', icon: Users },
+      // Ferramenta de "cadeira": explicar causas + porquê do RX ao paciente
+      { href: '/doutor/atlas', label: 'Atlas Dentário', icon: ScanSearch },
     ],
   },
 ];

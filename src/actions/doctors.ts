@@ -154,7 +154,20 @@ async function issueDoctorInvite(params: {
       existing.role !== 'doctor' ||
       (existing.doctorId && existing.doctorId.toString() !== params.doctorId)
     ) {
-      return { error: 'Esse email já pertence a outra conta.' };
+      // 1 email = 1 conta = 1 perfil (o login identifica a conta pelo
+      // email e a sessão carrega UM perfil). Mensagem informativa: dizer
+      // QUEM detém o email e o caminho prático — a mesma pessoa usa
+      // emails distintos por perfil (ex.: profissional vs pessoal, ou
+      // alias nome+clinica@gmail.com, que entrega na mesma caixa).
+      const roleLabel: Record<string, string> = {
+        patient: 'uma conta de PACIENTE',
+        admin: 'uma conta de ADMINISTRADOR',
+        receptionist: 'uma conta de RECEÇÃO',
+        doctor: 'a conta de outro médico',
+      };
+      return {
+        error: `Este email já pertence a ${roleLabel[existing.role] ?? 'outra conta'}. Cada perfil precisa do seu próprio email — use o email profissional do médico (o pessoal pode ficar para a conta de paciente), ou um alias como nome+cdc@gmail.com.`,
+      };
     }
     if (existing.status === 'active') {
       return { error: 'Este médico já tem a conta ativa.' };

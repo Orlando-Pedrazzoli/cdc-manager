@@ -31,6 +31,7 @@ import {
   Stethoscope,
   ReceiptEuro,
   Users,
+  FlaskConical,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 
@@ -53,6 +54,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: '/admin/agenda', label: 'Agenda', icon: CalendarDays },
       { href: '/admin/cobranca', label: 'Cobrança', icon: ReceiptEuro },
       { href: '/admin/rx', label: 'Raio-X', icon: ScanLine },
+      { href: '/admin/proteses', label: 'Próteses', icon: FlaskConical },
       {
         href: '/admin/recalls',
         label: 'Recalls',

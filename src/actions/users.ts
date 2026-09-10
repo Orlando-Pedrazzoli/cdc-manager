@@ -84,7 +84,17 @@ export async function inviteUserAction(
     if (existing.status === 'invited' && existing.role === role) {
       return resendCodeFor(String(existing._id), guard.adminId);
     }
-    return { error: 'Este email já está associado a uma conta.' };
+    // 1 email = 1 conta = 1 perfil — mensagem informativa (mesma lógica
+    // do convite de médicos em doctors.ts)
+    const roleLabel: Record<string, string> = {
+      patient: 'uma conta de PACIENTE',
+      admin: 'uma conta de ADMINISTRADOR',
+      receptionist: 'uma conta de RECEÇÃO',
+      doctor: 'uma conta de MÉDICO',
+    };
+    return {
+      error: `Este email já pertence a ${roleLabel[existing.role] ?? 'outra conta'}. Cada perfil precisa do seu próprio email — use um email distinto para este perfil, ou um alias como nome+cdc@gmail.com (entrega na mesma caixa).`,
+    };
   }
 
   const created = await User.create({

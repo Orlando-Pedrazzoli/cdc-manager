@@ -46,6 +46,7 @@ import Product from '@/models/Product';
 import Doctor from '@/models/Doctor';
 import TreatmentType from '@/models/TreatmentType';
 import RxRequest from '@/models/RxRequest';
+import LabCase from '@/models/LabCase';
 import { getActiveClinics } from '@/models/Clinic';
 import {
   lisbonToUtc,
@@ -130,6 +131,7 @@ export default async function AdminDashboardPage() {
     newPatientsPrev,
     occupancyRaw,
     rxPending,
+    labOverdue,
   ] = await Promise.all([
     getActiveClinics(),
     // Marcações de hoje agrupadas por clínica × estado
@@ -325,6 +327,9 @@ export default async function AdminDashboardPage() {
     // RX por captar: pedidos na fila da sala (qualquer dia — um pedido
     // esquecido de ontem continua a dever captação)
     RxRequest.countDocuments({ status: { $in: ['requested', 'in-progress'] } }),
+    // Próteses atrasadas: no laboratório com data prevista ultrapassada —
+    // sinal de COBRANÇA (a receção liga ao laboratório); /admin/proteses
+    LabCase.countDocuments({ status: 'sent', dueDate: { $lt: dayStart } }),
   ]);
 
   // Reorganizar agregações
@@ -593,6 +598,20 @@ export default async function AdminDashboardPage() {
             accentBg: '#FFF9EE',
             accentBorder: '#F2DEB6',
             valueColor: '#8A5A00',
+          }
+        : {}),
+    },
+    {
+      // Próteses com chegada prevista ultrapassada — cobrar o laboratório
+      label: 'Próteses atrasadas',
+      value: String(labOverdue),
+      sub: labOverdue > 0 ? 'Cobrar o laboratório' : 'Laboratório em dia',
+      href: '/admin/proteses?filtro=atrasadas',
+      ...(labOverdue > 0
+        ? {
+            accentBg: '#FDF3F2',
+            accentBorder: '#F3CFCC',
+            valueColor: '#B3261E',
           }
         : {}),
     },

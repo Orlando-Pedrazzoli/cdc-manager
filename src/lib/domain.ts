@@ -394,3 +394,55 @@ export function canTransitionRx(from: RxStatus, to: RxStatus): boolean {
 export const RX_CONSENT_LEGAL_TEXT =
   'Paciente consente o exame consoante as orientações de benefícios e ' +
   'riscos (cfr. artigo 101º do DL 108/2018).';
+
+// =============================================================================
+// PRÓTESES — casos enviados a laboratório externo (client-safe)
+// -----------------------------------------------------------------------------
+// A clínica envia trabalhos protéticos a um laboratório terceiro e precisa
+// de os perseguir: data de envio, data prevista de chegada, atraso = alerta
+// no dashboard para a receção cobrar o laboratório (best practice dos
+// sistemas de case tracking: checkpoints envio → chegada → colocação, com
+// fila de "atrasadas" à cabeça).
+// =============================================================================
+
+export const LAB_WORK_TYPES = [
+  'coroa',
+  'ponte',
+  'faceta',
+  'inlay-onlay',
+  'protese-parcial-acrilica',
+  'protese-total-acrilica',
+  'protese-esqueletica',
+  'protese-sobre-implante',
+  'goteira',
+  'outro',
+] as const;
+export type LabWorkType = (typeof LAB_WORK_TYPES)[number];
+
+export const LAB_WORK_TYPE_LABEL: Record<LabWorkType, string> = {
+  coroa: 'Coroa',
+  ponte: 'Ponte',
+  faceta: 'Faceta',
+  'inlay-onlay': 'Inlay / Onlay',
+  'protese-parcial-acrilica': 'Prótese parcial acrílica',
+  'protese-total-acrilica': 'Prótese total acrílica',
+  'protese-esqueletica': 'Prótese esquelética',
+  'protese-sobre-implante': 'Prótese sobre implante',
+  goteira: 'Goteira',
+  outro: 'Outro trabalho',
+};
+
+export const LAB_CASE_STATUSES = [
+  'sent', // enviada ao laboratório (em curso)
+  'received', // chegou à clínica
+  'delivered', // colocada / entregue ao paciente
+  'cancelled',
+] as const;
+export type LabCaseStatus = (typeof LAB_CASE_STATUSES)[number];
+
+export const LAB_CASE_STATUS_LABEL: Record<LabCaseStatus, string> = {
+  sent: 'No laboratório',
+  received: 'Recebida na clínica',
+  delivered: 'Colocada no paciente',
+  cancelled: 'Cancelada',
+};
