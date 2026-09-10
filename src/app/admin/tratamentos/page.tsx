@@ -83,6 +83,7 @@ export default async function TratamentosPage() {
     bufferMin: d.bufferMin,
     priceCents: d.priceCents,
     costCents: d.costCents ?? 0,
+    commissionRate: d.commissionRate ?? null,
     bookableOnline: !!d.bookableOnline,
     requiresEvaluation: !!d.requiresEvaluation,
     controlsTooth: !!d.controlsTooth,

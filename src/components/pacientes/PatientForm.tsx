@@ -18,7 +18,13 @@
 
 'use client';
 
-import { useActionState, useEffect, useRef, useState } from 'react';
+import {
+  startTransition,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Copy } from 'lucide-react';
@@ -260,7 +266,9 @@ export function PatientForm({
 
     if (mode === 'create') {
       toast.success(`Paciente criado (processo nº ${state.processNumber})`);
-      router.push(`/admin/pacientes/${state.patientId}`);
+      // Fechar o formulário: voltar à LISTA (pedido da direção pós-demo —
+      // ficar no formulário deixava dúvida se tinha gravado)
+      router.push('/admin/pacientes');
     } else {
       toast.success('Ficha atualizada.');
       router.refresh();
@@ -272,7 +280,7 @@ export function PatientForm({
     setManualCode(null);
     setPendingNavId(null);
     if (mode === 'create' && navId) {
-      router.push(`/admin/pacientes/${navId}`);
+      router.push('/admin/pacientes');
     } else {
       router.refresh();
     }
@@ -281,7 +289,18 @@ export function PatientForm({
   return (
     <>
       <form
-        action={formAction}
+        // Submissão MANUAL (preventDefault + startTransition): o React 19
+        // faz reset automático de campos não controlados quando a action é
+        // invocada via atributo action={} — incluindo em ERRO de validação.
+        // Foi isso que apagou o formulário na demo de 09/09/2026. Invocada
+        // assim, os valores preenchidos ficam SEMPRE intactos.
+        onSubmit={e => {
+          e.preventDefault();
+          const fd = new FormData(e.currentTarget);
+          startTransition(() => {
+            formAction(fd);
+          });
+        }}
         style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
       >
         {/* --- Identificação -------------------------------------------------- */}
@@ -447,8 +466,18 @@ export function PatientForm({
               name='postalCode'
               label='Código postal'
               maxLength={8}
+              inputMode='numeric'
               value={postalCode}
-              onChange={e => setPostalCode(e.target.value)}
+              onChange={e => {
+                // Máscara CP7: só dígitos, hífen inserido automaticamente
+                // após os 4 primeiros — "1234567" e "1234-567" dão o mesmo
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 7);
+                setPostalCode(
+                  digits.length > 4
+                    ? `${digits.slice(0, 4)}-${digits.slice(4)}`
+                    : digits,
+                );
+              }}
               placeholder='0000-000'
               help='Ao completar, a localidade preenche-se automaticamente'
             />

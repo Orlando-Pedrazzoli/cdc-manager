@@ -62,6 +62,8 @@ export interface CatalogTreatment {
   bufferMin: number;
   priceCents: number;
   costCents: number;
+  /** Comissão do médico específica do ato (fração 0..1; null = herda) */
+  commissionRate: number | null;
   bookableOnline: boolean;
   requiresEvaluation: boolean;
   controlsTooth: boolean;
@@ -280,6 +282,24 @@ function TreatmentModal({
                 placeholder='0,00'
                 inputMode='decimal'
                 help='Materiais/laboratório (margem)'
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Input
+                id='ttype-commission'
+                name='commissionPercent'
+                label='Comissão médico (%)'
+                type='number'
+                min={0}
+                max={100}
+                step={1}
+                defaultValue={
+                  editing && editing.commissionRate != null
+                    ? Math.round(editing.commissionRate * 100)
+                    : ''
+                }
+                placeholder='—'
+                help='Vazio = herda (taxa do médico ou default 40%)'
               />
             </div>
           </div>

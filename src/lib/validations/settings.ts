@@ -127,6 +127,19 @@ const treatmentTypeBaseSchema = z.object({
     v => (typeof v === 'string' && v.trim() === '' ? 0 : v),
     priceEurosField,
   ),
+  // Comissão do médico específica do ato — o form envia % no campo
+  // 'commissionPercent' ('' = null → herda a cadeia); guarda-se fração 0..1
+  commissionRate: z.preprocess(
+    emptyToNull,
+    z.union([
+      z.null(),
+      z.coerce
+        .number()
+        .min(0, 'Comissão inválida (0–100%)')
+        .max(100, 'Comissão inválida (0–100%)')
+        .transform(v => v / 100),
+    ]),
+  ),
   // Flags de paridade Dentoral
   controlsTooth: checkboxField,
   requiresRxConsent: checkboxField,

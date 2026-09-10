@@ -138,10 +138,19 @@ const birthDateField = z.preprocess(
 );
 
 const postalCodeField = z.preprocess(
-  emptyToNull,
+  v => {
+    const x = emptyToNull(v);
+    if (typeof x !== 'string') return x;
+    // Defesa em profundidade (a UI já mascara): aceitar "1234567",
+    // "1234 567" ou "1234-567" e normalizar para o formato canónico
+    const digits = x.replace(/[\s-]/g, '');
+    if (/^\d{7}$/.test(digits)) {
+      return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+    }
+    return x.trim();
+  },
   z
     .string()
-    .trim()
     .regex(/^\d{4}-\d{3}$/, 'Código postal inválido (formato 0000-000)')
     .nullable(),
 );

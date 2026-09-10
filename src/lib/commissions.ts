@@ -2,10 +2,17 @@
 // =============================================================================
 // CDC Manager — Resolução e cálculo de comissões
 // -----------------------------------------------------------------------------
-// CADEIA DE RESOLUÇÃO (decisão firme do cliente):
+// CADEIA DE RESOLUÇÃO (decisão firme do cliente; degrau 3 pedido pela
+// Isabel em 10/09/2026 — atos com comissão própria acima/abaixo dos 40%):
 //   1. override por (médico × tipo de ato)   → Doctor.commissionOverrides
 //   2. taxa base do médico                   → Doctor.commissionRate
-//   3. default da clínica ONDE O ATO É FEITO → Clinic.defaultDoctorCommission
+//   3. taxa própria do ATO                   → TreatmentType.commissionRate
+//   4. default da clínica ONDE O ATO É FEITO → Clinic.defaultDoctorCommission
+//
+// Porquê o ato DEPOIS do médico: acordos individuais negociados (base do
+// médico) nunca são alterados silenciosamente pela tabela de atos — a
+// tabela substitui apenas o antigo "40% para tudo". Se um médico concreto
+// deve fugir à tabela num ato, é exatamente para isso que serve o override.
 //
 // A taxa resolvida é uma FRAÇÃO da parte do MÉDICO (0.40 = 40% para o médico).
 // É resolvida UMA vez, no momento da execução do ato, e congelada no
@@ -32,6 +39,8 @@ export interface ResolveCommissionParams {
   overrides: CommissionOverrideLike[] | null | undefined;
   /** Taxa base do médico (null = não definida) */
   doctorRate: number | null | undefined;
+  /** Taxa própria do ato (TreatmentType.commissionRate; null = não definida) */
+  treatmentRate?: number | null | undefined;
   /** Default da clínica onde o ato é executado (ex.: 0.40) */
   clinicDefault: number;
   /** Ato em execução */
@@ -40,7 +49,7 @@ export interface ResolveCommissionParams {
 
 /**
  * Resolve a fração do médico para um ato, seguindo a cadeia
- * override > taxa base > default da clínica.
+ * override > taxa base do médico > taxa do ato > default da clínica.
  */
 export function resolveCommissionRate(params: ResolveCommissionParams): number {
   const wanted = String(params.treatmentTypeId);
@@ -51,6 +60,8 @@ export function resolveCommissionRate(params: ResolveCommissionParams): number {
   if (override && isValidRate(override.rate)) return override.rate;
 
   if (isValidRate(params.doctorRate)) return params.doctorRate as number;
+
+  if (isValidRate(params.treatmentRate)) return params.treatmentRate as number;
 
   return params.clinicDefault;
 }

@@ -155,6 +155,17 @@ const TreatmentTypeSchema = new Schema(
       min: 0,
       default: 0,
     },
+    // Comissão do médico ESPECÍFICA deste ato (fração 0..1; null = herda).
+    // Pedido da direção (Isabel, 10/09/2026): há atos que pagam acima e
+    // abaixo dos 40%. Entra na cadeia DEPOIS das condições do médico
+    // (override e taxa base) e ANTES do default da clínica — ver
+    // lib/commissions.ts (fonte única da cadeia).
+    commissionRate: {
+      type: Number,
+      min: 0,
+      max: 1,
+      default: null,
+    },
     // Custo do tratamento em cêntimos (materiais/laboratório — campo do
     // Dentoral). Base para análise de margem; 0 = não definido.
     costCents: {

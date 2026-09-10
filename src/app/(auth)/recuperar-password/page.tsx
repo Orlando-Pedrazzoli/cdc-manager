@@ -343,13 +343,15 @@ function ConfirmForm({
 function RecoverPasswordFlow() {
   const searchParams = useSearchParams();
   const prefilledCode = searchParams.get('codigo') ?? '';
+  const prefilledEmail = searchParams.get('email') ?? '';
 
   // Com código no URL, salta direto para a fase 2
   const [phase, setPhase] = useState<'request' | 'confirm'>(
     prefilledCode ? 'confirm' : 'request',
   );
-  // Email partilhado entre fases (preenchido na 1 aparece na 2)
-  const [email, setEmail] = useState('');
+  // Email partilhado entre fases (do URL do email recebido, ou preenchido
+  // na fase 1 e transportado para a 2)
+  const [email, setEmail] = useState(prefilledEmail);
 
   return phase === 'request' ? (
     <RequestForm

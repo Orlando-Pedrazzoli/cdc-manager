@@ -659,7 +659,7 @@ export default async function DoctorPage({
               basePercentLabel={
                 doctor.commissionRate != null
                   ? `a taxa base do profissional (${Math.round(doctor.commissionRate * 100)}%)`
-                  : 'o default da clínica do ato (40%)'
+                  : 'a taxa própria do ato (Tratamentos) ou o default da clínica (40%)'
               }
               treatments={(
                 await TreatmentType.find({ active: { $ne: false } })

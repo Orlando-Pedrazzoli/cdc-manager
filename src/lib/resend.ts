@@ -165,7 +165,10 @@ export async function sendActivationEmail(params: {
   plainCode: string;
   expiresAt: Date;
 }): Promise<SendResult> {
-  const activateUrl = `${APP_URL}/ativar`;
+  // Deep-link: código + email seguem no URL — o utilizador só define a
+  // password (o código já viaja neste mesmo email; o link não expõe nada
+  // de novo, é single-use e expira)
+  const activateUrl = `${APP_URL}/ativar?codigo=${encodeURIComponent(params.plainCode)}&email=${encodeURIComponent(params.to)}`;
 
   const content = `
     <h1 style="margin:0 0 16px 0;color:#1B2A6B;font-size:20px;">
@@ -178,7 +181,8 @@ export async function sendActivationEmail(params: {
     </p>
     ${codeBlock(params.plainCode)}
     <p style="margin:0 0 8px 0;color:#3A3F4A;font-size:14px;line-height:1.7;">
-      Aceda à página de ativação e introduza o código juntamente com o seu email:
+      Clique no botão — o email e o código seguem já preenchidos; só
+      precisa de definir a sua password:
     </p>
     ${actionButton('Ativar a minha conta', activateUrl)}
     <p style="margin:0;color:#6A7186;font-size:13px;line-height:1.7;">
@@ -203,7 +207,9 @@ export async function sendPasswordResetEmail(params: {
   plainCode: string;
   expiresAt: Date;
 }): Promise<SendResult> {
-  const resetUrl = `${APP_URL}/recuperar-password`;
+  // Deep-link: mesmo padrão da ativação — salta direto para a fase de
+  // definição da nova password com email + código preenchidos
+  const resetUrl = `${APP_URL}/recuperar-password?codigo=${encodeURIComponent(params.plainCode)}&email=${encodeURIComponent(params.to)}`;
 
   const content = `
     <h1 style="margin:0 0 16px 0;color:#1B2A6B;font-size:20px;">

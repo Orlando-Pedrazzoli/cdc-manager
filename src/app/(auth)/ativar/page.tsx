@@ -16,6 +16,7 @@ import { activateAccountAction, type AuthFormState } from '@/actions/auth';
 function ActivateForm() {
   const searchParams = useSearchParams();
   const prefilledCode = searchParams.get('codigo') ?? '';
+  const prefilledEmail = searchParams.get('email') ?? '';
   const [state, formAction, pending] = useActionState<AuthFormState, FormData>(
     activateAccountAction,
     undefined,
@@ -54,6 +55,7 @@ function ActivateForm() {
               type='email'
               autoComplete='email'
               required
+              defaultValue={prefilledEmail}
               placeholder='o.email.registado.na.clinica@exemplo.pt'
               className='w-full rounded-lg border py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2'
               style={inputStyle}

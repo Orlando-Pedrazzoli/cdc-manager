@@ -191,10 +191,12 @@ export async function addProcedureAction(
       };
     }
 
-    // Cadeia: override (médico×ato) > taxa base do médico > default da clínica
+    // Cadeia: override (médico×ato) > taxa base do médico > taxa do ato >
+    // default da clínica (ver lib/commissions.ts)
     const rate = resolveCommissionRate({
       overrides: doctor.commissionOverrides,
       doctorRate: doctor.commissionRate,
+      treatmentRate: treatment.commissionRate ?? null,
       clinicDefault: clinic.defaultDoctorCommission,
       treatmentTypeId: data.treatmentTypeId,
     });

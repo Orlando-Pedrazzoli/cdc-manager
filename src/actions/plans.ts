@@ -188,14 +188,22 @@ export async function approvePlanAction(
       return { error: 'Só um plano proposto pode ser aprovado.' };
     }
 
-    const [doctor, clinic] = await Promise.all([
+    const [doctor, clinic, itemTreatments] = await Promise.all([
       Doctor.findById(doctorId)
         .select('commissionRate commissionOverrides')
         .lean(),
       getClinicById(String(plan.clinicId)),
+      TreatmentType.find({
+        _id: { $in: plan.items.map(i => i.treatmentTypeId) },
+      })
+        .select('commissionRate')
+        .lean(),
     ]);
     if (!doctor || !clinic)
       return { error: 'Dados de comissão indisponíveis.' };
+    const treatmentRateById = new Map(
+      itemTreatments.map(t => [String(t._id), t.commissionRate ?? null]),
+    );
 
     // Um Procedure 'planned' por item, com comissão PROVISÓRIA (a definitiva
     // é congelada na execução — princípio do snapshot)
@@ -203,6 +211,7 @@ export async function approvePlanAction(
       const rate = resolveCommissionRate({
         overrides: doctor.commissionOverrides,
         doctorRate: doctor.commissionRate,
+        treatmentRate: treatmentRateById.get(String(item.treatmentTypeId)),
         clinicDefault: clinic.defaultDoctorCommission,
         treatmentTypeId: String(item.treatmentTypeId),
       });
@@ -321,17 +330,21 @@ export async function executePlanItemAction(
     }
 
     // Comissão DEFINITIVA resolvida e congelada na execução
-    const [doctor, clinic] = await Promise.all([
+    const [doctor, clinic, procTreatment] = await Promise.all([
       Doctor.findById(doctorId)
         .select('commissionRate commissionOverrides')
         .lean(),
       getClinicById(String(proc.clinicId)),
+      TreatmentType.findById(proc.treatmentTypeId)
+        .select('commissionRate')
+        .lean(),
     ]);
     if (!doctor || !clinic)
       return { error: 'Dados de comissão indisponíveis.' };
     const rate = resolveCommissionRate({
       overrides: doctor.commissionOverrides,
       doctorRate: doctor.commissionRate,
+      treatmentRate: procTreatment?.commissionRate ?? null,
       clinicDefault: clinic.defaultDoctorCommission,
       treatmentTypeId: String(proc.treatmentTypeId),
     });
