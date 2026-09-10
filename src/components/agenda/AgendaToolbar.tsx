@@ -32,7 +32,7 @@ export function AgendaToolbar({
         open={open}
         onClose={() => setOpen(false)}
         clinicId={clinicId}
-        date={date}
+        initialDate={date}
         doctors={doctors}
         treatments={treatments}
       />

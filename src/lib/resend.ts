@@ -246,6 +246,9 @@ export async function sendAppointmentConfirmationEmail(params: {
   timeLabel: string; // "15:30"
   treatmentName: string;
   doctorName: string | null;
+  // Link público /confirmar/[token] — confirmação com um clique já no ato
+  // da marcação (primeiro toque da cadência; o lembrete 24h repete-o)
+  confirmUrl?: string | null;
 }): Promise<SendResult> {
   const rows: [string, string][] = [
     ['Data', params.dateLabel],
@@ -280,6 +283,14 @@ export async function sendAppointmentConfirmationEmail(params: {
     <table style="border-collapse:collapse;margin:0 0 16px 0;background:#F4F6FB;border-radius:10px;padding:8px;width:100%;">
       <tbody>${detailRows}</tbody>
     </table>
+    ${
+      params.confirmUrl
+        ? `<p style="margin:0 0 4px 0;color:#3A3F4A;font-size:14px;line-height:1.7;">
+      Pedimos que confirme a sua presença — basta um clique:
+    </p>
+    ${actionButton('Confirmar presença ✔', params.confirmUrl)}`
+        : ''
+    }
     <p style="margin:0;color:#6A7186;font-size:13px;line-height:1.7;">
       Se precisar de remarcar ou cancelar, contacte a clínica. Até breve!
     </p>`;
@@ -287,6 +298,134 @@ export async function sendAppointmentConfirmationEmail(params: {
   return send({
     to: params.to,
     subject: `Consulta marcada — ${params.dateLabel}, ${params.timeLabel}`,
+    html: baseLayout(content),
+  });
+}
+
+// -----------------------------------------------------------------------------
+// 4) NOTIFICAÇÃO INTERNA AO MÉDICO — nova marcação na SUA agenda
+// -----------------------------------------------------------------------------
+export async function sendDoctorNewAppointmentEmail(params: {
+  to: string;
+  doctorName: string;
+  patientName: string;
+  clinicName: string;
+  dateLabel: string; // "Segunda-feira, 3 de agosto de 2026"
+  timeLabel: string; // "15:30"
+  treatmentName: string;
+  note: string | null;
+}): Promise<SendResult> {
+  const agendaUrl = `${APP_URL}/doutor/agenda`;
+  const rows: [string, string][] = [
+    ['Paciente', params.patientName],
+    ['Data', params.dateLabel],
+    ['Hora', params.timeLabel],
+    ['Ato', params.treatmentName],
+    ['Clínica', params.clinicName],
+  ];
+  if (params.note) rows.push(['Nota', params.note]);
+
+  const detailRows = rows
+    .map(
+      ([k, v]) => `
+      <tr>
+        <td style="padding:6px 14px 6px 0;color:#6A7186;font-size:13px;white-space:nowrap;vertical-align:top;">${k}</td>
+        <td style="padding:6px 0;color:#1B2A6B;font-size:14px;font-weight:600;">${v}</td>
+      </tr>`,
+    )
+    .join('');
+
+  const content = `
+    <h1 style="margin:0 0 16px 0;color:#1B2A6B;font-size:20px;">
+      Nova marcação na sua agenda
+    </h1>
+    <p style="margin:0 0 12px 0;color:#3A3F4A;font-size:14px;line-height:1.7;">
+      Olá Dr(a). ${params.doctorName}, foi criada uma nova marcação para si:
+    </p>
+    <table style="border-collapse:collapse;margin:0 0 16px 0;background:#F4F6FB;border-radius:10px;padding:8px;width:100%;">
+      <tbody>${detailRows}</tbody>
+    </table>
+    ${actionButton('Ver a minha agenda', agendaUrl)}
+    <p style="margin:0;color:#6A7186;font-size:13px;line-height:1.7;">
+      Este é um aviso automático do CDC Manager.
+    </p>`;
+
+  return send({
+    to: params.to,
+    subject: `Nova marcação — ${params.patientName}, ${params.dateLabel} às ${params.timeLabel}`,
+    html: baseLayout(content),
+  });
+}
+
+// -----------------------------------------------------------------------------
+// 5) LEMBRETE 24H ANTES DA CONSULTA — com botão de confirmação (um clique)
+// -----------------------------------------------------------------------------
+// Enviado pelo cron /api/cron/reminders. Se a marcação ainda está 'pending',
+// o botão confirma; se já está 'confirmed', o lembrete vai sem botão (a
+// não-resposta a este email é o sinal para a receção ligar — painel
+// "Por confirmar" na agenda do admin).
+export async function sendAppointmentReminderEmail(params: {
+  to: string;
+  patientName: string;
+  clinicName: string;
+  clinicAddress: string | null;
+  dateLabel: string;
+  timeLabel: string;
+  treatmentName: string;
+  doctorName: string | null;
+  confirmUrl: string | null; // null = já confirmada → lembrete simples
+}): Promise<SendResult> {
+  const rows: [string, string][] = [
+    ['Data', params.dateLabel],
+    ['Hora', params.timeLabel],
+    ['Ato', params.treatmentName],
+  ];
+  if (params.doctorName) rows.push(['Profissional', params.doctorName]);
+  rows.push([
+    'Clínica',
+    params.clinicName +
+      (params.clinicAddress ? ` — ${params.clinicAddress}` : ''),
+  ]);
+
+  const detailRows = rows
+    .map(
+      ([k, v]) => `
+      <tr>
+        <td style="padding:6px 14px 6px 0;color:#6A7186;font-size:13px;white-space:nowrap;vertical-align:top;">${k}</td>
+        <td style="padding:6px 0;color:#1B2A6B;font-size:14px;font-weight:600;">${v}</td>
+      </tr>`,
+    )
+    .join('');
+
+  const content = `
+    <h1 style="margin:0 0 16px 0;color:#1B2A6B;font-size:20px;">
+      A sua consulta é amanhã 🦷
+    </h1>
+    <p style="margin:0 0 12px 0;color:#3A3F4A;font-size:14px;line-height:1.7;">
+      Olá ${params.patientName}, lembramos que tem uma consulta marcada:
+    </p>
+    <table style="border-collapse:collapse;margin:0 0 16px 0;background:#F4F6FB;border-radius:10px;padding:8px;width:100%;">
+      <tbody>${detailRows}</tbody>
+    </table>
+    ${
+      params.confirmUrl
+        ? `<p style="margin:0 0 4px 0;color:#3A3F4A;font-size:14px;line-height:1.7;">
+      Por favor confirme a sua presença — basta um clique:
+    </p>
+    ${actionButton('Confirmar presença ✔', params.confirmUrl)}
+    <p style="margin:0;color:#6A7186;font-size:13px;line-height:1.7;">
+      Se não puder comparecer, contacte a clínica para remarcar — assim
+      libertamos o horário para outro paciente.
+    </p>`
+        : `<p style="margin:0;color:#6A7186;font-size:13px;line-height:1.7;">
+      A sua presença já está confirmada. Se precisar de remarcar ou
+      cancelar, contacte a clínica. Até amanhã!
+    </p>`
+    }`;
+
+  return send({
+    to: params.to,
+    subject: `Lembrete: consulta amanhã — ${params.dateLabel}, ${params.timeLabel}`,
     html: baseLayout(content),
   });
 }

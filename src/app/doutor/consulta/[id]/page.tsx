@@ -25,7 +25,9 @@ import TreatmentType from '@/models/TreatmentType';
 import Procedure from '@/models/Procedure';
 import ClinicalRecord from '@/models/ClinicalRecord';
 import RxRequest from '@/models/RxRequest';
+import ClinicalDocument from '@/models/Document';
 import { getClinicById } from '@/models/Clinic';
+import { signedPreviewUrl } from '@/lib/cloudinary';
 import { minToHhmm } from '@/lib/availability';
 import type { RxModality, RxStatus } from '@/lib/domain';
 import {
@@ -129,24 +131,45 @@ export default async function ConsultationPage({
   // Não pertence ao médico → mesma resposta que inexistente (não vazar)
   if (!appt || String(appt.doctorId) !== doctorId) return <NotFound />;
 
-  const [patient, clinic, treatments, procedures, record, rxRequests] =
-    await Promise.all([
-      Patient.findById(appt.patientId)
-        .select('name processNumber phone birthDate')
-        .lean(),
-      getClinicById(String(appt.clinicId)),
-      TreatmentType.find({ active: true })
-        .select('name priceCents controlsTooth')
-        .sort({ name: 1 })
-        .lean(),
-      Procedure.find({ appointmentId: appt._id }).sort({ createdAt: 1 }).lean(),
-      ClinicalRecord.findOne({ patientId: appt.patientId })
-        .select('allergies currentMedications notes')
-        .lean(),
-      RxRequest.find({ appointmentId: appt._id })
-        .sort({ requestedAt: 1 })
-        .lean(),
-    ]);
+  const [
+    patient,
+    clinic,
+    treatments,
+    procedures,
+    record,
+    rxRequests,
+    prevCompletedCount,
+    lastCompleted,
+  ] = await Promise.all([
+    Patient.findById(appt.patientId)
+      .select('name processNumber phone birthDate')
+      .lean(),
+    getClinicById(String(appt.clinicId)),
+    TreatmentType.find({ active: true })
+      .select('name priceCents controlsTooth')
+      .sort({ name: 1 })
+      .lean(),
+    Procedure.find({ appointmentId: appt._id }).sort({ createdAt: 1 }).lean(),
+    ClinicalRecord.findOne({ patientId: appt.patientId })
+      .select('allergies currentMedications notes')
+      .lean(),
+    RxRequest.find({ appointmentId: appt._id }).sort({ requestedAt: 1 }).lean(),
+    // Percurso na clínica: consultas CONCLUÍDAS anteriores a esta
+    // (qualquer médico — a triagem precisa do histórico completo)
+    Appointment.countDocuments({
+      patientId: appt.patientId,
+      status: 'completed',
+      startAt: { $lt: appt.startAt },
+    }),
+    Appointment.findOne({
+      patientId: appt.patientId,
+      status: 'completed',
+      startAt: { $lt: appt.startAt },
+    })
+      .sort({ startAt: -1 })
+      .select('startAt')
+      .lean(),
+  ]);
 
   const status = appt.status as AppointmentStatus;
   const st = STATUS_STYLE[status] ?? { bg: '#EAECF3', fg: '#3D4257' };
@@ -189,6 +212,22 @@ export default async function ConsultationPage({
   const medications = record?.currentMedications ?? [];
   const canEdit = status === 'in-progress';
 
+  // Imagens dos pedidos: imageRefs manuais guardam o publicId Cloudinary
+  // em externalRef → resolver formato via Document e assinar o preview
+  // AQUI (server, com RBAC já verificado). Refs da futura ponte iRYS que
+  // tragam url próprio passam direto.
+  const rxPublicIds = rxRequests.flatMap(r =>
+    ((r.imageRefs ?? []) as { source: string; externalRef: string }[])
+      .filter(ref => ref.source === 'manual')
+      .map(ref => ref.externalRef),
+  );
+  const rxDocs = rxPublicIds.length
+    ? await ClinicalDocument.find({ publicId: { $in: rxPublicIds } })
+        .select('publicId title format voidedAt')
+        .lean()
+    : [];
+  const rxDocByPublicId = new Map(rxDocs.map(d => [d.publicId, d]));
+
   const rxItems: RxItem[] = rxRequests.map(r => ({
     id: String(r._id),
     modality: r.modality as RxModality,
@@ -196,6 +235,28 @@ export default async function ConsultationPage({
     notes: (r.notes as string | null) ?? null,
     status: r.status as RxStatus,
     requestedAtLabel: r.requestedAt ? lisbonHhmm(r.requestedAt) : '—',
+    images: (
+      (r.imageRefs ?? []) as {
+        source: string;
+        externalRef: string;
+        url: string | null;
+      }[]
+    )
+      .map(ref => {
+        if (ref.source === 'manual') {
+          const doc = rxDocByPublicId.get(ref.externalRef);
+          if (!doc || doc.voidedAt) return null;
+          return {
+            url: signedPreviewUrl(doc.publicId, {
+              width: 1600,
+              isPdf: doc.format === 'pdf',
+            }),
+            label: doc.title ?? 'RX',
+          };
+        }
+        return ref.url ? { url: ref.url, label: 'RX' } : null;
+      })
+      .filter((x): x is { url: string; label: string } => x !== null),
   }));
 
   return (
@@ -276,6 +337,52 @@ export default async function ConsultationPage({
             {treatmentName} · {clinic?.name ?? '—'}
             {appt.note ? ` · ${appt.note}` : ''}
           </p>
+          {/* Percurso na clínica: contexto imediato da triagem — primeira
+              consulta (só o breve cadastro da receção) vs paciente com
+              histórico (n consultas, última visita) */}
+          {prevCompletedCount === 0 ? (
+            <p
+              style={{
+                margin: '6px 0 0',
+                display: 'inline-flex',
+                alignItems: 'center',
+                borderRadius: '999px',
+                padding: '3px 12px',
+                fontSize: '12px',
+                fontWeight: 700,
+                backgroundColor: '#FFF4DE',
+                color: '#8A5A00',
+              }}
+            >
+              Primeira consulta na clínica — apenas dados do registo da receção
+            </p>
+          ) : (
+            <p
+              style={{
+                margin: '6px 0 0',
+                display: 'inline-flex',
+                alignItems: 'center',
+                borderRadius: '999px',
+                padding: '3px 12px',
+                fontSize: '12px',
+                fontWeight: 700,
+                backgroundColor: '#E4EBFF',
+                color: '#1B2A6B',
+              }}
+            >
+              {prevCompletedCount} consulta
+              {prevCompletedCount === 1 ? '' : 's'} anterior
+              {prevCompletedCount === 1 ? '' : 'es'} na clínica
+              {lastCompleted?.startAt
+                ? ` · última em ${new Intl.DateTimeFormat('pt-PT', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    timeZone: 'Europe/Lisbon',
+                  }).format(lastCompleted.startAt)}`
+                : ''}
+            </p>
+          )}
           {/* Atalhos clínicos — o que o médico abre a meio do atendimento */}
           <p
             style={{

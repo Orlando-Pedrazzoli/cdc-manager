@@ -68,11 +68,25 @@ export const BLOCKING_STATUS: AppointmentStatus[] = [
 export const APPOINTMENT_CHANNELS = [
   'website',
   'whatsapp',
+  'phone', // pedido chegou por telefone (registado pela receção)
   'front-desk',
   'doctor',
   'system', // recalls automáticos, lista de espera
 ] as const;
 export type AppointmentChannel = (typeof APPOINTMENT_CHANNELS)[number];
+
+/**
+ * Canais que a RECEÇÃO pode escolher no modal de nova marcação — a origem
+ * do PEDIDO (balcão, telefone, WhatsApp). 'website'/'doctor'/'system' são
+ * reservados aos fluxos automáticos/próprios. É deste subset que o Zod da
+ * action valida o form do balcão.
+ */
+export const STAFF_BOOKING_CHANNELS = [
+  'front-desk',
+  'phone',
+  'whatsapp',
+] as const;
+export type StaffBookingChannel = (typeof STAFF_BOOKING_CHANNELS)[number];
 
 export const CANCELLED_BY = ['patient', 'clinic', 'system'] as const;
 export type CancelledBy = (typeof CANCELLED_BY)[number];
@@ -144,6 +158,10 @@ const AppointmentSchema = new Schema(
       default: null,
     },
     // --- Confirmação --------------------------------------------------------
+    // Token opaco (base64url) do link "Confirmar presença" enviado por email.
+    // Gerado na criação; a página pública /confirmar/[token] resolve-o.
+    // Não expira por si (a página valida estado + data da marcação).
+    confirmToken: { type: String, default: null },
     confirmedAt: { type: Date, default: null },
     confirmedVia: {
       type: String,
@@ -202,6 +220,8 @@ AppointmentSchema.index({ clinicId: 1, startAt: 1, endAt: 1, status: 1 });
 AppointmentSchema.index({ patientId: 1, startAt: -1 });
 // 4. Crons de lembretes: intervalo temporal + estado + flag de envio
 AppointmentSchema.index({ status: 1, startAt: 1, reminder24hSentAt: 1 });
+// 5. Lookup do link público de confirmação (sparse: só docs com token)
+AppointmentSchema.index({ confirmToken: 1 }, { unique: true, sparse: true });
 
 export type AppointmentDoc = InferSchemaType<typeof AppointmentSchema> & {
   _id: mongoose.Types.ObjectId;

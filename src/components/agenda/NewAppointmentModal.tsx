@@ -3,6 +3,9 @@
 // CDC Manager — Agenda: modal de nova marcação (balcão)
 // -----------------------------------------------------------------------------
 // Fluxo da receção: pesquisar paciente (nome/telefone/nº processo, top 8)
+// → DATA (o modal tem o seu próprio seletor — abre com o dia da agenda mas
+//   a receção marca para QUALQUER dia futuro sem sair do modal; fix pós-demo
+//   09/09/2026: antes a data vinha escondida do URL e não era selecionável)
 // → ato → médico (opcional) → horário:
 //   - COM médico: dropdown alimentado por getFreeSlotsAction — a receção só
 //     vê horários realmente livres (camada 1 da defesa anti-dupla-marcação)
@@ -36,18 +39,27 @@ export function NewAppointmentModal({
   open,
   onClose,
   clinicId,
-  date,
+  initialDate,
   doctors,
   treatments,
 }: {
   open: boolean;
   onClose: () => void;
   clinicId: string;
-  date: string; // 'YYYY-MM-DD'
+  initialDate: string; // 'YYYY-MM-DD' — dia atualmente aberto na agenda
   doctors: { id: string; name: string }[];
   treatments: { id: string; name: string }[];
 }) {
   const router = useRouter();
+
+  // --- Data da marcação ------------------------------------------------------
+  // Estado próprio: abre com o dia da agenda, mas é livremente alterável.
+  const [date, setDate] = useState(initialDate);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  useEffect(() => {
+    // Reabrir o modal noutro dia da agenda → ressincronizar a data
+    if (open) setDate(initialDate);
+  }, [open, initialDate]);
 
   // --- Pesquisa de paciente --------------------------------------------------
   const [patientQuery, setPatientQuery] = useState('');
@@ -88,7 +100,7 @@ export function NewAppointmentModal({
 
   useEffect(() => {
     setStart('');
-    if (!doctorId || !treatmentId) {
+    if (!doctorId || !treatmentId || !date) {
       setSlots([]);
       return;
     }
@@ -141,7 +153,6 @@ export function NewAppointmentModal({
         style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
       >
         <input type='hidden' name='clinicId' value={clinicId} />
-        <input type='hidden' name='date' value={date} />
         <input type='hidden' name='patientId' value={patient?.id ?? ''} />
 
         {/* Paciente */}
@@ -201,7 +212,7 @@ export function NewAppointmentModal({
           )}
         </div>
 
-        {/* Ato + médico */}
+        {/* Data + Ato */}
         <div
           style={{
             display: 'grid',
@@ -209,6 +220,16 @@ export function NewAppointmentModal({
             gap: '12px',
           }}
         >
+          <Input
+            id='ap-date'
+            name='date'
+            type='date'
+            label='Data *'
+            value={date}
+            min={todayStr}
+            onChange={e => setDate(e.target.value)}
+            required
+          />
           <Select
             id='ap-treatment'
             name='treatmentTypeId'
@@ -224,6 +245,16 @@ export function NewAppointmentModal({
               </option>
             ))}
           </Select>
+        </div>
+
+        {/* Médico + horário */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '12px',
+          }}
+        >
           <Select
             id='ap-doctor'
             name='doctorId'
@@ -238,41 +269,40 @@ export function NewAppointmentModal({
               </option>
             ))}
           </Select>
-        </div>
 
-        {/* Horário */}
-        {doctorId ? (
-          <Select
-            id='ap-start'
-            name='start'
-            label={`Horário livre * ${slotsLoading ? '(a carregar…)' : ''}`}
-            value={start}
-            onChange={e => setStart(e.target.value)}
-            required
-            disabled={!treatmentId || slotsLoading}
-            help={
-              treatmentId && !slotsLoading && slots.length === 0
-                ? 'Sem horários livres para este médico/ato neste dia.'
-                : undefined
-            }
-          >
-            <option value=''>— Selecionar —</option>
-            {slots.map(s => (
-              <option key={s.start} value={s.start}>
-                {s.start}
-              </option>
-            ))}
-          </Select>
-        ) : (
-          <Input
-            id='ap-start-free'
-            name='start'
-            type='time'
-            label='Hora *'
-            required
-            help='Sem médico atribuído — a capacidade da clínica é verificada ao guardar.'
-          />
-        )}
+          {doctorId ? (
+            <Select
+              id='ap-start'
+              name='start'
+              label={`Horário livre * ${slotsLoading ? '(a carregar…)' : ''}`}
+              value={start}
+              onChange={e => setStart(e.target.value)}
+              required
+              disabled={!treatmentId || slotsLoading}
+              help={
+                treatmentId && !slotsLoading && slots.length === 0
+                  ? 'Sem horários livres neste dia — escolha outra data.'
+                  : undefined
+              }
+            >
+              <option value=''>— Selecionar —</option>
+              {slots.map(s => (
+                <option key={s.start} value={s.start}>
+                  {s.start}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <Input
+              id='ap-start-free'
+              name='start'
+              type='time'
+              label='Hora *'
+              required
+              help='Sem médico — capacidade verificada ao guardar.'
+            />
+          )}
+        </div>
 
         {/* Origem do pedido — de onde chegou a marcação. Alimenta a
             estatística de canais; 'website'/'system' são reservados a

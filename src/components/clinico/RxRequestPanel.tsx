@@ -36,6 +36,8 @@ export type RxItem = {
   notes: string | null;
   status: RxStatus;
   requestedAtLabel: string; // HH:mm já formatado no servidor (Lisboa)
+  /** Imagens captadas (URLs assinados gerados no servidor — signedPreviewUrl) */
+  images: { url: string; label: string }[];
 };
 
 const STATUS_STYLE: Record<RxStatus, { bg: string; fg: string }> = {
@@ -135,97 +137,145 @@ export function RxRequestPanel({
               <div
                 key={r.id}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '14px',
                   padding: '10px 20px',
                   borderTop: i === 0 ? 'none' : '1px solid #F4F6FB',
                   opacity: muted ? 0.55 : 1,
                 }}
               >
-                <span
+                <div
                   style={{
-                    fontVariantNumeric: 'tabular-nums',
-                    fontSize: '13px',
-                    fontWeight: 700,
-                    color: '#1B2A6B',
-                    width: 46,
-                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '14px',
                   }}
                 >
-                  {r.requestedAtLabel}
-                </span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p
+                  <span
                     style={{
-                      margin: 0,
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      color: '#1C2233',
-                      textDecoration: muted ? 'line-through' : 'none',
+                      fontVariantNumeric: 'tabular-nums',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      color: '#1B2A6B',
+                      width: 46,
+                      flexShrink: 0,
                     }}
                   >
-                    {RX_MODALITY_LABEL[r.modality]}
-                    {r.toothNumbers.length > 0 && (
-                      <span
-                        style={{
-                          marginLeft: '8px',
-                          fontSize: '12px',
-                          fontWeight: 500,
-                          color: '#6A7186',
-                        }}
-                      >
-                        Dentes {r.toothNumbers.join(', ')}
-                      </span>
-                    )}
-                  </p>
-                  {r.notes && (
+                    {r.requestedAtLabel}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <p
                       style={{
-                        margin: '1px 0 0',
-                        fontSize: '12px',
-                        color: '#6A7186',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
+                        margin: 0,
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        color: '#1C2233',
+                        textDecoration: muted ? 'line-through' : 'none',
                       }}
                     >
-                      {r.notes}
+                      {RX_MODALITY_LABEL[r.modality]}
+                      {r.toothNumbers.length > 0 && (
+                        <span
+                          style={{
+                            marginLeft: '8px',
+                            fontSize: '12px',
+                            fontWeight: 500,
+                            color: '#6A7186',
+                          }}
+                        >
+                          Dentes {r.toothNumbers.join(', ')}
+                        </span>
+                      )}
                     </p>
+                    {r.notes && (
+                      <p
+                        style={{
+                          margin: '1px 0 0',
+                          fontSize: '12px',
+                          color: '#6A7186',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {r.notes}
+                      </p>
+                    )}
+                  </div>
+                  <span
+                    style={{
+                      borderRadius: '999px',
+                      padding: '2px 10px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      backgroundColor: st.bg,
+                      color: st.fg,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {RX_STATUS_LABEL[r.status]}
+                  </span>
+                  {canEdit && r.status === 'requested' && (
+                    <form action={cancelAction} style={{ flexShrink: 0 }}>
+                      <input type='hidden' name='requestId' value={r.id} />
+                      <button
+                        type='submit'
+                        disabled={cancelling}
+                        style={{
+                          border: 'none',
+                          backgroundColor: 'transparent',
+                          color: '#B3261E',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          padding: 0,
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                    </form>
                   )}
                 </div>
-                <span
-                  style={{
-                    borderRadius: '999px',
-                    padding: '2px 10px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    backgroundColor: st.bg,
-                    color: st.fg,
-                    flexShrink: 0,
-                  }}
-                >
-                  {RX_STATUS_LABEL[r.status]}
-                </span>
-                {canEdit && r.status === 'requested' && (
-                  <form action={cancelAction} style={{ flexShrink: 0 }}>
-                    <input type='hidden' name='requestId' value={r.id} />
-                    <button
-                      type='submit'
-                      disabled={cancelling}
-                      style={{
-                        border: 'none',
-                        backgroundColor: 'transparent',
-                        color: '#B3261E',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        padding: 0,
-                      }}
-                    >
-                      Cancelar
-                    </button>
-                  </form>
+
+                {/* Imagens captadas — o médico abre no ecrã e explica ao
+                  paciente (clique = tamanho real em nova aba) */}
+                {r.images.length > 0 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: '10px',
+                      flexWrap: 'wrap',
+                      marginTop: '10px',
+                    }}
+                  >
+                    {r.images.map((img, j) => (
+                      <a
+                        key={j}
+                        href={img.url}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                        title={`${img.label} — abrir em tamanho real`}
+                        style={{
+                          display: 'block',
+                          border: '1px solid #D8DEEF',
+                          borderRadius: '10px',
+                          overflow: 'hidden',
+                          backgroundColor: '#0B0F1E',
+                          lineHeight: 0,
+                        }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={img.url}
+                          alt={img.label}
+                          style={{
+                            height: 140,
+                            maxWidth: 240,
+                            objectFit: 'contain',
+                            display: 'block',
+                          }}
+                        />
+                      </a>
+                    ))}
+                  </div>
                 )}
               </div>
             );

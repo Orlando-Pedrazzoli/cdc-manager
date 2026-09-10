@@ -32,6 +32,7 @@ import {
   type RxStatus,
 } from '@/lib/domain';
 import { RxQueueActions } from '@/components/rx/RxQueueActions';
+import { RxAttachImage } from '@/components/rx/RxAttachImage';
 
 export const dynamic = 'force-dynamic';
 
@@ -127,6 +128,7 @@ export default async function RxQueuePage({
     teeth: ((r.toothNumbers as string[]) ?? []).join(', '),
     notes: (r.notes as string | null) ?? null,
     status: r.status as RxStatus,
+    imagesCount: (r.imageRefs ?? []).length,
   });
   const pending = pendingRaw.map(mapRow);
   const done = doneRaw.map(mapRow);
@@ -206,6 +208,24 @@ export default async function RxQueuePage({
         >
           {RX_STATUS_LABEL[row.status]}
         </span>
+        {row.imagesCount > 0 && (
+          <span
+            style={{
+              borderRadius: '999px',
+              padding: '2px 10px',
+              fontSize: '11px',
+              fontWeight: 700,
+              backgroundColor: '#E4EBFF',
+              color: '#1B2A6B',
+              flexShrink: 0,
+            }}
+          >
+            {row.imagesCount} imagem{row.imagesCount === 1 ? '' : 's'}
+          </span>
+        )}
+        {row.status !== 'cancelled' && (
+          <RxAttachImage requestId={row.id} patientId={row.patientId} />
+        )}
         {withActions && (
           <RxQueueActions requestId={row.id} status={row.status} />
         )}

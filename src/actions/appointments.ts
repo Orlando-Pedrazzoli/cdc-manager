@@ -25,6 +25,7 @@
 
 'use server';
 
+import { randomBytes } from 'crypto';
 import { revalidatePath } from 'next/cache';
 import mongoose from 'mongoose';
 import { z } from 'zod';
@@ -46,8 +47,14 @@ import {
   hhmmToMin,
   workingRangesForDate,
 } from '@/lib/availability';
+import Notification from '@/models/Notification';
 import { logAudit } from '@/lib/audit';
-import { sendAppointmentConfirmationEmail } from '@/lib/resend';
+import {
+  sendAppointmentConfirmationEmail,
+  sendDoctorNewAppointmentEmail,
+} from '@/lib/resend';
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
 // -----------------------------------------------------------------------------
 // Tipos de estado
@@ -96,6 +103,101 @@ const STATUS_TIMESTAMP: Partial<Record<AppointmentStatus, string>> = {
   completed: 'completedAt',
   cancelled: 'cancelledAt',
 };
+
+// -----------------------------------------------------------------------------
+// NOTIFICAÇÕES PÓS-CRIAÇÃO (best-effort — falha NUNCA reverte a marcação)
+// -----------------------------------------------------------------------------
+// 1. Paciente: email de "consulta marcada" com botão de confirmação (um
+//    clique → /confirmar/[token]) — só com email na ficha E consentimento
+//    de lembretes (RGPD)
+// 2. Médico: email "nova marcação na sua agenda" para o email da CONTA
+//    (User com role doctor ligado por doctorId — o perfil Doctor não tem
+//    email próprio de propósito)
+// 3. Ambos ficam registados no outbox Notification (auditoria + timeline)
+async function notifyNewAppointment(params: {
+  appointmentId: string;
+  confirmToken: string;
+  patient: {
+    _id: mongoose.Types.ObjectId;
+    name: string;
+    email?: string | null;
+    consents?: { remindersAt?: Date | null } | null;
+  };
+  doctor: { _id: mongoose.Types.ObjectId; name: string } | null;
+  clinicName: string;
+  clinicAddress: string | null;
+  treatmentName: string;
+  startAt: Date;
+  timeLabel: string; // HH:mm de parede (Lisboa)
+  note: string | null;
+}): Promise<void> {
+  const rawDate = new Intl.DateTimeFormat('pt-PT', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Europe/Lisbon',
+  }).format(params.startAt);
+  const dateLabel = rawDate.charAt(0).toUpperCase() + rawDate.slice(1);
+
+  // --- Paciente --------------------------------------------------------------
+  if (params.patient.email && params.patient.consents?.remindersAt) {
+    const result = await sendAppointmentConfirmationEmail({
+      to: params.patient.email,
+      patientName: params.patient.name,
+      clinicName: params.clinicName,
+      clinicAddress: params.clinicAddress,
+      dateLabel,
+      timeLabel: params.timeLabel,
+      treatmentName: params.treatmentName,
+      doctorName: params.doctor?.name ?? null,
+      confirmUrl: `${APP_URL}/confirmar/${params.confirmToken}`,
+    });
+    await Notification.create({
+      type: 'appointment-confirmation',
+      channel: 'email',
+      patientId: params.patient._id,
+      recipient: params.patient.email,
+      appointmentId: params.appointmentId,
+      status: result.ok ? 'sent' : 'failed',
+      sentAt: result.ok ? new Date() : null,
+      failedAt: result.ok ? null : new Date(),
+      errorMessage: result.ok ? null : result.error,
+    }).catch(() => undefined);
+  }
+
+  // --- Médico ----------------------------------------------------------------
+  if (params.doctor) {
+    const doctorUser = await User.findOne({
+      role: 'doctor',
+      doctorId: params.doctor._id,
+      status: 'active',
+    }).select('email');
+    if (doctorUser?.email) {
+      const result = await sendDoctorNewAppointmentEmail({
+        to: doctorUser.email,
+        doctorName: params.doctor.name,
+        patientName: params.patient.name,
+        clinicName: params.clinicName,
+        dateLabel,
+        timeLabel: params.timeLabel,
+        treatmentName: params.treatmentName,
+        note: params.note,
+      });
+      await Notification.create({
+        type: 'doctor-new-appointment',
+        channel: 'email',
+        userId: doctorUser._id,
+        recipient: doctorUser.email,
+        appointmentId: params.appointmentId,
+        status: result.ok ? 'sent' : 'failed',
+        sentAt: result.ok ? new Date() : null,
+        failedAt: result.ok ? null : new Date(),
+        errorMessage: result.ok ? null : result.error,
+      }).catch(() => undefined);
+    }
+  }
+}
 
 // -----------------------------------------------------------------------------
 // CRIAR MARCAÇÃO (balcão/admin)
@@ -182,6 +284,7 @@ export async function createAppointmentAction(
 
   // --- Transação: re-verificar + criar atomicamente -------------------------
   const session = await mongoose.startSession();
+  const confirmToken = randomBytes(24).toString('base64url');
   try {
     let appointmentId = '';
     await session.withTransaction(async () => {
@@ -212,6 +315,7 @@ export async function createAppointmentAction(
             channel: data.channel,
             createdByUserId: staff.id,
             note: data.note,
+            confirmToken,
           },
         ],
         { session },
@@ -229,27 +333,19 @@ export async function createAppointmentAction(
       summary: `Marcação criada: ${treatment.name} a ${data.date} ${data.start}`,
     });
 
-    // Confirmação por email — best-effort (falha NUNCA reverte a marcação):
-    // só com email na ficha E consentimento de lembretes (RGPD)
-    if (patient.email && patient.consents?.remindersAt) {
-      const rawDate = new Intl.DateTimeFormat('pt-PT', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-        timeZone: 'Europe/Lisbon',
-      }).format(startAt);
-      await sendAppointmentConfirmationEmail({
-        to: patient.email,
-        patientName: patient.name,
-        clinicName: clinic.name,
-        clinicAddress: clinic.address ?? null,
-        dateLabel: rawDate.charAt(0).toUpperCase() + rawDate.slice(1),
-        timeLabel: data.start,
-        treatmentName: treatment.name,
-        doctorName: doctor?.name ?? null,
-      });
-    }
+    // Emails (paciente com botão de confirmação + médico) — best-effort
+    await notifyNewAppointment({
+      appointmentId,
+      confirmToken,
+      patient,
+      doctor: doctor ? { _id: doctor._id, name: doctor.name } : null,
+      clinicName: clinic.name,
+      clinicAddress: clinic.address ?? null,
+      treatmentName: treatment.name,
+      startAt,
+      timeLabel: data.start,
+      note: data.note,
+    });
 
     revalidatePath('/admin/agenda');
     return { success: true, appointmentId };
@@ -364,12 +460,13 @@ export async function rescheduleAppointmentAction(
     return { error: (e as Error).message };
   }
 
-  const [clinic, treatment, doctor] = await Promise.all([
+  const [clinic, treatment, doctor, patient] = await Promise.all([
     Clinic.findById(data.clinicId),
     TreatmentType.findById(original.treatmentTypeId).select(
       'name durationMin bufferMin',
     ),
     data.doctorId ? Doctor.findById(data.doctorId) : Promise.resolve(null),
+    Patient.findById(original.patientId).select('name email consents'),
   ]);
   if (!clinic || !clinic.isActive) return { error: 'Clínica inválida.' };
   if (!treatment) return { error: 'Ato da marcação original inválido.' };
@@ -395,6 +492,7 @@ export async function rescheduleAppointmentAction(
   }
 
   const session = await mongoose.startSession();
+  const confirmToken = randomBytes(24).toString('base64url');
   try {
     let newId = '';
     await session.withTransaction(async () => {
@@ -429,6 +527,7 @@ export async function rescheduleAppointmentAction(
             createdByUserId: staff.id,
             note: original.note,
             rescheduledFromId: original._id,
+            confirmToken,
           },
         ],
         { session },
@@ -458,6 +557,22 @@ export async function rescheduleAppointmentAction(
       clinicId: String(original.clinicId),
       summary: `Remarcada para ${data.date} ${data.start}${data.clinicId !== String(original.clinicId) ? ' (outra clínica)' : ''}`,
     });
+
+    // Notificar paciente (novo horário + botão de confirmação) e médico
+    if (patient) {
+      await notifyNewAppointment({
+        appointmentId: newId,
+        confirmToken,
+        patient,
+        doctor: doctor ? { _id: doctor._id, name: doctor.name } : null,
+        clinicName: clinic.name,
+        clinicAddress: clinic.address ?? null,
+        treatmentName: treatment.name,
+        startAt,
+        timeLabel: data.start,
+        note: original.note ?? null,
+      });
+    }
 
     revalidatePath('/admin/agenda');
     return { success: true, appointmentId: newId };

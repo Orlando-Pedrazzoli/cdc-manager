@@ -47,6 +47,7 @@ import {
   type ToothEntry,
 } from '@/components/clinico/ToothDetail';
 import { Button } from '@/components/ui/Button';
+import { OdontogramaArcada } from '@/components/clinico/OdontogramaArcada';
 
 // --- Cores (inline SEMPRE — convenção do projeto) -----------------------------
 const CONDITION_COLOR: Record<FaceCondition, string> = {
@@ -293,6 +294,12 @@ export function Odontograma({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* Vista anatómica das arcadas — mesma fonte de dados, mesma seleção */}
+      <OdontogramaArcada
+        entries={[...teeth.values()]}
+        selected={selected}
+        onSelect={setSelected}
+      />
       <div
         style={{
           display: 'flex',

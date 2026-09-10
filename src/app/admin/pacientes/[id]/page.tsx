@@ -44,6 +44,8 @@ const TABS = [
   { key: 'consultas', label: 'Consultas' },
   { key: 'clinico', label: 'Registo clínico' },
   { key: 'documentos', label: 'Documentos' },
+  // Subrota própria (versões por URL), como na área do médico — leitura
+  { key: 'odontograma', label: 'Odontograma' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
@@ -235,7 +237,9 @@ export default async function PatientPage({
               href={
                 t.key === 'dados'
                   ? `/admin/pacientes/${id}`
-                  : `/admin/pacientes/${id}?tab=${t.key}`
+                  : t.key === 'odontograma'
+                    ? `/admin/pacientes/${id}/odontograma`
+                    : `/admin/pacientes/${id}?tab=${t.key}`
               }
               style={{
                 padding: '10px 16px',
