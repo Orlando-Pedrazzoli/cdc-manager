@@ -146,8 +146,8 @@ export default async function ConsultationPage({
       .lean(),
     getClinicById(String(appt.clinicId)),
     TreatmentType.find({ active: true })
-      .select('name priceCents controlsTooth')
-      .sort({ name: 1 })
+      .select('name category priceCents costCents controlsTooth')
+      .sort({ category: 1, name: 1 })
       .lean(),
     Procedure.find({ appointmentId: appt._id }).sort({ createdAt: 1 }).lean(),
     ClinicalRecord.findOne({ patientId: appt.patientId })
@@ -181,7 +181,12 @@ export default async function ConsultationPage({
   const procedureItems: ProcedureItem[] = procedures.map(p => ({
     id: String(p._id),
     name: p.nameSnapshot,
+    category: (p.categorySnapshot as string | null) ?? null,
+    listPriceCents: p.listPriceCents ?? p.priceCents,
+    discountCents: p.discountCents ?? 0,
+    discountPct: (p.discountPct as number | null) ?? null,
     priceCents: p.priceCents,
+    costCents: p.costCents ?? 0,
     toothNumbers: (p.toothNumbers ?? []) as string[],
     notes: (p.notes as string | null) ?? null,
     status: p.status as ProcedureItem['status'],
@@ -193,7 +198,9 @@ export default async function ConsultationPage({
   const treatmentOptions: TreatmentOption[] = treatments.map(t => ({
     id: String(t._id),
     name: t.name,
+    category: t.category ?? null,
     priceCents: t.priceCents,
+    costCents: t.costCents ?? 0,
     controlsTooth: !!t.controlsTooth,
   }));
 

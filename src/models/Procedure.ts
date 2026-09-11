@@ -90,23 +90,68 @@ const ProcedureSchema = new Schema(
       required: true,
       trim: true,
     },
-    // Preço cobrado em cêntimos. Parte do preço de tabela; o médico/receção
-    // pode ajustar (desconto, cortesia) — o valor final fica aqui
+    // Categoria do ato congelada na execução (E4/E7 — listagens por
+    // categoria imunes a reclassificações futuras do catálogo)
+    categorySnapshot: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+    // -------------------------------------------------------------------------
+    // FINANCEIRO DA LINHA (Fase 1) — fórmula em lib/commissions.ts:
+    //   listPriceCents       PVP antes do desconto (null em registos anteriores
+    //                        à Fase 1 → ler como = priceCents)
+    //   discount*            desconto dado pelo médico (% ou €) em cêntimos
+    //   priceCents           VALOR COBRADO ao paciente (PVP − desconto).
+    //                        Mantém o significado histórico: cobrança, faturas
+    //                        e dashboards continuam a somar este campo.
+    //   costCents            custo direto do ato (default do catálogo, editável)
+    //   commissionBaseCents  max(0, price − cost): base da comissão percentual
+    //   commission*          regra resolvida e congelada (modo, taxa/fixo,
+    //                        origem na cadeia) + valor materializado
+    // -------------------------------------------------------------------------
+    listPriceCents: { type: Number, min: 0, default: null },
+    discountMode: {
+      type: String,
+      enum: ['percent', 'amount', null],
+      default: null,
+    },
+    discountPct: { type: Number, min: 0, max: 100, default: null },
+    discountCents: { type: Number, min: 0, default: 0 },
     priceCents: {
       type: Number,
       required: true,
       min: 0,
     },
-    // Fração do médico resolvida na execução (override ato > base médico >
-    // default clínica 0.40) — ver lib/commissions.ts
+    costCents: { type: Number, min: 0, default: 0 },
+    commissionBaseCents: { type: Number, min: 0, default: null },
+    commissionMode: {
+      type: String,
+      enum: ['percent', 'fixed'],
+      default: 'percent',
+    },
     commissionRate: {
       type: Number,
       required: true,
       min: 0,
       max: 1,
     },
-    // Valor da comissão em cêntimos, arredondado banker's rounding na lib.
-    // Materializado para os relatórios somarem sem recalcular
+    commissionFixedCents: { type: Number, min: 0, default: null },
+    commissionSource: {
+      type: String,
+      enum: [
+        'treatment-override',
+        'category-override',
+        'doctor-rate',
+        'treatment-rate',
+        'clinic-default',
+        null,
+      ],
+      default: null,
+    },
+    // Valor da comissão em cêntimos (banker's rounding), materializado para
+    // os relatórios somarem sem recalcular
     commissionCents: {
       type: Number,
       required: true,

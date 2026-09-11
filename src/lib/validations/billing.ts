@@ -44,3 +44,22 @@ export const checkoutSchema = z.object({
   ),
 });
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
+
+// --- Anular fatura (Fase 1, E2) -----------------------------------------------
+// voidProcedures = resposta ao "Quer criar uma linha de balanço? Sim/Não":
+//   true  → erro foi nos TRATAMENTOS: atos anulados + estorno de comissão
+//   false → erro foi no DOCUMENTO (NIF, meio de pagamento…): atos voltam à
+//           fila de cobrança para nova fatura
+export const voidInvoiceSchema = z.object({
+  invoiceId: z.string().regex(OBJECT_ID, 'Fatura inválida'),
+  reason: z
+    .string()
+    .trim()
+    .min(3, 'Indique o motivo da anulação')
+    .max(300, 'Motivo demasiado longo'),
+  voidProcedures: z.preprocess(
+    v => v === 'true' || v === 'on' || v === true,
+    z.boolean(),
+  ),
+});
+export type VoidInvoiceInput = z.infer<typeof voidInvoiceSchema>;

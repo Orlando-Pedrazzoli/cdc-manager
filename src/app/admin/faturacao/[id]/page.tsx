@@ -5,7 +5,9 @@
 // Read-only: cabeçalho (nº/estado/datas), paciente + NIF do documento,
 // linhas com snapshots imutáveis, total, referências Moloni quando emitida
 // (nº certificado, ATCUD, série) e bloco de anulação quando anulada.
-// O botão "Emitir no Moloni" pluga aqui no Sprint 4 (pós-aprovação).
+// Fase 1 (E2): botão "Anular documento" (admin) com a pergunta "linha de
+// balanço? Sim/Não" — ver VoidInvoiceModal. A nota de crédito Moloni pluga
+// no mesmo sítio na Fase 7.
 // =============================================================================
 
 import { auth } from '@/lib/auth';
@@ -21,6 +23,7 @@ import { formatCents } from '@/lib/commissions';
 import { INVOICE_STATUS_LABEL } from '@/lib/labels';
 import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/domain';
 import { Badge, type BadgeVariant } from '@/components/ui/Badge';
+import { VoidInvoiceModal } from '@/components/faturacao/VoidInvoiceModal';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Documento' };
@@ -122,6 +125,15 @@ export default async function InvoiceDetailPage({
           <Badge variant={STATUS_VARIANT[inv.status]}>
             {INVOICE_STATUS_LABEL[inv.status]}
           </Badge>
+          {session.user.role === 'admin' && inv.status !== 'voided' && (
+            <div style={{ marginLeft: 'auto' }}>
+              <VoidInvoiceModal
+                invoiceId={String(inv._id)}
+                docLabel={docLabel}
+                lineCount={inv.lines.length}
+              />
+            </div>
+          )}
         </div>
       </div>
 

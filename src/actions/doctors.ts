@@ -540,8 +540,58 @@ export async function removeDoctorExceptionAction(
 }
 
 // -----------------------------------------------------------------------------
-// COMISSÕES por ato (overrides)
+// REMUNERAÇÃO (Fase 1, E9): overrides por ATO e por CATEGORIA, cada um em
+// percentagem ou valor fixo. Só as linhas preenchidas chegam (JSON).
 // -----------------------------------------------------------------------------
+type OverrideRow = {
+  mode: 'percent' | 'fixed';
+  ratePercent?: number | null;
+  fixedEuros?: number | null;
+};
+type TreatmentOverrideRow = OverrideRow & { treatmentTypeId: string };
+type CategoryOverrideRow = OverrideRow & { category: string };
+
+function normalizeRule(r: OverrideRow): {
+  mode: 'percent' | 'fixed';
+  rate: number | null;
+  fixedCents: number | null;
+} | null {
+  if (r.mode === 'percent') {
+    if (
+      typeof r.ratePercent !== 'number' ||
+      !Number.isFinite(r.ratePercent) ||
+      r.ratePercent < 0 ||
+      r.ratePercent > 100
+    )
+      return null;
+    return { mode: 'percent', rate: r.ratePercent / 100, fixedCents: null };
+  }
+  if (r.mode === 'fixed') {
+    if (
+      typeof r.fixedEuros !== 'number' ||
+      !Number.isFinite(r.fixedEuros) ||
+      r.fixedEuros < 0 ||
+      r.fixedEuros > 100_000
+    )
+      return null;
+    return {
+      mode: 'fixed',
+      rate: null,
+      fixedCents: Math.round(r.fixedEuros * 100),
+    };
+  }
+  return null;
+}
+
+function parseJsonArray<T>(raw: FormDataEntryValue | null): T[] | null {
+  try {
+    const v = JSON.parse(String(raw ?? '[]'));
+    return Array.isArray(v) ? (v as T[]) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function setCommissionOverridesAction(
   doctorId: string,
   _prev: DoctorFormState,
@@ -555,43 +605,70 @@ export async function setCommissionOverridesAction(
   }
   if (!isObjectId(doctorId)) return { error: 'Médico inválido.' };
 
-  // JSON: [{ treatmentTypeId, ratePercent }] — só as linhas com override
-  let rows: { treatmentTypeId: string; ratePercent: number }[];
-  try {
-    rows = JSON.parse(String(formData.get('overrides') ?? '[]'));
-  } catch {
-    return { error: 'Dados de comissões inválidos.' };
-  }
-  if (!Array.isArray(rows)) return { error: 'Dados de comissões inválidos.' };
+  const rows = parseJsonArray<TreatmentOverrideRow>(formData.get('overrides'));
+  const catRows = parseJsonArray<CategoryOverrideRow>(
+    formData.get('categoryOverrides'),
+  );
+  if (!rows || !catRows) return { error: 'Dados de comissões inválidos.' };
+
+  // --- por ato ---
+  const treatmentOverrides: {
+    treatmentTypeId: string;
+    mode: 'percent' | 'fixed';
+    rate: number | null;
+    fixedCents: number | null;
+  }[] = [];
   for (const r of rows) {
-    if (
-      !isObjectId(r.treatmentTypeId) ||
-      typeof r.ratePercent !== 'number' ||
-      r.ratePercent < 0 ||
-      r.ratePercent > 100
-    ) {
-      return { error: 'Comissão inválida numa das linhas.' };
+    if (!isObjectId(r.treatmentTypeId)) {
+      return { error: 'Ato inválido nas comissões.' };
     }
+    const rule = normalizeRule(r);
+    if (!rule) return { error: 'Comissão inválida numa das linhas de ato.' };
+    treatmentOverrides.push({ treatmentTypeId: r.treatmentTypeId, ...rule });
   }
-  const ids = rows.map(r => r.treatmentTypeId);
+  const ids = treatmentOverrides.map(r => r.treatmentTypeId);
   if (new Set(ids).size !== ids.length) {
     return { error: 'Ato duplicado nas comissões.' };
   }
 
+  // --- por categoria ---
+  const categoryOverrides: {
+    category: string;
+    mode: 'percent' | 'fixed';
+    rate: number | null;
+    fixedCents: number | null;
+  }[] = [];
+  for (const r of catRows) {
+    const category = String(r.category ?? '').trim();
+    if (!category || category.length > 60) {
+      return { error: 'Categoria inválida nas comissões.' };
+    }
+    const rule = normalizeRule(r);
+    if (!rule)
+      return { error: `Comissão inválida na categoria «${category}».` };
+    categoryOverrides.push({ category, ...rule });
+  }
+  const cats = categoryOverrides.map(c => c.category.toUpperCase());
+  if (new Set(cats).size !== cats.length) {
+    return { error: 'Categoria duplicada nas comissões.' };
+  }
+
   await dbConnect();
-  const validCount = await TreatmentType.countDocuments({ _id: { $in: ids } });
-  if (validCount !== ids.length) {
-    return { error: 'Ato inexistente nas comissões.' };
+  if (ids.length > 0) {
+    const validCount = await TreatmentType.countDocuments({
+      _id: { $in: ids },
+    });
+    if (validCount !== ids.length) {
+      return { error: 'Ato inexistente nas comissões.' };
+    }
   }
 
   await Doctor.updateOne(
     { _id: doctorId },
     {
       $set: {
-        commissionOverrides: rows.map(r => ({
-          treatmentTypeId: r.treatmentTypeId,
-          rate: r.ratePercent / 100,
-        })),
+        commissionOverrides: treatmentOverrides,
+        commissionCategoryOverrides: categoryOverrides,
       },
     },
   );
@@ -600,8 +677,8 @@ export async function setCommissionOverridesAction(
     action: 'update',
     entityType: 'Doctor',
     entityId: doctorId,
-    summary: `Comissões por ato atualizadas (${rows.length} overrides)`,
-    changedFields: ['commissionOverrides'],
+    summary: `Remuneração atualizada (${treatmentOverrides.length} por ato, ${categoryOverrides.length} por categoria)`,
+    changedFields: ['commissionOverrides', 'commissionCategoryOverrides'],
   });
 
   revalidatePath(`/admin/medicos/${doctorId}`);

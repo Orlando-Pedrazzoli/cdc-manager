@@ -228,6 +228,22 @@ export const TREATMENT_CATEGORIES = [
 ] as const;
 
 // =============================================================================
+// REMUNERAÇÃO — modos de comissão (Fase 1, E9): percentagem ou valor fixo
+// Canónicos aqui (CommissionEditor é client); models/Doctor re-exporta.
+// =============================================================================
+export const COMMISSION_MODES = ['percent', 'fixed'] as const;
+export type CommissionModeValue = (typeof COMMISSION_MODES)[number];
+
+export const COMMISSION_MODE_LABEL: Record<CommissionModeValue, string> = {
+  percent: 'Percentagem (%)',
+  fixed: 'Valor fixo (€)',
+};
+
+/** Modos de desconto por linha (Fase 1, E5) */
+export const DISCOUNT_MODES = ['percent', 'amount'] as const;
+export type DiscountModeValue = (typeof DISCOUNT_MODES)[number];
+
+// =============================================================================
 // COBRANÇA — meios de pagamento no balcão (client: CheckoutModal)
 // =============================================================================
 export const PAYMENT_METHODS = [

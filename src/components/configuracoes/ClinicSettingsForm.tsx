@@ -54,6 +54,8 @@ export interface ClinicSettings {
   bookableOnline: boolean;
   /** Fração (0.40) — o form apresenta em percentagem */
   defaultDoctorCommission: number;
+  /** Fase 1 (E1): baixa automática de stock pela BOM — default desligada */
+  autoConsumeBom: boolean;
   openingHours: { weekday: number; ranges: DayRange[] }[];
 }
 
@@ -254,6 +256,14 @@ function ClinicDataForm({ clinic }: { clinic: ClinicSettings }) {
           name='bookableOnline'
           label='Aceita marcações online (formulário público)'
           defaultChecked={clinic.bookableOnline}
+        />
+
+        <Checkbox
+          id={`${clinic.slug}-autobom`}
+          name='autoConsumeBom'
+          label='Dar baixa automática de stock pela ficha técnica (BOM) ao concluir a consulta'
+          defaultChecked={clinic.autoConsumeBom}
+          help='Desligado por defeito: o stock atualiza-se por entradas de fatura de fornecedor e saídas manuais, não pela linha de tratamento. A BOM fica só informativa.'
         />
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

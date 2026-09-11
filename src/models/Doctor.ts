@@ -39,8 +39,8 @@ import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
 // Slugs das 10 especialidades — canónicos em lib/domain.ts (partilhados com
 // client components SEM arrastar mongoose para o browser); re-exportados
 // aqui para o código server continuar a importar do model
-import { SPECIALTIES, type Specialty } from '@/lib/domain';
-export { SPECIALTIES, type Specialty };
+import { SPECIALTIES, COMMISSION_MODES, type Specialty } from '@/lib/domain';
+export { SPECIALTIES, COMMISSION_MODES, type Specialty };
 
 // --- Sub-schema: intervalo de trabalho ("09:00" a "13:00") -------------------
 // Horas como string HH:mm — formato estável, sem armadilhas de timezone;
@@ -121,6 +121,13 @@ const ScheduleExceptionSchema = new Schema(
 );
 
 // --- Sub-schema: override de comissão por tipo de tratamento -----------------
+// -----------------------------------------------------------------------------
+// REMUNERAÇÃO (Fase 1, E9) — override por LINHA (ato) ou por CATEGORIA,
+// cada um em PERCENTAGEM ou VALOR FIXO por ato. A base do médico continua
+// a ser uma percentagem (acordo negociado); o fixo é sempre uma exceção.
+// Registos anteriores à Fase 1 só têm {treatmentTypeId, rate} → mode
+// 'percent' por default (compatibilidade garantida pelo schema).
+// -----------------------------------------------------------------------------
 const CommissionOverrideSchema = new Schema(
   {
     treatmentTypeId: {
@@ -128,8 +135,19 @@ const CommissionOverrideSchema = new Schema(
       ref: 'TreatmentType',
       required: true,
     },
-    // Fração da parte do MÉDICO (0.45 = 45% para o médico nesse ato)
-    rate: { type: Number, required: true, min: 0, max: 1 },
+    mode: { type: String, enum: COMMISSION_MODES, default: 'percent' },
+    rate: { type: Number, min: 0, max: 1, default: null },
+    fixedCents: { type: Number, min: 0, default: null },
+  },
+  { _id: false },
+);
+
+const CommissionCategoryOverrideSchema = new Schema(
+  {
+    category: { type: String, required: true, trim: true, maxlength: 60 },
+    mode: { type: String, enum: COMMISSION_MODES, default: 'percent' },
+    rate: { type: Number, min: 0, max: 1, default: null },
+    fixedCents: { type: Number, min: 0, default: null },
   },
   { _id: false },
 );
@@ -185,6 +203,10 @@ const DoctorSchema = new Schema(
     },
     commissionOverrides: {
       type: [CommissionOverrideSchema],
+      default: [],
+    },
+    commissionCategoryOverrides: {
+      type: [CommissionCategoryOverrideSchema],
       default: [],
     },
     // Cor do médico nas agendas (hex) — identificação visual imediata

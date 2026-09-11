@@ -11,8 +11,10 @@
 //   2. RESUMO POR CLÍNICA — produção executada, valor cobrado, por cobrar
 //   3. ATIVIDADE — consultas realizadas vs faltas/cancelamentos (taxa)
 //
-// "Produção" = atos executados no mês (completed+invoiced, por executedAt).
-// "Cobrado" = cobranças registadas no mês (Invoices por paidAt).
+// "Produção" = atos executados no mês que estavam válidos no FECHO do mês
+// (regra em lib/commission-accounting.ts) + estornos (CommissionAdjustment)
+// com efeito no mês — Fase 1. "Cobrado" = cobranças do mês (por paidAt).
+// A listagem detalhada por médico (E7) vive em /admin/relatorios/comissoes.
 // =============================================================================
 
 import Link from 'next/link';
@@ -24,8 +26,14 @@ import Procedure from '@/models/Procedure';
 import Invoice from '@/models/Invoice';
 import Appointment from '@/models/Appointment';
 import Doctor from '@/models/Doctor';
+import CommissionAdjustment from '@/models/CommissionAdjustment';
+import {
+  monthBoundsUtc,
+  shiftMonth,
+  producedProceduresMatch,
+  adjustmentsMatch,
+} from '@/lib/commission-accounting';
 import { getActiveClinics } from '@/models/Clinic';
-import { lisbonToUtc } from '@/lib/availability';
 import { formatCents } from '@/lib/commissions';
 import { ExportCsvButton } from '@/components/relatorios/ExportCsvButton';
 
@@ -61,20 +69,6 @@ function currentMonthLisbon(): string {
   return `${p.year}-${p.month}`;
 }
 
-function shiftMonth(mes: string, delta: number): string {
-  const [y, m] = mes.split('-').map(Number);
-  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-}
-
-/** Limites UTC do mês civil de Lisboa [início, fim) */
-function monthBoundsUtc(mes: string): [Date, Date] {
-  const start = lisbonToUtc(`${mes}-01`, 0);
-  const next = shiftMonth(mes, 1);
-  const end = lisbonToUtc(`${next}-01`, 0);
-  return [start, end];
-}
-
 export default async function RelatoriosPage({
   searchParams,
 }: {
@@ -96,7 +90,8 @@ export default async function RelatoriosPage({
 
   const [
     clinics,
-    prodByDoctor,
+    prodByDoctorRaw,
+    adjByDoctor,
     prodByClinic,
     invByClinic,
     toCollect,
@@ -104,28 +99,42 @@ export default async function RelatoriosPage({
     doctors,
   ] = await Promise.all([
     getActiveClinics(),
-    // 1. Produção + comissões por profissional (snapshots)
+    // 1. Produção + comissões por profissional (snapshots, regra de fecho)
     Procedure.aggregate<{
       _id: mongoose.Types.ObjectId;
       n: number;
       producedCents: number;
+      costCents: number;
       commissionCents: number;
     }>([
-      {
-        $match: {
-          status: { $in: ['completed', 'invoiced'] },
-          executedAt: { $gte: start, $lt: end },
-        },
-      },
+      { $match: producedProceduresMatch(start, end) },
       {
         $group: {
           _id: '$doctorId',
           n: { $sum: 1 },
           producedCents: { $sum: '$priceCents' },
+          costCents: { $sum: { $ifNull: ['$costCents', 0] } },
           commissionCents: { $sum: '$commissionCents' },
         },
       },
       { $sort: { producedCents: -1 } },
+    ]),
+    // 1b. Estornos com efeito neste mês (anulações de meses já fechados)
+    CommissionAdjustment.aggregate<{
+      _id: mongoose.Types.ObjectId;
+      n: number;
+      priceCents: number;
+      commissionCents: number;
+    }>([
+      { $match: adjustmentsMatch(start, end) },
+      {
+        $group: {
+          _id: '$doctorId',
+          n: { $sum: 1 },
+          priceCents: { $sum: '$priceCents' },
+          commissionCents: { $sum: '$commissionCents' },
+        },
+      },
     ]),
     // 2a. Produção por clínica
     Procedure.aggregate<{
@@ -133,12 +142,7 @@ export default async function RelatoriosPage({
       n: number;
       cents: number;
     }>([
-      {
-        $match: {
-          status: { $in: ['completed', 'invoiced'] },
-          executedAt: { $gte: start, $lt: end },
-        },
-      },
+      { $match: producedProceduresMatch(start, end) },
       {
         $group: {
           _id: '$clinicId',
@@ -189,6 +193,32 @@ export default async function RelatoriosPage({
   ]);
 
   const doctorById = new Map(doctors.map(d => [String(d._id), d]));
+
+  // Junta produção + estornos por médico (um médico só com estornos no mês
+  // também tem de aparecer — a negativo)
+  const adjMap = new Map(adjByDoctor.map(a => [String(a._id), a]));
+  const prodByDoctor = prodByDoctorRaw.map(r => {
+    const a = adjMap.get(String(r._id));
+    adjMap.delete(String(r._id));
+    return {
+      ...r,
+      adjN: a?.n ?? 0,
+      adjCommissionCents: a?.commissionCents ?? 0,
+      adjPriceCents: a?.priceCents ?? 0,
+    };
+  });
+  for (const [id, a] of adjMap) {
+    prodByDoctor.push({
+      _id: new mongoose.Types.ObjectId(id),
+      n: 0,
+      producedCents: 0,
+      costCents: 0,
+      commissionCents: 0,
+      adjN: a.n,
+      adjCommissionCents: a.commissionCents,
+      adjPriceCents: a.priceCents,
+    });
+  }
   const clinicName = new Map(
     clinics.map(c => [
       String(c._id),
@@ -208,10 +238,9 @@ export default async function RelatoriosPage({
   }
 
   const totalProduced = prodByDoctor.reduce((s, r) => s + r.producedCents, 0);
-  const totalCommission = prodByDoctor.reduce(
-    (s, r) => s + r.commissionCents,
-    0,
-  );
+  const totalAdj = prodByDoctor.reduce((s, r) => s + r.adjCommissionCents, 0);
+  const totalCommission =
+    prodByDoctor.reduce((s, r) => s + r.commissionCents, 0) + totalAdj;
 
   const card: React.CSSProperties = {
     backgroundColor: '#FFFFFF',
@@ -326,29 +355,48 @@ export default async function RelatoriosPage({
           }}
         >
           Produção e comissões por profissional
-          {/* Mapa mensal para contabilidade/acerto — valores com vírgula PT */}
-          <ExportCsvButton
-            filename={`comissoes-${mes}.csv`}
-            headers={[
-              'Profissional',
-              'Atos',
-              'Produção (€)',
-              'Comissão (€)',
-              'Parte da clínica (€)',
-            ]}
-            rows={prodByDoctor.map(r => {
-              const d = doctorById.get(String(r._id));
-              return [
-                d?.name ?? '(profissional removido)',
-                String(r.n),
-                (r.producedCents / 100).toFixed(2).replace('.', ','),
-                (r.commissionCents / 100).toFixed(2).replace('.', ','),
-                ((r.producedCents - r.commissionCents) / 100)
-                  .toFixed(2)
-                  .replace('.', ','),
-              ];
-            })}
-          />
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <Link
+              href={`/admin/relatorios/comissoes?mes=${mes}`}
+              style={{
+                ...navBtn,
+                padding: '7px 12px',
+                fontSize: '12px',
+              }}
+            >
+              Listagem detalhada
+            </Link>
+            {/* Mapa mensal para contabilidade/acerto — valores com vírgula PT */}
+            <ExportCsvButton
+              filename={`comissoes-${mes}.csv`}
+              headers={[
+                'Profissional',
+                'Atos',
+                'Produção (€)',
+                'Custo direto (€)',
+                'Comissão (€)',
+                'Estornos (€)',
+                'Comissão líquida (€)',
+                'Parte da clínica (€)',
+              ]}
+              rows={prodByDoctor.map(r => {
+                const d = doctorById.get(String(r._id));
+                const eur = (c: number) =>
+                  (c / 100).toFixed(2).replace('.', ',');
+                const net = r.commissionCents + r.adjCommissionCents;
+                return [
+                  d?.name ?? '(profissional removido)',
+                  String(r.n),
+                  eur(r.producedCents),
+                  eur(r.costCents),
+                  eur(r.commissionCents),
+                  eur(r.adjCommissionCents),
+                  eur(net),
+                  eur(r.producedCents - r.costCents - net),
+                ];
+              })}
+            />
+          </div>
         </div>
         {prodByDoctor.length === 0 ? (
           <p
@@ -368,7 +416,10 @@ export default async function RelatoriosPage({
                 <th style={th}>Profissional</th>
                 <th style={thNum}>Atos</th>
                 <th style={thNum}>Produção</th>
-                <th style={thNum}>Comissão (profissional)</th>
+                <th style={thNum}>Custo direto</th>
+                <th style={thNum}>Comissão</th>
+                <th style={thNum}>Estornos</th>
+                <th style={thNum}>A pagar</th>
                 <th style={thNum}>Parte da clínica</th>
               </tr>
             </thead>
@@ -401,9 +452,25 @@ export default async function RelatoriosPage({
                     </td>
                     <td style={tdNum}>{r.n}</td>
                     <td style={tdNum}>{formatCents(r.producedCents)}</td>
+                    <td style={tdNum}>{formatCents(r.costCents)}</td>
                     <td style={tdNum}>{formatCents(r.commissionCents)}</td>
+                    <td
+                      style={{
+                        ...tdNum,
+                        color: r.adjCommissionCents < 0 ? '#B3261E' : '#9AA1B4',
+                      }}
+                    >
+                      {r.adjN > 0 ? formatCents(r.adjCommissionCents) : '—'}
+                    </td>
+                    <td style={{ ...tdNum, fontWeight: 700 }}>
+                      {formatCents(r.commissionCents + r.adjCommissionCents)}
+                    </td>
                     <td style={tdNum}>
-                      {formatCents(r.producedCents - r.commissionCents)}
+                      {formatCents(
+                        r.producedCents -
+                          r.costCents -
+                          (r.commissionCents + r.adjCommissionCents),
+                      )}
                     </td>
                   </tr>
                 );
@@ -417,10 +484,31 @@ export default async function RelatoriosPage({
                   {formatCents(totalProduced)}
                 </td>
                 <td style={{ ...tdNum, fontWeight: 700 }}>
+                  {formatCents(
+                    prodByDoctor.reduce((s, r) => s + r.costCents, 0),
+                  )}
+                </td>
+                <td style={{ ...tdNum, fontWeight: 700 }}>
+                  {formatCents(totalCommission - totalAdj)}
+                </td>
+                <td
+                  style={{
+                    ...tdNum,
+                    fontWeight: 700,
+                    color: totalAdj < 0 ? '#B3261E' : '#9AA1B4',
+                  }}
+                >
+                  {totalAdj !== 0 ? formatCents(totalAdj) : '—'}
+                </td>
+                <td style={{ ...tdNum, fontWeight: 700 }}>
                   {formatCents(totalCommission)}
                 </td>
                 <td style={{ ...tdNum, fontWeight: 700 }}>
-                  {formatCents(totalProduced - totalCommission)}
+                  {formatCents(
+                    totalProduced -
+                      prodByDoctor.reduce((s, r) => s + r.costCents, 0) -
+                      totalCommission,
+                  )}
                 </td>
               </tr>
             </tbody>
@@ -435,8 +523,10 @@ export default async function RelatoriosPage({
             backgroundColor: '#F9FAFD',
           }}
         >
-          Comissões congeladas no momento da execução de cada ato — alterações
-          posteriores de taxas nunca afetam este acerto.
+          Comissões congeladas na execução de cada ato (base = valor cobrado −
+          custo direto). O mês reflete o que estava válido no seu fecho;
+          anulações de meses já fechados aparecem como estornos no mês em que
+          foram feitas.
         </p>
       </div>
 

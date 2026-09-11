@@ -141,6 +141,7 @@ export default async function ConfiguracoesPage({
       cancellationMinNoticeHours: d.cancellationMinNoticeHours,
       bookableOnline: !!d.bookableOnline,
       defaultDoctorCommission: d.defaultDoctorCommission,
+      autoConsumeBom: !!d.autoConsumeBom,
       openingHours: (d.openingHours ?? []).map(
         (day: {
           weekday: number;

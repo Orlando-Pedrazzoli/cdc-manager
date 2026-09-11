@@ -4,8 +4,9 @@
 // -----------------------------------------------------------------------------
 // Duas responsabilidades da consulta em curso:
 //   1. ATOS — lista dos Procedures desta consulta + form de registo
-//      (escolher ato preenche o preço de tabela, editável para desconto/
-//      cortesia; dentes FDI em CSV; anulação com motivo — never delete)
+//      (Fase 1: escolher o ato preenche o PVP e o custo direto do catálogo,
+//      ambos editáveis; desconto em % OU em €; pré-visualização do valor a
+//      cobrar; dentes FDI em CSV; anulação com motivo — never delete)
 //   2. NOTAS CLÍNICAS — notas desta consulta (append-only na ficha)
 //
 // Só apresenta forms quando canEdit (consulta in-progress); nos outros
@@ -33,7 +34,14 @@ import { Modal } from '@/components/ui/Modal';
 export interface ProcedureItem {
   id: string;
   name: string;
+  category: string | null;
+  /** PVP antes do desconto (registos antigos: = priceCents) */
+  listPriceCents: number;
+  discountCents: number;
+  discountPct: number | null;
+  /** Valor cobrado ao paciente */
   priceCents: number;
+  costCents: number;
   toothNumbers: string[];
   notes: string | null;
   status: 'completed' | 'void' | 'planned' | 'invoiced';
@@ -43,7 +51,10 @@ export interface ProcedureItem {
 export interface TreatmentOption {
   id: string;
   name: string;
+  category: string | null;
   priceCents: number;
+  /** Custo direto default do catálogo (E6) */
+  costCents: number;
   /** Paridade Dentoral «Controla Dente»: o ato exige nº de dente (FDI) */
   controlsTooth: boolean;
 }
@@ -75,6 +86,22 @@ export function ProcedureList({
   const addHandled = useRef<ConsultationActionState>(undefined);
   const formRef = useRef<HTMLFormElement>(null);
   const [price, setPrice] = useState('');
+  const [cost, setCost] = useState('');
+  const [discountMode, setDiscountMode] = useState<'' | 'percent' | 'amount'>(
+    '',
+  );
+  const [discountValue, setDiscountValue] = useState('');
+  // Escolher o ato preenche PVP e custo do catálogo (ambos editáveis)
+  const [selected, setSelected] = useState<TreatmentOption | null>(null);
+
+  const resetForm = () => {
+    formRef.current?.reset();
+    setPrice('');
+    setCost('');
+    setDiscountMode('');
+    setDiscountValue('');
+    setSelected(null);
+  };
 
   useEffect(() => {
     if (!addState || addHandled.current === addState) return;
@@ -82,19 +109,39 @@ export function ProcedureList({
     if ('error' in addState) toast.error(addState.error);
     if ('success' in addState) {
       toast.success('Ato registado');
-      formRef.current?.reset();
-      setPrice('');
+      resetForm();
     }
+    // Padrão do projeto: useActionState + handled useRef (evita toast duplo)
   }, [addState]);
-
-  // Escolher o ato preenche o preço de tabela (editável)
-  const [selected, setSelected] = useState<TreatmentOption | null>(null);
 
   const onTreatmentChange = (id: string) => {
     const t = treatments.find(x => x.id === id) ?? null;
     setSelected(t);
     setPrice(t ? (t.priceCents / 100).toFixed(2).replace('.', ',') : '');
+    setCost(t ? (t.costCents / 100).toFixed(2).replace('.', ',') : '');
   };
+
+  // Pré-visualização (espelha lib/commissions.ts — só para o médico ver o
+  // valor a cobrar antes de registar; o cálculo que vale é o do servidor)
+  const preview = (() => {
+    const toCents = (v: string) => {
+      const n = Number(v.trim().replace(/\s/g, '').replace(',', '.'));
+      return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
+    };
+    const list = toCents(price);
+    if (list == null) return null;
+    let discount = 0;
+    if (discountMode === 'percent') {
+      const pct = Number(discountValue.replace(',', '.'));
+      if (Number.isFinite(pct) && pct >= 0 && pct <= 100) {
+        discount = Math.min(list, Math.round((list * pct) / 100));
+      }
+    } else if (discountMode === 'amount') {
+      const c = toCents(discountValue);
+      if (c != null) discount = Math.min(list, c);
+    }
+    return { list, discount, charged: list - discount };
+  })();
 
   const active = procedures.filter(p => p.status !== 'void');
   const voided = procedures.filter(p => p.status === 'void');
@@ -156,7 +203,7 @@ export function ProcedureList({
           action={addAction}
           style={{
             display: 'grid',
-            gridTemplateColumns: '2fr 1fr 1fr',
+            gridTemplateColumns: '1fr 1fr 1fr',
             gap: '10px',
             padding: '16px 20px',
             borderTop: '1px solid #EEF1F8',
@@ -165,30 +212,111 @@ export function ProcedureList({
           }}
         >
           <input type='hidden' name='appointmentId' value={appointmentId} />
-          <Select
-            name='treatmentTypeId'
-            label='Ato *'
-            required
-            defaultValue=''
-            onChange={e => onTreatmentChange(e.target.value)}
-          >
-            <option value='' disabled>
-              — Selecionar ato —
-            </option>
-            {treatments.map(t => (
-              <option key={t.id} value={t.id}>
-                {t.name} · {formatCents(t.priceCents)}
+          <input type='hidden' name='discountMode' value={discountMode} />
+          <input
+            type='hidden'
+            name='discountPct'
+            value={discountMode === 'percent' ? discountValue : ''}
+          />
+          <input
+            type='hidden'
+            name='discountEuros'
+            value={discountMode === 'amount' ? discountValue : ''}
+          />
+          <div style={{ gridColumn: '1 / span 3' }}>
+            <Select
+              name='treatmentTypeId'
+              label='Ato *'
+              required
+              defaultValue=''
+              onChange={e => onTreatmentChange(e.target.value)}
+            >
+              <option value='' disabled>
+                — Selecionar ato —
               </option>
-            ))}
-          </Select>
+              {treatments.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.category ? `[${t.category}] ` : ''}
+                  {t.name} · {formatCents(t.priceCents)}
+                </option>
+              ))}
+            </Select>
+          </div>
           <Input
             name='priceEuros'
-            label='Preço (€) *'
+            label='PVP (€) *'
             required
             inputMode='decimal'
             value={price}
             onChange={e => setPrice(e.target.value)}
-            help='Tabela; editável (desconto)'
+            help='Preço de tabela; editável'
+          />
+          <div>
+            <label
+              style={{
+                display: 'block',
+                fontSize: '13px',
+                fontWeight: 600,
+                color: '#1B2A6B',
+                marginBottom: 6,
+              }}
+            >
+              Desconto
+            </label>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <select
+                value={discountMode}
+                onChange={e => {
+                  setDiscountMode(e.target.value as '' | 'percent' | 'amount');
+                  setDiscountValue('');
+                }}
+                style={{
+                  border: '1px solid #D8DEEF',
+                  borderRadius: '10px',
+                  padding: '9px 8px',
+                  fontSize: '13px',
+                  color: '#1B2A6B',
+                  backgroundColor: '#FFFFFF',
+                  width: 86,
+                }}
+              >
+                <option value=''>Sem</option>
+                <option value='percent'>%</option>
+                <option value='amount'>€</option>
+              </select>
+              <input
+                inputMode='decimal'
+                value={discountValue}
+                disabled={discountMode === ''}
+                onChange={e => setDiscountValue(e.target.value)}
+                placeholder={discountMode === 'percent' ? 'ex.: 10' : 'ex.: 20'}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  border: '1px solid #D8DEEF',
+                  borderRadius: '10px',
+                  padding: '9px 10px',
+                  fontSize: '14px',
+                  color: '#1B2A6B',
+                  backgroundColor: discountMode === '' ? '#F4F6FB' : '#FFFFFF',
+                }}
+              />
+            </div>
+            <p
+              style={{ margin: '4px 0 0', fontSize: '12px', color: '#6A7186' }}
+            >
+              {preview && preview.discount > 0
+                ? `−${formatCents(preview.discount)} → a cobrar ${formatCents(preview.charged)}`
+                : 'Em % ou em € (exclusivos)'}
+            </p>
+          </div>
+          <Input
+            name='costEuros'
+            label='Custo direto (€)'
+            inputMode='decimal'
+            value={cost}
+            onChange={e => setCost(e.target.value)}
+            help='Material de uso único; do catálogo, editável'
           />
           <Input
             name='toothNumbers'
@@ -201,13 +329,21 @@ export function ProcedureList({
                 : undefined
             }
           />
-          <div style={{ gridColumn: '1 / span 2' }}>
+          <div style={{ gridColumn: '2 / span 2' }}>
             <Input name='notes' label='Observações' placeholder='Opcional' />
           </div>
-          <Button type='submit' disabled={adding}>
-            <Plus size={15} style={{ marginRight: 6 }} />
-            {adding ? 'A registar…' : 'Registar ato'}
-          </Button>
+          <div
+            style={{
+              gridColumn: '1 / span 3',
+              display: 'flex',
+              justifyContent: 'flex-end',
+            }}
+          >
+            <Button type='submit' disabled={adding}>
+              <Plus size={15} style={{ marginRight: 6 }} />
+              {adding ? 'A registar…' : 'Registar ato'}
+            </Button>
+          </div>
         </form>
       )}
     </div>
@@ -256,6 +392,20 @@ function ProcedureRow({ p, canEdit }: { p: ProcedureItem; canEdit: boolean }) {
           }}
         >
           {p.name}
+          {p.category && (
+            <span
+              style={{
+                marginLeft: 8,
+                fontSize: '11px',
+                fontWeight: 600,
+                color: '#9AA1B4',
+                textTransform: 'uppercase',
+                letterSpacing: '0.3px',
+              }}
+            >
+              {p.category}
+            </span>
+          )}
           {p.toothNumbers.length > 0 && (
             <span
               style={{
@@ -281,17 +431,35 @@ function ProcedureRow({ p, canEdit }: { p: ProcedureItem; canEdit: boolean }) {
           </p>
         )}
       </div>
-      <span
-        style={{
-          fontSize: '14px',
-          fontWeight: 700,
-          color: '#1B2A6B',
-          fontVariantNumeric: 'tabular-nums',
-          textDecoration: isVoid ? 'line-through' : 'none',
-        }}
-      >
-        {formatCents(p.priceCents)}
-      </span>
+      <div style={{ textAlign: 'right' }}>
+        <span
+          style={{
+            fontSize: '14px',
+            fontWeight: 700,
+            color: '#1B2A6B',
+            fontVariantNumeric: 'tabular-nums',
+            textDecoration: isVoid ? 'line-through' : 'none',
+          }}
+        >
+          {formatCents(p.priceCents)}
+        </span>
+        {p.discountCents > 0 && (
+          <p
+            style={{
+              margin: '2px 0 0',
+              fontSize: '11px',
+              color: '#0F7B4D',
+              fontVariantNumeric: 'tabular-nums',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            PVP {formatCents(p.listPriceCents)} · desc.{' '}
+            {p.discountPct != null
+              ? `${p.discountPct}%`
+              : formatCents(p.discountCents)}
+          </p>
+        )}
+      </div>
       {canEdit && !isVoid && (
         <>
           <button

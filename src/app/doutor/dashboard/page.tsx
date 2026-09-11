@@ -37,6 +37,11 @@ import { dbConnect } from '@/lib/mongodb';
 import Appointment, { type AppointmentStatus } from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import Procedure from '@/models/Procedure';
+import CommissionAdjustment from '@/models/CommissionAdjustment';
+import {
+  adjustmentsMatch,
+  producedProceduresMatch,
+} from '@/lib/commission-accounting';
 import TreatmentType from '@/models/TreatmentType';
 import { getActiveClinics } from '@/models/Clinic';
 import {
@@ -177,84 +182,105 @@ export default async function DoctorDashboardPage() {
 
   // Marcações de HOJE do médico, nas duas clínicas, todos os estados —
   // canceladas/faltas aparecem esbatidas na lista (contexto do dia completo)
-  const [appointments, clinics, monthAgg, prevAgg, sparkAgg, staleRaw] =
-    await Promise.all([
-      Appointment.find({
-        doctorId,
-        startAt: { $gte: dayStartUtc, $lt: dayEndUtc },
-      })
-        .sort({ startAt: 1 })
-        .lean(),
-      getActiveClinics(),
-      // Produção e comissão do PRÓPRIO médico: mês corrente até hoje.
-      // Snapshots imutáveis (priceCents/commissionCents congelados na
-      // execução) — somar sem recalcular, como nos relatórios.
-      Procedure.aggregate<{
-        _id: null;
-        cents: number;
-        comm: number;
-        n: number;
-      }>([
-        {
-          $match: {
-            doctorId: new mongoose.Types.ObjectId(doctorId),
-            status: { $in: ['completed', 'invoiced'] },
-            executedAt: { $gte: monthStart, $lt: dayEndUtc },
-          },
+  const [
+    appointments,
+    clinics,
+    monthAgg,
+    prevAgg,
+    sparkAgg,
+    staleRaw,
+    monthAdjAgg,
+  ] = await Promise.all([
+    Appointment.find({
+      doctorId,
+      startAt: { $gte: dayStartUtc, $lt: dayEndUtc },
+    })
+      .sort({ startAt: 1 })
+      .lean(),
+    getActiveClinics(),
+    // Produção e comissão do PRÓPRIO médico: mês corrente até hoje.
+    // Snapshots imutáveis (priceCents/commissionCents congelados na
+    // execução) — somar sem recalcular, como nos relatórios.
+    Procedure.aggregate<{
+      _id: null;
+      cents: number;
+      comm: number;
+      n: number;
+    }>([
+      {
+        $match: {
+          doctorId: new mongoose.Types.ObjectId(doctorId),
+          status: { $in: ['completed', 'invoiced'] },
+          executedAt: { $gte: monthStart, $lt: dayEndUtc },
         },
-        {
-          $group: {
-            _id: null,
-            cents: { $sum: '$priceCents' },
-            comm: { $sum: '$commissionCents' },
-            n: { $sum: 1 },
-          },
+      },
+      {
+        $group: {
+          _id: null,
+          cents: { $sum: '$priceCents' },
+          comm: { $sum: '$commissionCents' },
+          n: { $sum: 1 },
         },
-      ]),
-      // Mesmo intervalo de dias (1–N) do mês anterior
-      Procedure.aggregate<{ _id: null; cents: number }>([
-        {
-          $match: {
-            doctorId: new mongoose.Types.ObjectId(doctorId),
-            status: { $in: ['completed', 'invoiced'] },
-            executedAt: { $gte: prevStart, $lt: prevEnd },
-          },
+      },
+    ]),
+    // Mesmo intervalo de dias (1–N) do mês anterior
+    Procedure.aggregate<{ _id: null; cents: number }>([
+      {
+        $match: producedProceduresMatch(prevStart, prevEnd, {
+          doctorId: new mongoose.Types.ObjectId(doctorId),
+        }),
+      },
+      { $group: { _id: null, cents: { $sum: '$priceCents' } } },
+    ]),
+    // Produção diária dos últimos 30 dias (sparkline, dia civil Lisboa)
+    Procedure.aggregate<{ _id: string; cents: number }>([
+      {
+        $match: {
+          doctorId: new mongoose.Types.ObjectId(doctorId),
+          status: { $in: ['completed', 'invoiced'] },
+          executedAt: { $gte: spark30Start, $lt: dayEndUtc },
         },
-        { $group: { _id: null, cents: { $sum: '$priceCents' } } },
-      ]),
-      // Produção diária dos últimos 30 dias (sparkline, dia civil Lisboa)
-      Procedure.aggregate<{ _id: string; cents: number }>([
-        {
-          $match: {
-            doctorId: new mongoose.Types.ObjectId(doctorId),
-            status: { $in: ['completed', 'invoiced'] },
-            executedAt: { $gte: spark30Start, $lt: dayEndUtc },
-          },
-        },
-        {
-          $group: {
-            _id: {
-              $dateToString: {
-                format: '%Y-%m-%d',
-                date: '$executedAt',
-                timezone: 'Europe/Lisbon',
-              },
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: '%Y-%m-%d',
+              date: '$executedAt',
+              timezone: 'Europe/Lisbon',
             },
-            cents: { $sum: '$priceCents' },
           },
+          cents: { $sum: '$priceCents' },
         },
-      ]),
-      // Consultas de dias ANTERIORES esquecidas abertas — stock e cobrança
-      // só disparam no concluir; isto é dívida operacional a fechar
-      Appointment.find({
-        doctorId,
-        startAt: { $lt: dayStartUtc },
-        status: { $in: ['in-progress', 'checked-in'] },
-      })
-        .sort({ startAt: -1 })
-        .limit(6)
-        .lean(),
-    ]);
+      },
+    ]),
+    // Consultas de dias ANTERIORES esquecidas abertas — stock e cobrança
+    // só disparam no concluir; isto é dívida operacional a fechar
+    Appointment.find({
+      doctorId,
+      startAt: { $lt: dayStartUtc },
+      status: { $in: ['in-progress', 'checked-in'] },
+    })
+      .sort({ startAt: -1 })
+      .limit(6)
+      .lean(),
+    // Fase 1: estornos de comissão com efeito este mês (anulações de atos
+    // de meses já fechados) — o médico vê a comissão LÍQUIDA
+    CommissionAdjustment.aggregate<{ _id: null; comm: number; n: number }>([
+      {
+        $match: adjustmentsMatch(monthStart, dayEndUtc, {
+          doctorId: new mongoose.Types.ObjectId(doctorId),
+        }),
+      },
+      {
+        $group: {
+          _id: null,
+          comm: { $sum: '$commissionCents' },
+          n: { $sum: 1 },
+        },
+      },
+    ]),
+  ]);
 
   const clinicById = new Map(
     clinics.map(c => [String(c._id), { slug: c.slug, name: c.name }]),
@@ -338,7 +364,9 @@ export default async function DoctorDashboardPage() {
 
   // --- O meu mês -------------------------------------------------------------
   const monthCents = monthAgg[0]?.cents ?? 0;
-  const monthComm = monthAgg[0]?.comm ?? 0;
+  const monthAdjComm = monthAdjAgg[0]?.comm ?? 0;
+  const monthAdjN = monthAdjAgg[0]?.n ?? 0;
+  const monthComm = (monthAgg[0]?.comm ?? 0) + monthAdjComm;
   const monthN = monthAgg[0]?.n ?? 0;
   const prevCents = prevAgg[0]?.cents ?? 0;
   const deltaUp = monthCents >= prevCents;
@@ -705,10 +733,18 @@ export default async function DoctorDashboardPage() {
           </p>
           <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6A7186' }}>
             A minha comissão este mês
+            {monthAdjN > 0 && (
+              <span style={{ color: '#B3261E' }}>
+                {' '}
+                (inclui {formatCents(monthAdjComm)} de estorno
+                {monthAdjN === 1 ? '' : 's'})
+              </span>
+            )}
           </p>
           <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#9AA1B4' }}>
-            Valores congelados no registo de cada ato — alterações de tabela não
-            afetam o já executado
+            Calculada sobre o valor cobrado menos o custo direto de cada ato;
+            valores congelados no registo — alterações de tabela não afetam o já
+            executado
           </p>
         </div>
       </div>

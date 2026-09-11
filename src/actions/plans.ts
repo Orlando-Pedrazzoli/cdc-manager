@@ -24,7 +24,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
-import { resolveCommissionRate, commissionCentsOf } from '@/lib/commissions';
+import { resolveCommission, computeLineFinancials } from '@/lib/commissions';
 import { spawnRecallForProcedure } from '@/lib/recalls';
 import {
   createPlanSchema,
@@ -190,30 +190,41 @@ export async function approvePlanAction(
 
     const [doctor, clinic, itemTreatments] = await Promise.all([
       Doctor.findById(doctorId)
-        .select('commissionRate commissionOverrides')
+        .select(
+          'commissionRate commissionOverrides commissionCategoryOverrides',
+        )
         .lean(),
       getClinicById(String(plan.clinicId)),
       TreatmentType.find({
         _id: { $in: plan.items.map(i => i.treatmentTypeId) },
       })
-        .select('commissionRate')
+        .select('commissionRate category costCents')
         .lean(),
     ]);
     if (!doctor || !clinic)
       return { error: 'Dados de comissão indisponíveis.' };
-    const treatmentRateById = new Map(
-      itemTreatments.map(t => [String(t._id), t.commissionRate ?? null]),
-    );
+    const treatmentById = new Map(itemTreatments.map(t => [String(t._id), t]));
 
-    // Um Procedure 'planned' por item, com comissão PROVISÓRIA (a definitiva
-    // é congelada na execução — princípio do snapshot)
+    // Um Procedure 'planned' por item, com financeiro PROVISÓRIO (o
+    // definitivo é congelado na execução — princípio do snapshot).
+    // Itens de plano ainda não têm desconto por linha (Fase 4); o custo
+    // direto é o do catálogo.
     for (const item of plan.items) {
-      const rate = resolveCommissionRate({
+      const t = treatmentById.get(String(item.treatmentTypeId));
+      const commission = resolveCommission({
         overrides: doctor.commissionOverrides,
+        categoryOverrides: doctor.commissionCategoryOverrides,
         doctorRate: doctor.commissionRate,
-        treatmentRate: treatmentRateById.get(String(item.treatmentTypeId)),
+        treatmentRate: t?.commissionRate ?? null,
         clinicDefault: clinic.defaultDoctorCommission,
         treatmentTypeId: String(item.treatmentTypeId),
+        category: t?.category ?? null,
+      });
+      const fin = computeLineFinancials({
+        listPriceCents: item.priceCents,
+        discount: null,
+        costCents: t?.costCents ?? 0,
+        commission,
       });
       const proc = await Procedure.create({
         clinicId: plan.clinicId,
@@ -224,9 +235,8 @@ export async function approvePlanAction(
         treatmentPlanId: plan._id,
         status: 'planned',
         nameSnapshot: item.nameSnapshot,
-        priceCents: item.priceCents,
-        commissionRate: rate,
-        commissionCents: commissionCentsOf(item.priceCents, rate),
+        categorySnapshot: t?.category ?? null,
+        ...fin,
         toothNumbers: item.toothNumbers,
         notes: null,
         executedAt: null,
@@ -329,30 +339,51 @@ export async function executePlanItemAction(
       return { error: 'O plano não está em execução.' };
     }
 
-    // Comissão DEFINITIVA resolvida e congelada na execução
+    // Financeiro DEFINITIVO resolvido e congelado na execução. O PVP e o
+    // desconto do item (se existir) mantêm-se; o custo direto é o do
+    // catálogo NESTE momento (o material é comprado quando se executa).
     const [doctor, clinic, procTreatment] = await Promise.all([
       Doctor.findById(doctorId)
-        .select('commissionRate commissionOverrides')
+        .select(
+          'commissionRate commissionOverrides commissionCategoryOverrides',
+        )
         .lean(),
       getClinicById(String(proc.clinicId)),
       TreatmentType.findById(proc.treatmentTypeId)
-        .select('commissionRate')
+        .select('commissionRate category costCents')
         .lean(),
     ]);
     if (!doctor || !clinic)
       return { error: 'Dados de comissão indisponíveis.' };
-    const rate = resolveCommissionRate({
+    const commission = resolveCommission({
       overrides: doctor.commissionOverrides,
+      categoryOverrides: doctor.commissionCategoryOverrides,
       doctorRate: doctor.commissionRate,
       treatmentRate: procTreatment?.commissionRate ?? null,
       clinicDefault: clinic.defaultDoctorCommission,
       treatmentTypeId: String(proc.treatmentTypeId),
+      category: procTreatment?.category ?? proc.categorySnapshot ?? null,
+    });
+    const listPrice = proc.listPriceCents ?? proc.priceCents;
+    const fin = computeLineFinancials({
+      listPriceCents: listPrice,
+      discount:
+        proc.discountMode === 'percent' && proc.discountPct != null
+          ? { mode: 'percent', value: proc.discountPct }
+          : proc.discountMode === 'amount'
+            ? { mode: 'amount', cents: proc.discountCents ?? 0 }
+            : null,
+      costCents: procTreatment?.costCents ?? proc.costCents ?? 0,
+      commission,
     });
 
     proc.set('status', 'completed');
     proc.set('executedAt', new Date());
-    proc.set('commissionRate', rate);
-    proc.set('commissionCents', commissionCentsOf(proc.priceCents, rate));
+    proc.set(
+      'categorySnapshot',
+      procTreatment?.category ?? proc.categorySnapshot ?? null,
+    );
+    proc.set(fin);
     await proc.save();
 
     // Estado do plano: in-progress no 1º; completed quando não restar planned

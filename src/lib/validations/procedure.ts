@@ -59,14 +59,70 @@ const optionalText = (max: number) =>
     z.string().trim().max(max).nullable(),
   );
 
+/** "" → null; "12,5" → 12.5 (percentagem 0..100, até 2 decimais) */
+export const optionalPercentField = z.preprocess(
+  v => {
+    if (typeof v !== 'string' && typeof v !== 'number') return v;
+    const s = String(v).trim().replace(',', '.');
+    if (s === '') return null;
+    const n = Number(s);
+    if (!Number.isFinite(n)) return NaN;
+    return Math.round(n * 100) / 100;
+  },
+  z
+    .number({ error: 'Percentagem inválida' })
+    .min(0, 'Percentagem inválida')
+    .max(100, 'Desconto máximo: 100%')
+    .nullable(),
+);
+
+/** Como eurosToCentsField mas vazio → null (opcional) */
+export const optionalEurosToCentsField = z.preprocess(
+  v => {
+    if (typeof v !== 'string' && typeof v !== 'number') return v;
+    const s = String(v).trim().replace(/\s/g, '').replace(',', '.');
+    if (s === '') return null;
+    const n = Number(s);
+    if (!Number.isFinite(n)) return NaN;
+    return Math.round(n * 100);
+  },
+  z
+    .number({ error: 'Valor inválido' })
+    .int()
+    .min(0, 'O valor não pode ser negativo')
+    .max(10_000_000, 'Valor demasiado alto')
+    .nullable(),
+);
+
 // --- Registar ato durante a consulta -----------------------------------------
-export const addProcedureSchema = z.object({
-  appointmentId: z.string().regex(OBJECT_ID),
-  treatmentTypeId: z.string().regex(OBJECT_ID, 'Selecione o ato'),
-  priceEuros: eurosToCentsField, // já chega às actions em CÊNTIMOS
-  toothNumbers: toothNumbersField,
-  notes: optionalText(1000),
-});
+// Fase 1: PVP (editável) + desconto em % OU em € (exclusivos) + custo direto
+// (pré-preenchido do catálogo, editável). Tudo chega às actions em cêntimos.
+export const addProcedureSchema = z
+  .object({
+    appointmentId: z.string().regex(OBJECT_ID),
+    treatmentTypeId: z.string().regex(OBJECT_ID, 'Selecione o ato'),
+    priceEuros: eurosToCentsField, // PVP em CÊNTIMOS (listPriceCents)
+    discountMode: z.enum(['percent', 'amount']).nullable().default(null),
+    discountPct: optionalPercentField.default(null),
+    discountEuros: optionalEurosToCentsField.default(null),
+    costEuros: optionalEurosToCentsField.default(null), // null = custo do catálogo
+    toothNumbers: toothNumbersField,
+    notes: optionalText(1000),
+  })
+  .superRefine((d, ctx) => {
+    if (d.discountMode === 'percent' && d.discountPct == null) {
+      ctx.addIssue({ code: 'custom', message: 'Indique a % de desconto' });
+    }
+    if (d.discountMode === 'amount' && d.discountEuros == null) {
+      ctx.addIssue({ code: 'custom', message: 'Indique o valor do desconto' });
+    }
+    if (d.discountMode === 'amount' && (d.discountEuros ?? 0) > d.priceEuros) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'O desconto não pode ser superior ao PVP',
+      });
+    }
+  });
 export type AddProcedureInput = z.infer<typeof addProcedureSchema>;
 
 // --- Anular ato (never delete) -----------------------------------------------

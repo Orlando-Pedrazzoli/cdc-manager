@@ -13,8 +13,10 @@
 // · Máquina de estados respeitada: iniciar percorre as ARESTAS válidas
 //   (pending→confirmed→checked-in→in-progress), gravando cada timestamp —
 //   o médico pode iniciar mesmo que a receção não tenha feito check-in
-// · Ato registado = Procedure 'completed' com SNAPSHOT (nome, preço,
-//   comissão resolvida override>médico>clínica) congelado na execução
+// · Ato registado = Procedure 'completed' com SNAPSHOT financeiro completo
+//   (PVP, desconto, valor cobrado, custo direto, base e regra de comissão
+//   resolvida linha>categoria>médico>ato>clínica) congelado na execução —
+//   ver lib/commissions.ts (Fase 1)
 // · Never delete: ato errado ANULA-SE (void + autor + motivo)
 // · Nota clínica é APPEND-ONLY no ClinicalRecord (1:1 lazy com o paciente)
 // · logAudit com clinicId em todos os eventos operacionais
@@ -23,11 +25,17 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import type mongoose from 'mongoose';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
-import { resolveCommissionRate, commissionCentsOf } from '@/lib/commissions';
+import {
+  resolveCommission,
+  computeLineFinancials,
+  type DiscountInput,
+} from '@/lib/commissions';
+import { needsAdjustmentOnVoid } from '@/lib/commission-accounting';
 import {
   consumeStockForAppointment,
   reverseStockForProcedure,
@@ -49,6 +57,7 @@ import Procedure from '@/models/Procedure';
 import ClinicalRecord from '@/models/ClinicalRecord';
 import Odontogram from '@/models/Odontogram';
 import Doctor from '@/models/Doctor';
+import CommissionAdjustment from '@/models/CommissionAdjustment';
 import TreatmentType from '@/models/TreatmentType';
 import { getClinicById } from '@/models/Clinic';
 
@@ -156,6 +165,10 @@ export async function addProcedureAction(
       appointmentId: formData.get('appointmentId'),
       treatmentTypeId: formData.get('treatmentTypeId'),
       priceEuros: formData.get('priceEuros'),
+      discountMode: formData.get('discountMode') || null,
+      discountPct: formData.get('discountPct'),
+      discountEuros: formData.get('discountEuros'),
+      costEuros: formData.get('costEuros'),
       toothNumbers: formData.get('toothNumbers'),
       notes: formData.get('notes'),
     });
@@ -174,7 +187,9 @@ export async function addProcedureAction(
     const [treatment, doctor, clinic] = await Promise.all([
       TreatmentType.findById(data.treatmentTypeId).lean(),
       Doctor.findById(doctorId)
-        .select('commissionRate commissionOverrides')
+        .select(
+          'commissionRate commissionOverrides commissionCategoryOverrides',
+        )
         .lean(),
       getClinicById(String(appt.clinicId)),
     ]);
@@ -191,14 +206,34 @@ export async function addProcedureAction(
       };
     }
 
-    // Cadeia: override (médico×ato) > taxa base do médico > taxa do ato >
-    // default da clínica (ver lib/commissions.ts)
-    const rate = resolveCommissionRate({
+    // Cadeia: override linha > override categoria > taxa base do médico >
+    // taxa do ato > default da clínica (ver lib/commissions.ts)
+    const commission = resolveCommission({
       overrides: doctor.commissionOverrides,
+      categoryOverrides: doctor.commissionCategoryOverrides,
       doctorRate: doctor.commissionRate,
       treatmentRate: treatment.commissionRate ?? null,
       clinicDefault: clinic.defaultDoctorCommission,
       treatmentTypeId: data.treatmentTypeId,
+      category: treatment.category ?? null,
+    });
+
+    // Desconto (E5): % ou € — exclusivos, validados no schema
+    const discount: DiscountInput =
+      data.discountMode === 'percent'
+        ? { mode: 'percent', value: data.discountPct as number }
+        : data.discountMode === 'amount'
+          ? { mode: 'amount', cents: data.discountEuros as number }
+          : null;
+
+    // Custo direto (E6): o médico pode ajustar; vazio = custo do catálogo
+    const costCents = data.costEuros ?? treatment.costCents ?? 0;
+
+    const fin = computeLineFinancials({
+      listPriceCents: data.priceEuros, // PVP em cêntimos (ver validations)
+      discount,
+      costCents,
+      commission,
     });
 
     const now = new Date();
@@ -210,14 +245,19 @@ export async function addProcedureAction(
       appointmentId: appt._id,
       status: 'completed',
       nameSnapshot: treatment.name,
-      priceCents: data.priceEuros, // já em cêntimos (ver validations)
-      commissionRate: rate,
-      commissionCents: commissionCentsOf(data.priceEuros, rate),
+      categorySnapshot: treatment.category ?? null,
+      ...fin,
       toothNumbers: data.toothNumbers,
       notes: data.notes,
       executedAt: now,
     });
 
+    const discountLabel =
+      fin.discountCents > 0
+        ? fin.discountMode === 'percent'
+          ? `, desconto ${fin.discountPct}%`
+          : `, desconto ${(fin.discountCents / 100).toFixed(2)} €`
+        : '';
     await logAudit({
       userId,
       action: 'create',
@@ -225,7 +265,7 @@ export async function addProcedureAction(
       entityId: String(proc._id),
       patientId: String(appt.patientId),
       clinicId: String(appt.clinicId),
-      summary: `Ato registado: ${treatment.name} (${(data.priceEuros / 100).toFixed(2)} €)`,
+      summary: `Ato registado: ${treatment.name} (PVP ${(fin.listPriceCents / 100).toFixed(2)} €${discountLabel} → ${(fin.priceCents / 100).toFixed(2)} €; custo ${(fin.costCents / 100).toFixed(2)} €; comissão ${(fin.commissionCents / 100).toFixed(2)} €)`,
     });
 
     // Recall automático se o ato tem recallIntervalMonths (best-effort:
@@ -281,11 +321,28 @@ export async function voidProcedureAction(
       };
     }
 
+    const voidedAt = new Date();
     proc.set('status', 'void');
-    proc.set('voidedAt', new Date());
+    proc.set('voidedAt', voidedAt);
     proc.set('voidedByUserId', session.user.id);
     proc.set('voidReason', parsed.data.reason);
     await proc.save();
+
+    // Ato de mês já FECHADO (já pago ao médico) → estorno a negativo no mês
+    // corrente. No próprio mês não há ajuste: o ato sai da produção.
+    // (regra em lib/commission-accounting.ts)
+    let adjusted = false;
+    if (needsAdjustmentOnVoid(proc.executedAt, voidedAt)) {
+      await createVoidAdjustment({
+        proc,
+        reason: 'procedure-void',
+        invoiceId: null,
+        effectiveAt: voidedAt,
+        userId: session.user.id,
+        note: parsed.data.reason,
+      });
+      adjusted = true;
+    }
 
     await logAudit({
       userId: session.user.id,
@@ -294,7 +351,7 @@ export async function voidProcedureAction(
       entityId: String(proc._id),
       patientId: String(proc.patientId),
       clinicId: String(proc.clinicId),
-      summary: `Ato anulado: ${proc.nameSnapshot} — ${parsed.data.reason}`,
+      summary: `Ato anulado: ${proc.nameSnapshot} — ${parsed.data.reason}${adjusted ? ' (estorno de comissão lançado no mês corrente)' : ''}`,
     });
 
     // Ato anulado não deve convidar ninguém: fecha o ciclo de recall que
@@ -315,6 +372,62 @@ export async function voidProcedureAction(
     return { success: true };
   } catch (e) {
     return fail(e);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// ESTORNO DE COMISSÃO — partilhado com a anulação de faturas (billing.ts).
+// Idempotente pelo índice único em procedureId (E11000 = já lançado).
+// -----------------------------------------------------------------------------
+export async function createVoidAdjustment(params: {
+  proc: {
+    _id: mongoose.Types.ObjectId;
+    clinicId: mongoose.Types.ObjectId;
+    doctorId: mongoose.Types.ObjectId;
+    patientId: mongoose.Types.ObjectId;
+    nameSnapshot: string;
+    categorySnapshot?: string | null;
+    priceCents: number;
+    costCents?: number | null;
+    commissionBaseCents?: number | null;
+    commissionCents: number;
+    executedAt?: Date | null;
+  };
+  reason: 'invoice-void' | 'procedure-void';
+  invoiceId: string | null;
+  effectiveAt: Date;
+  userId: string;
+  note: string | null;
+}): Promise<void> {
+  const { proc } = params;
+  const cost = proc.costCents ?? 0;
+  const base = proc.commissionBaseCents ?? proc.priceCents;
+  try {
+    await CommissionAdjustment.create({
+      clinicId: proc.clinicId,
+      doctorId: proc.doctorId,
+      patientId: proc.patientId,
+      procedureId: proc._id,
+      invoiceId: params.invoiceId,
+      reason: params.reason,
+      descriptionSnapshot: proc.nameSnapshot,
+      categorySnapshot: proc.categorySnapshot ?? null,
+      priceCents: -proc.priceCents,
+      costCents: -cost,
+      commissionBaseCents: -base,
+      commissionCents: -proc.commissionCents,
+      effectiveAt: params.effectiveAt,
+      originalExecutedAt: proc.executedAt ?? null,
+      note: params.note,
+      createdByUserId: params.userId,
+    });
+  } catch (err) {
+    const isDup =
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: number }).code === 11000;
+    if (!isDup) throw err;
   }
 }
 
@@ -432,15 +545,17 @@ export async function completeConsultationAction(
       summary: `Consulta concluída (${actsCount} ato${actsCount === 1 ? '' : 's'})`,
     });
 
-    // Baixa automática de stock pelas BOM dos atos (best-effort: nunca
-    // reverte a conclusão; armazém default da clínica; idempotente).
-    // A baixa é AQUI e não na cobrança: os materiais consomem-se quando o
-    // ato é executado — o pagamento pode ser mais tarde ou parcial.
-    await consumeStockForAppointment({
-      appointmentId: String(appt._id),
-      clinicId: String(appt.clinicId),
-      userId,
-    });
+    // Baixa automática de stock pelas BOM dos atos — SÓ se a clínica a
+    // tiver ligado (Fase 1/E1: desligada por defeito; o stock move-se por
+    // entradas de fatura e saídas manuais). Best-effort, idempotente.
+    const clinic = await getClinicById(String(appt.clinicId));
+    if (clinic?.autoConsumeBom) {
+      await consumeStockForAppointment({
+        appointmentId: String(appt._id),
+        clinicId: String(appt.clinicId),
+        userId,
+      });
+    }
 
     revalidatePath(`/doutor/consulta/${parsed.data.appointmentId}`);
     revalidatePath('/doutor/dashboard');

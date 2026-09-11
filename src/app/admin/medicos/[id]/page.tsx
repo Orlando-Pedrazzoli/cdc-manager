@@ -658,18 +658,48 @@ export default async function DoctorPage({
               doctorId={id}
               basePercentLabel={
                 doctor.commissionRate != null
-                  ? `a taxa base do profissional (${Math.round(doctor.commissionRate * 100)}%)`
-                  : 'a taxa própria do ato (Tratamentos) ou o default da clínica (40%)'
+                  ? `taxa base do profissional (${Math.round(doctor.commissionRate * 100)}%)`
+                  : 'taxa própria do ato (Tratamentos) › default da clínica'
               }
               treatments={(
                 await TreatmentType.find({ active: { $ne: false } })
-                  .sort({ name: 1 })
-                  .select('name')
+                  .sort({ category: 1, name: 1 })
+                  .select('name category')
                   .lean()
-              ).map(t => ({ id: String(t._id), name: t.name }))}
+              ).map(t => ({
+                id: String(t._id),
+                name: t.name,
+                category: t.category ?? null,
+              }))}
+              categories={Array.from(
+                new Set(
+                  (
+                    await TreatmentType.find({
+                      active: { $ne: false },
+                    }).distinct('category')
+                  ).filter(
+                    (c): c is string =>
+                      typeof c === 'string' && c.trim() !== '',
+                  ),
+                ),
+              ).sort()}
               initialOverrides={doctor.commissionOverrides.map(o => ({
                 treatmentTypeId: String(o.treatmentTypeId),
-                ratePercent: Math.round(o.rate * 100),
+                mode: (o.mode ?? 'percent') as 'percent' | 'fixed',
+                value:
+                  (o.mode ?? 'percent') === 'fixed'
+                    ? (o.fixedCents ?? 0) / 100
+                    : Math.round((o.rate ?? 0) * 10000) / 100,
+              }))}
+              initialCategoryOverrides={(
+                doctor.commissionCategoryOverrides ?? []
+              ).map(o => ({
+                category: o.category,
+                mode: (o.mode ?? 'percent') as 'percent' | 'fixed',
+                value:
+                  (o.mode ?? 'percent') === 'fixed'
+                    ? (o.fixedCents ?? 0) / 100
+                    : Math.round((o.rate ?? 0) * 10000) / 100,
               }))}
             />
           )}
