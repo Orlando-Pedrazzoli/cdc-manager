@@ -146,7 +146,7 @@ export default async function ConsultationPage({
       .lean(),
     getClinicById(String(appt.clinicId)),
     TreatmentType.find({ active: true })
-      .select('name category priceCents costCents controlsTooth')
+      .select('name category dentoralCode priceCents costCents controlsTooth')
       .sort({ category: 1, name: 1 })
       .lean(),
     Procedure.find({ appointmentId: appt._id }).sort({ createdAt: 1 }).lean(),
@@ -199,6 +199,7 @@ export default async function ConsultationPage({
     id: String(t._id),
     name: t.name,
     category: t.category ?? null,
+    code: (t.dentoralCode as string | null) ?? null,
     priceCents: t.priceCents,
     costCents: t.costCents ?? 0,
     controlsTooth: !!t.controlsTooth,

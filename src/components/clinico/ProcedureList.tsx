@@ -27,7 +27,8 @@ import {
 } from '@/actions/procedures';
 import { formatCents } from '@/lib/commissions';
 import { Button } from '@/components/ui/Button';
-import { Input, Select, Textarea } from '@/components/ui/Input';
+import { Input, Textarea } from '@/components/ui/Input';
+import { TreatmentPicker } from '@/components/clinico/TreatmentPicker';
 import { Modal } from '@/components/ui/Modal';
 
 // --- Tipos serializados (vêm do Server Component) ----------------------------
@@ -52,6 +53,8 @@ export interface TreatmentOption {
   id: string;
   name: string;
   category: string | null;
+  /** Código Dentoral (pesquisável no picker) */
+  code: string | null;
   priceCents: number;
   /** Custo direto default do catálogo (E6) */
   costCents: number;
@@ -224,23 +227,12 @@ export function ProcedureList({
             value={discountMode === 'amount' ? discountValue : ''}
           />
           <div style={{ gridColumn: '1 / span 3' }}>
-            <Select
+            <TreatmentPicker
               name='treatmentTypeId'
-              label='Ato *'
-              required
-              defaultValue=''
-              onChange={e => onTreatmentChange(e.target.value)}
-            >
-              <option value='' disabled>
-                — Selecionar ato —
-              </option>
-              {treatments.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.category ? `[${t.category}] ` : ''}
-                  {t.name} · {formatCents(t.priceCents)}
-                </option>
-              ))}
-            </Select>
+              options={treatments}
+              value={selected?.id ?? ''}
+              onChange={onTreatmentChange}
+            />
           </div>
           <Input
             name='priceEuros'
