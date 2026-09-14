@@ -16,6 +16,7 @@ import { usePathname } from 'next/navigation';
 const TABS = [
   { href: '/conta', label: 'Início' },
   { href: '/conta/marcacoes', label: 'Marcações' },
+  { href: '/conta/anamnese', label: 'Anamnese' },
   { href: '/conta/documentos', label: 'Documentos' },
   { href: '/conta/dados', label: 'Os meus dados' },
 ] as const;

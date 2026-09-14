@@ -38,6 +38,8 @@ import Appointment, { type AppointmentStatus } from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import Procedure from '@/models/Procedure';
 import CommissionAdjustment from '@/models/CommissionAdjustment';
+import ClinicalRecord from '@/models/ClinicalRecord';
+import { anamnesisStatus } from '@/lib/anamnesis';
 import {
   adjustmentsMatch,
   producedProceduresMatch,
@@ -105,6 +107,8 @@ type DayAppointment = {
   treatmentName: string;
   clinicSlug: string;
   isUrgent: boolean;
+  /** E19: 'missing' | 'expired' | 'unreviewed' | 'ok' */
+  anamnesis: string;
   clinicName: string;
   notes: string | null;
 };
@@ -311,6 +315,19 @@ export default async function DoctorDashboardPage() {
   );
   const treatmentById = new Map(treatments.map(t => [String(t._id), t.name]));
 
+  // E19: estado da anamnese de cada paciente do dia
+  const records = patientIds.length
+    ? await ClinicalRecord.find({ patientId: { $in: patientIds } })
+        .select('patientId questionnaire')
+        .lean()
+    : [];
+  const anamnesisByPatient = new Map(
+    records.map(r => [
+      String(r.patientId),
+      anamnesisStatus(r.questionnaire ?? null).state,
+    ]),
+  );
+
   const day: DayAppointment[] = appointments.map(a => {
     const p = patientById.get(String(a.patientId));
     const clinic = clinicById.get(String(a.clinicId));
@@ -324,6 +341,7 @@ export default async function DoctorDashboardPage() {
       treatmentName: treatmentById.get(String(a.treatmentTypeId)) ?? '—',
       clinicSlug: clinic?.slug ?? '',
       isUrgent: !!a.isUrgent,
+      anamnesis: anamnesisByPatient.get(String(a.patientId)) ?? 'missing',
       clinicName: clinic?.name ?? '—',
       notes: (a.note as string | null) ?? null,
     };
@@ -868,6 +886,21 @@ export default async function DoctorDashboardPage() {
                   {a.isUrgent && (
                     <Badge bg='#FDEDED' fg='#B3261E'>
                       Urgência
+                    </Badge>
+                  )}
+                  {a.anamnesis === 'missing' && (
+                    <Badge bg='#FFF4E5' fg='#9A6700'>
+                      Anamnese em falta
+                    </Badge>
+                  )}
+                  {a.anamnesis === 'expired' && (
+                    <Badge bg='#FFF4E5' fg='#9A6700'>
+                      Anamnese &gt;1 ano
+                    </Badge>
+                  )}
+                  {a.anamnesis === 'unreviewed' && (
+                    <Badge bg='#EEF2FF' fg='#2743A6'>
+                      Anamnese por validar
                     </Badge>
                   )}
                 </>

@@ -28,6 +28,7 @@ import RxRequest from '@/models/RxRequest';
 import ClinicalDocument from '@/models/Document';
 import { getClinicById } from '@/models/Clinic';
 import { signedPreviewUrl } from '@/lib/cloudinary';
+import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
 import { minToHhmm } from '@/lib/availability';
 import type { RxModality, RxStatus } from '@/lib/domain';
 import {
@@ -151,7 +152,7 @@ export default async function ConsultationPage({
       .lean(),
     Procedure.find({ appointmentId: appt._id }).sort({ createdAt: 1 }).lean(),
     ClinicalRecord.findOne({ patientId: appt.patientId })
-      .select('allergies currentMedications notes')
+      .select('allergies currentMedications notes questionnaire')
       .lean(),
     RxRequest.find({ appointmentId: appt._id }).sort({ requestedAt: 1 }).lean(),
     // Percurso na clínica: consultas CONCLUÍDAS anteriores a esta
@@ -448,6 +449,14 @@ export default async function ConsultationPage({
           )}
         </div>
       </div>
+
+      {/* E19: anamnese em falta / desatualizada / por validar — aviso na
+          consulta, com link direto para a ficha (não bloqueia: a decisão
+          clínica é do médico) */}
+      <AnamnesisStatusBanner
+        questionnaire={record?.questionnaire ?? null}
+        href={`/doutor/pacientes/${String(appt.patientId)}?tab=anamnese`}
+      />
 
       {/* BANNER de segurança clínica — alergias e medicação SEMPRE visíveis */}
       {(allergies.length > 0 || medications.length > 0) && (

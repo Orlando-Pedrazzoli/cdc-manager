@@ -36,6 +36,9 @@ import {
 import ClinicalDocument from '@/models/Document';
 import { signedPreviewUrl } from '@/lib/cloudinary';
 import { PatientLabCases } from '@/components/proteses/PatientLabCases';
+import { DoctorAnamnesisPanel } from '@/components/clinico/DoctorAnamnesisPanel';
+import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
+import { anamnesisStatus, type QuestionnaireData } from '@/lib/anamnesis';
 
 export const dynamic = 'force-dynamic';
 
@@ -330,7 +333,26 @@ export default async function DoctorPatientPage({
       </div>
 
       {activeTab === 'anamnese' ? (
-        <AnamneseForm patientId={id} initial={anamnesis} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <AnamnesisStatusBanner
+            questionnaire={record?.questionnaire ?? null}
+            showOk
+          />
+          <DoctorAnamnesisPanel
+            patientId={id}
+            data={
+              (record?.questionnaire?.data as QuestionnaireData | null) ?? null
+            }
+            needsReview={
+              anamnesisStatus(record?.questionnaire ?? null).state ===
+              'unreviewed'
+            }
+            isMinor={age != null && age < 18}
+            privateNotes={(record?.doctorPrivateNotes as string | null) ?? null}
+          >
+            <AnamneseForm patientId={id} initial={anamnesis} />
+          </DoctorAnamnesisPanel>
+        </div>
       ) : activeTab === 'documentos' ? (
         <div
           style={{

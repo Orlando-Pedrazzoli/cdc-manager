@@ -97,6 +97,48 @@ const ClinicalRecordSchema = new Schema(
       type: [ClinicalNoteSchema],
       default: [],
     },
+    // -------------------------------------------------------------------------
+    // Fase 3B (E19): FICHA DE ANAMNESE COMPLETA da clínica (3 blocos).
+    // `data` valida-se pelo schema Zod em lib/anamnesis.ts (fonte única de
+    // campos/labels) — Mixed aqui evita duplicar ~80 campos em dois sítios.
+    // Obrigatória e com validade de 1 ano (anamnesisStatus).
+    // -------------------------------------------------------------------------
+    questionnaire: {
+      data: { type: Schema.Types.Mixed, default: null },
+      version: { type: Number, default: null },
+      completedAt: { type: Date, default: null },
+      completedByRole: {
+        type: String,
+        enum: ['patient', 'doctor', 'receptionist', 'admin', null],
+        default: null,
+      },
+      completedByUserId: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        default: null,
+      },
+      // Quando preenchida pelo paciente (portal), o médico valida
+      reviewedAt: { type: Date, default: null },
+      reviewedByDoctorId: {
+        type: Schema.Types.ObjectId,
+        ref: 'Doctor',
+        default: null,
+      },
+      // Assinatura do paciente (Document 'consent') — opcional
+      signatureDocumentId: {
+        type: Schema.Types.ObjectId,
+        ref: 'Document',
+        default: null,
+      },
+    },
+    // P12 (Victor): "observações gerais para que apenas os médicos tenham
+    // acesso" — nunca sai para admin/receção/portal
+    doctorPrivateNotes: {
+      type: String,
+      trim: true,
+      maxlength: 3000,
+      default: null,
+    },
   },
   {
     timestamps: true,

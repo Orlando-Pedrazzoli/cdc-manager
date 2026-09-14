@@ -9,7 +9,7 @@
 // back/forward funciona, e cada separador futuro carrega só os SEUS dados.
 //   dados      → formulário de edição (Sprint 1 — este)
 //   consultas  → placeholder (Sprint 2: agenda/marcações)
-//   clinico    → placeholder (Sprint 3: anamnese, odontograma, planos)
+//   anamnese   → ficha de anamnese completa (Fase 3B) — receção/admin preenche
 //   documentos → placeholder (Sprint 3/5: RX, consentimentos, faturas)
 // =============================================================================
 
@@ -37,13 +37,17 @@ import {
 import ClinicalDocument from '@/models/Document';
 import { signedPreviewUrl } from '@/lib/cloudinary';
 import { PatientLabCases } from '@/components/proteses/PatientLabCases';
+import ClinicalRecord from '@/models/ClinicalRecord';
+import { AnamnesisQuestionnaire } from '@/components/clinico/AnamnesisQuestionnaire';
+import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
+import type { QuestionnaireData } from '@/lib/anamnesis';
 
 export const dynamic = 'force-dynamic';
 
 const TABS = [
   { key: 'dados', label: 'Dados' },
   { key: 'consultas', label: 'Consultas' },
-  { key: 'clinico', label: 'Registo clínico' },
+  { key: 'anamnese', label: 'Anamnese' }, // Fase 3B (E19) — receção preenche/renova
   { key: 'documentos', label: 'Documentos' },
   { key: 'laboratorios', label: 'Laboratórios' }, // E3 (Fase 2)
   // Subrota própria (versões por URL), como na área do médico — leitura
@@ -72,9 +76,10 @@ export default async function PatientPage({
   ) as TabKey;
 
   await dbConnect();
-  const [patient, portalUser] = await Promise.all([
+  const [patient, portalUser, clinicalRecord] = await Promise.all([
     Patient.findById(id).lean(),
     User.findOne({ patientId: id, role: 'patient' }).select('status').lean(),
+    ClinicalRecord.findOne({ patientId: id }).select('questionnaire').lean(),
   ]);
   if (!patient || patient.status === 'anonymized') notFound();
 
@@ -239,6 +244,12 @@ export default async function PatientPage({
 
       <PatientHeader patient={header} />
 
+      {/* E19: aviso anual da anamnese — visível a todos os utilizadores */}
+      <AnamnesisStatusBanner
+        questionnaire={clinicalRecord?.questionnaire ?? null}
+        href={`/admin/pacientes/${id}?tab=anamnese`}
+      />
+
       {/* Separadores */}
       <div
         style={{
@@ -321,7 +332,7 @@ export default async function PatientPage({
             mode='staff'
           />
         </div>
-      ) : (
+      ) : tab === 'anamnese' ? null : (
         <div
           style={{
             backgroundColor: '#FFFFFF',
@@ -335,8 +346,47 @@ export default async function PatientPage({
         >
           {tab === 'consultas' &&
             'Histórico e marcação de consultas — disponível no Sprint 2 (agenda).'}
-          {tab === 'clinico' &&
-            'Anamnese, odontograma e planos de tratamento — disponível no Sprint 3.'}
+        </div>
+      )}
+      {tab === 'anamnese' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <AnamnesisStatusBanner
+            questionnaire={clinicalRecord?.questionnaire ?? null}
+            showOk
+          />
+          <div
+            style={{
+              backgroundColor: '#FFFFFF',
+              border: '1px solid #EEF1F8',
+              borderRadius: '12px',
+              padding: '20px',
+            }}
+          >
+            <p
+              style={{ margin: '0 0 12px', fontSize: '13px', color: '#6A7186' }}
+            >
+              Ficha de anamnese do Centro Dentário Colombo. Pode ser preenchida
+              aqui pela receção (com o paciente), pelo paciente no portal, ou
+              pelo médico. Obrigatória e renovada anualmente.
+            </p>
+            <AnamnesisQuestionnaire
+              mode='staff'
+              patientId={id}
+              initial={
+                (clinicalRecord?.questionnaire
+                  ?.data as QuestionnaireData | null) ?? null
+              }
+              isMinor={(() => {
+                if (!patient.birthDate) return false;
+                const b = new Date(patient.birthDate);
+                const n = new Date();
+                let age = n.getFullYear() - b.getFullYear();
+                const m = n.getMonth() - b.getMonth();
+                if (m < 0 || (m === 0 && n.getDate() < b.getDate())) age--;
+                return age < 18;
+              })()}
+            />
+          </div>
         </div>
       )}
     </div>
