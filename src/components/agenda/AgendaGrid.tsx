@@ -11,6 +11,10 @@
 //
 // Fundo de cada coluna: faixas claras = horário de trabalho do médico nesta
 // clínica; a pausa de almoço da Buraca aparece naturalmente como faixa cinza.
+//
+// Fase 2 (paridade Dentoral): o painel mostra QUEM marcou, QUANDO e por que
+// canal (P1); urgências têm badge vermelho (P5); o cancelamento exige
+// motivo (P7) e as canceladas mostram quem/quando/porquê.
 // =============================================================================
 
 'use client';
@@ -82,7 +86,30 @@ export interface AgendaAppointment {
   patientLabel: string;
   treatmentName: string;
   status: string;
+  // --- Fase 2 ---
+  isUrgent: boolean;
+  /** "Karla Ferraz" (nome do utilizador) ou null (website / sistema) */
+  createdByName: string | null;
+  /** "09-09-2026 11:41" (Lisboa) */
+  createdAtLabel: string;
+  channelLabel: string;
+  note: string | null;
+  cancelledByName: string | null;
+  cancelledAtLabel: string | null;
+  cancelReason: string | null;
+  /** Remarcada → id/hora da nova marcação */
+  rescheduledToLabel: string | null;
 }
+
+const CHANNEL_LABEL: Record<string, string> = {
+  website: 'Site',
+  whatsapp: 'WhatsApp',
+  phone: 'Telefone',
+  'front-desk': 'Balcão',
+  doctor: 'Médico',
+  system: 'Sistema',
+};
+export { CHANNEL_LABEL };
 
 export interface AgendaDoctorColumn {
   id: string;
@@ -302,7 +329,11 @@ export function AgendaGrid({
                         border: '1px solid #E3E8F5',
                         borderLeft: `4px solid ${'color' in col ? col.color : '#9AA1B4'}`,
                         borderRadius: '8px',
-                        backgroundColor: cancelled ? '#F7F8FC' : '#EAF0FF',
+                        backgroundColor: cancelled
+                          ? '#F7F8FC'
+                          : a.isUrgent
+                            ? '#FDEDED'
+                            : '#EAF0FF',
                         opacity: cancelled ? 0.55 : 1,
                         padding: '4px 8px',
                         cursor: 'pointer',
@@ -321,6 +352,24 @@ export function AgendaGrid({
                           textDecoration: cancelled ? 'line-through' : 'none',
                         }}
                       >
+                        {a.isUrgent && (
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              marginRight: 5,
+                              padding: '0 5px',
+                              borderRadius: '4px',
+                              backgroundColor: '#B3261E',
+                              color: '#FFFFFF',
+                              fontSize: '9px',
+                              fontWeight: 800,
+                              letterSpacing: '0.5px',
+                              verticalAlign: 'middle',
+                            }}
+                          >
+                            URG
+                          </span>
+                        )}
                         {a.start} · {a.patientLabel}
                       </span>
                       <span
@@ -378,11 +427,62 @@ export function AgendaGrid({
               >
                 {selected.treatmentName} · {selected.start}–{selected.end}
               </p>
-              <div style={{ marginTop: 8 }}>
+              <div
+                style={{
+                  marginTop: 8,
+                  display: 'flex',
+                  gap: 6,
+                  alignItems: 'center',
+                }}
+              >
                 <Badge variant={STATUS_VARIANT[selected.status] ?? 'neutral'}>
                   {STATUS_LABEL[selected.status] ?? selected.status}
                 </Badge>
+                {selected.isUrgent && <Badge variant='danger'>Urgência</Badge>}
               </div>
+            </div>
+
+            {/* Rastreabilidade (P1/P7): quem marcou, quando, canal */}
+            <div
+              style={{
+                borderRadius: '10px',
+                backgroundColor: '#F8F9FD',
+                border: '1px solid #EEF1F8',
+                padding: '10px 12px',
+                fontSize: '12px',
+                color: '#3D4257',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+              }}
+            >
+              <span>
+                <strong>Marcada por</strong>{' '}
+                {selected.createdByName ?? selected.channelLabel} em{' '}
+                {selected.createdAtLabel}
+                {selected.createdByName ? ` · ${selected.channelLabel}` : ''}
+              </span>
+              {selected.note && (
+                <span>
+                  <strong>Obs.:</strong> {selected.note}
+                </span>
+              )}
+              {selected.status === 'cancelled' && (
+                <span style={{ color: '#B3261E' }}>
+                  <strong>
+                    {selected.rescheduledToLabel ? 'Remarcada' : 'Cancelada'}
+                  </strong>{' '}
+                  por {selected.cancelledByName ?? 'paciente/sistema'}
+                  {selected.cancelledAtLabel
+                    ? ` em ${selected.cancelledAtLabel}`
+                    : ''}
+                  {selected.rescheduledToLabel
+                    ? ` → ${selected.rescheduledToLabel}`
+                    : selected.cancelReason
+                      ? ` — ${selected.cancelReason}`
+                      : ''}
+                </span>
+              )}
             </div>
 
             {!cancelMode ? (
@@ -419,17 +519,20 @@ export function AgendaGrid({
               >
                 <Input
                   id='cancel-reason'
-                  label='Motivo do cancelamento (opcional)'
+                  label='Motivo do cancelamento *'
                   value={cancelReason}
                   onChange={e => setCancelReason(e.target.value)}
                   maxLength={300}
-                  placeholder='Ex.: pedido do paciente'
+                  required
+                  placeholder='Ex.: pedido do paciente, médico indisponível…'
+                  help='Obrigatório — fica no histórico de marcações apagadas'
                 />
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <Button
                     size='sm'
                     variant='danger'
                     loading={busy}
+                    disabled={cancelReason.trim().length < 3}
                     onClick={() => doTransition('cancelled', cancelReason)}
                   >
                     Confirmar cancelamento

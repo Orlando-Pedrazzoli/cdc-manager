@@ -172,10 +172,20 @@ const AppointmentSchema = new Schema(
     reminder72hSentAt: { type: Date, default: null },
     reminder24hSentAt: { type: Date, default: null },
     // --- Cancelamento / remarcação ------------------------------------------
+    // Fase 2 (P5): urgência — paciente que chegou sem marcação (walk-in).
+    // Criada já em 'checked-in' à hora atual, sem validação de slot.
+    isUrgent: { type: Boolean, default: false, index: true },
     cancelledAt: { type: Date, default: null },
     cancelledBy: {
       type: String,
       enum: [...CANCELLED_BY, null],
+      default: null,
+    },
+    // Fase 2 (P7): QUEM (utilizador) cancelou/remarcou — o Dentoral mostra
+    // "Apagada por (132) CARLA GABRIELA"; cancelledBy só diz clínica/paciente
+    cancelledByUserId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
       default: null,
     },
     cancelReason: {
@@ -218,6 +228,8 @@ AppointmentSchema.index({ clinicId: 1, startAt: 1, endAt: 1, status: 1 });
 // 3. Histórico e próximas consultas do paciente (portal + ficha — global,
 //    o paciente vê as consultas das duas clínicas juntas)
 AppointmentSchema.index({ patientId: 1, startAt: -1 });
+// Histórico de canceladas/remarcadas por clínica e data (P7)
+AppointmentSchema.index({ clinicId: 1, status: 1, cancelledAt: -1 });
 // 4. Crons de lembretes: intervalo temporal + estado + flag de envio
 AppointmentSchema.index({ status: 1, startAt: 1, reminder24hSentAt: 1 });
 // 5. Lookup do link público de confirmação (sparse: só docs com token)

@@ -21,6 +21,11 @@
 //
 // Remarcação = cancelar + criar nova ligadas (rescheduledFrom/To) na MESMA
 // transação — a nova pode ser noutra clínica (referência Buraca↔Colombo).
+//
+// Fase 2 (paridade Dentoral):
+//   · cancelar exige MOTIVO (≥3 chars) e grava cancelledByUserId (P7)
+//   · createWalkInAction: urgência sem marcação → já 'checked-in' à hora
+//     atual, sem validação de slot, isUrgent=true (P5)
 // =============================================================================
 
 'use server';
@@ -390,8 +395,13 @@ export async function transitionAppointmentAction(
   if (tsField) $set[tsField] = new Date();
   if (to === 'confirmed') $set.confirmedVia = 'front-desk';
   if (to === 'cancelled') {
+    const reason = options?.cancelReason?.trim().slice(0, 300) ?? '';
+    if (reason.length < 3) {
+      return { error: 'Indique o motivo do cancelamento (mín. 3 caracteres).' };
+    }
     $set.cancelledBy = 'clinic';
-    $set.cancelReason = options?.cancelReason?.trim().slice(0, 300) || null;
+    $set.cancelledByUserId = staff.id;
+    $set.cancelReason = reason;
   }
 
   await Appointment.updateOne({ _id: appointmentId }, { $set });
@@ -540,6 +550,7 @@ export async function rescheduleAppointmentAction(
             status: 'cancelled',
             cancelledAt: new Date(),
             cancelledBy: 'clinic',
+            cancelledByUserId: staff.id,
             cancelReason: 'Remarcada',
             rescheduledToId: created._id,
           },
@@ -581,6 +592,101 @@ export async function rescheduleAppointmentAction(
   } finally {
     await session.endSession();
   }
+}
+
+// -----------------------------------------------------------------------------
+// URGÊNCIA / WALK-IN (Fase 2, P5) — "pacientes que chegam à clínica sem
+// marcação". Cria a marcação AGORA, já em 'checked-in' (o paciente está na
+// sala de espera), sem validar disponibilidade: a receção decide encaixar.
+// O médico é opcional (coluna "Sem médico" até ser atribuída).
+// -----------------------------------------------------------------------------
+const walkInSchema = z.object({
+  clinicId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+  patientId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Selecione o paciente'),
+  doctorId: z.preprocess(
+    v => (typeof v === 'string' && v.trim() === '' ? null : v),
+    z
+      .string()
+      .regex(/^[0-9a-fA-F]{24}$/)
+      .nullable(),
+  ),
+  treatmentTypeId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Selecione o ato'),
+  note: z.preprocess(
+    v => (typeof v === 'string' && v.trim() === '' ? null : v),
+    z.string().trim().max(500).nullable(),
+  ),
+});
+
+export async function createWalkInAction(
+  _prev: AppointmentFormState,
+  formData: FormData,
+): Promise<AppointmentFormState> {
+  const parsed = walkInSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const data = parsed.data;
+
+  await dbConnect();
+  let staff;
+  try {
+    staff = await requireStaffForClinic(data.clinicId);
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+
+  const [clinic, patient, treatment, doctor] = await Promise.all([
+    Clinic.findById(data.clinicId).select('isActive name'),
+    Patient.findById(data.patientId).select('status name'),
+    TreatmentType.findById(data.treatmentTypeId).select('name durationMin'),
+    data.doctorId ? Doctor.findById(data.doctorId) : Promise.resolve(null),
+  ]);
+  if (!clinic || !clinic.isActive) return { error: 'Clínica inválida.' };
+  if (!patient || patient.status !== 'active') {
+    return { error: 'Paciente inválido ou inativo.' };
+  }
+  if (!treatment) return { error: 'Ato inválido.' };
+  if (data.doctorId && (!doctor || !doctor.active)) {
+    return { error: 'Médico inválido ou inativo.' };
+  }
+
+  // Início = agora (arredondado ao minuto); duração do ato (sem buffer — é
+  // um encaixe, o buffer não faz sentido)
+  const now = new Date();
+  now.setSeconds(0, 0);
+  const endAt = new Date(
+    now.getTime() + Math.max(10, treatment.durationMin) * 60_000,
+  );
+
+  const created = await Appointment.create({
+    clinicId: data.clinicId,
+    patientId: data.patientId,
+    doctorId: data.doctorId,
+    treatmentTypeId: data.treatmentTypeId,
+    startAt: now,
+    endAt,
+    status: 'checked-in',
+    channel: 'front-desk',
+    createdByUserId: staff.id,
+    note: data.note,
+    isUrgent: true,
+    confirmedAt: now,
+    confirmedVia: 'front-desk',
+    checkedInAt: now,
+  });
+
+  await logAudit({
+    userId: staff.id,
+    action: 'create',
+    entityType: 'Appointment',
+    entityId: String(created._id),
+    patientId: data.patientId,
+    clinicId: data.clinicId,
+    summary: `URGÊNCIA (sem marcação): ${patient.name} — ${treatment.name}${doctor ? ` · ${doctor.name}` : ' · sem médico'}`,
+  });
+
+  revalidatePath('/admin/agenda');
+  revalidatePath('/admin/sala-espera');
+  revalidatePath('/doutor/dashboard');
+  return { success: true, appointmentId: String(created._id) };
 }
 
 // -----------------------------------------------------------------------------

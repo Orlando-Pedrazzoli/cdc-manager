@@ -21,8 +21,9 @@ export interface PickerOption {
   id: string;
   name: string;
   category: string | null;
-  code: string | null;
-  priceCents: number;
+  code?: string | null;
+  /** Opcional — a agenda não mostra preço */
+  priceCents?: number;
 }
 
 const fold = (s: string) =>
@@ -182,8 +183,10 @@ export function TreatmentPicker({
             </div>
             <div style={{ fontSize: '11px', color: '#6A7186' }}>
               {selected.category ?? '—'}
-              {selected.code ? ` · cód. ${selected.code}` : ''} ·{' '}
-              {eur(selected.priceCents)}
+              {selected.code ? ` · cód. ${selected.code}` : ''}
+              {selected.priceCents != null
+                ? ` · ${eur(selected.priceCents)}`
+                : ''}
             </div>
           </div>
           <button
@@ -319,17 +322,19 @@ export function TreatmentPicker({
                   {o.code ? ` · ${o.code}` : ''}
                 </div>
               </div>
-              <span
-                style={{
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  color: '#1B2A6B',
-                  whiteSpace: 'nowrap',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {eur(o.priceCents)}
-              </span>
+              {o.priceCents != null && (
+                <span
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#1B2A6B',
+                    whiteSpace: 'nowrap',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {eur(o.priceCents)}
+                </span>
+              )}
             </li>
           ))}
           {!query && options.length > 40 && (

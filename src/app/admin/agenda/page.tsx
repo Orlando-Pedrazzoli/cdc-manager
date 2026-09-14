@@ -25,6 +25,7 @@ import {
   ChevronRight,
   CalendarPlus,
   PhoneCall,
+  History,
 } from 'lucide-react';
 import { dbConnect } from '@/lib/mongodb';
 import { getActiveClinics } from '@/models/Clinic';
@@ -32,6 +33,7 @@ import Doctor from '@/models/Doctor';
 import Appointment, { type AppointmentStatus } from '@/models/Appointment';
 import TreatmentType from '@/models/TreatmentType';
 import Patient from '@/models/Patient';
+import User from '@/models/User';
 import {
   workingRangesForDate,
   lisbonToUtc,
@@ -45,6 +47,8 @@ import {
   type AgendaDoctorColumn,
 } from '@/components/agenda/AgendaGrid';
 import { AgendaToolbar } from '@/components/agenda/AgendaToolbar';
+import { WalkInButton } from '@/components/agenda/WalkInModal';
+import { CHANNEL_LABEL } from '@/components/agenda/AgendaGrid';
 import { DateJump } from '@/components/agenda/DateJump';
 
 export const dynamic = 'force-dynamic';
@@ -256,10 +260,49 @@ export default async function AgendaPage({
 
   const appts = await Appointment.find(apptQuery)
     .select(
-      'doctorId patientId treatmentTypeId startAt endAt status channel confirmedVia',
+      'doctorId patientId treatmentTypeId startAt endAt status channel confirmedVia isUrgent createdByUserId createdAt note cancelledByUserId cancelledAt cancelReason rescheduledToId',
     )
     .sort({ startAt: 1 })
     .lean();
+
+  // Fase 2 (P1/P7): nomes de quem marcou / cancelou
+  const userIds = Array.from(
+    new Set(
+      appts
+        .flatMap(a => [a.createdByUserId, a.cancelledByUserId])
+        .filter(Boolean)
+        .map(String),
+    ),
+  );
+  const users = userIds.length
+    ? await User.find({ _id: { $in: userIds } })
+        .select('name')
+        .lean()
+    : [];
+  const userNameById = new Map(users.map(u => [String(u._id), u.name]));
+  const rescheduledIds = appts
+    .map(a => a.rescheduledToId)
+    .filter((id): id is NonNullable<typeof id> => !!id)
+    .map(String);
+  const rescheduledTargets = rescheduledIds.length
+    ? await Appointment.find({ _id: { $in: rescheduledIds } })
+        .select('startAt')
+        .lean()
+    : [];
+  const rescheduledById = new Map(
+    rescheduledTargets.map(r => [String(r._id), r.startAt]),
+  );
+  const lisbonStamp = (d: Date) =>
+    new Intl.DateTimeFormat('pt-PT', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Europe/Lisbon',
+    })
+      .format(d)
+      .replace(',', '');
 
   const patientIds = [
     ...appts.map(a => a.patientId),
@@ -269,7 +312,7 @@ export default async function AgendaPage({
     Patient.find({ _id: { $in: patientIds } })
       .select('name processNumber phone')
       .lean(),
-    TreatmentType.find().select('name').sort({ name: 1 }).lean(),
+    TreatmentType.find().select('name category').sort({ name: 1 }).lean(),
   ]);
   const patientById = new Map(patients.map(p => [String(p._id), p]));
   const treatmentById = new Map(treatments.map(t => [String(t._id), t.name]));
@@ -288,6 +331,26 @@ export default async function AgendaPage({
       patientLabel: p ? `${p.name}` : '(paciente removido)',
       treatmentName: treatmentById.get(String(a.treatmentTypeId)) ?? '—',
       status: a.status,
+      isUrgent: !!a.isUrgent,
+      createdByName: a.createdByUserId
+        ? (userNameById.get(String(a.createdByUserId)) ?? null)
+        : null,
+      createdAtLabel: lisbonStamp(a.createdAt as Date),
+      channelLabel: CHANNEL_LABEL[a.channel] ?? a.channel,
+      note: (a.note as string | null) ?? null,
+      cancelledByName: a.cancelledByUserId
+        ? (userNameById.get(String(a.cancelledByUserId)) ?? null)
+        : null,
+      cancelledAtLabel: a.cancelledAt
+        ? lisbonStamp(a.cancelledAt as Date)
+        : null,
+      cancelReason: (a.cancelReason as string | null) ?? null,
+      rescheduledToLabel: (() => {
+        const t = a.rescheduledToId
+          ? rescheduledById.get(String(a.rescheduledToId))
+          : null;
+        return t ? lisbonStamp(t) : null;
+      })(),
     };
   });
 
@@ -433,6 +496,29 @@ export default async function AgendaPage({
             </Link>
             <DateJump date={date} makeHref={buildHref({ date: '__DATE__' })} />
           </div>
+
+          {/* Histórico de apagadas/remarcadas (P7) */}
+          <Link
+            href={`/admin/agenda/historico?clinic=${clinic.slug}`}
+            style={navBtnStyle}
+            title='Marcações apagadas e remarcadas'
+          >
+            <History size={16} style={{ marginRight: 6 }} />
+            Histórico
+          </Link>
+
+          {/* Urgência sem marcação (P5) — só faz sentido no dia de hoje */}
+          {date === todayLisbon() && (
+            <WalkInButton
+              clinicId={clinicId}
+              doctors={doctorColumns.map(d => ({ id: d.id, name: d.name }))}
+              treatments={treatments.map(t => ({
+                id: String(t._id),
+                name: t.name,
+                category: (t.category as string | null) ?? null,
+              }))}
+            />
+          )}
 
           {/* Nova marcação (o modal tem seletor de data próprio) */}
           <AgendaToolbar

@@ -104,6 +104,7 @@ type DayAppointment = {
   processNumber: string;
   treatmentName: string;
   clinicSlug: string;
+  isUrgent: boolean;
   clinicName: string;
   notes: string | null;
 };
@@ -322,6 +323,7 @@ export default async function DoctorDashboardPage() {
       processNumber: p?.processNumber ?? '',
       treatmentName: treatmentById.get(String(a.treatmentTypeId)) ?? '—',
       clinicSlug: clinic?.slug ?? '',
+      isUrgent: !!a.isUrgent,
       clinicName: clinic?.name ?? '—',
       notes: (a.note as string | null) ?? null,
     };
@@ -391,6 +393,7 @@ export default async function DoctorDashboardPage() {
       time: minToHhmm(utcToLisbonMin(a.startAt as Date)),
       patientLabel: p?.name ?? '(paciente removido)',
       clinicSlug: clinic?.slug ?? '',
+      isUrgent: !!a.isUrgent,
       status: a.status as AppointmentStatus,
     };
   });
@@ -862,6 +865,11 @@ export default async function DoctorDashboardPage() {
                   <Badge bg={st.bg} fg={st.fg}>
                     {STATUS_LABEL[a.status] ?? a.status}
                   </Badge>
+                  {a.isUrgent && (
+                    <Badge bg='#FDEDED' fg='#B3261E'>
+                      Urgência
+                    </Badge>
+                  )}
                 </>
               );
               return muted ? (

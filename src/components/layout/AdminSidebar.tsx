@@ -32,6 +32,7 @@ import {
   ReceiptEuro,
   Users,
   FlaskConical,
+  Armchair,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 
@@ -52,6 +53,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/admin/pacientes', label: 'Pacientes', icon: Users },
       { href: '/admin/agenda', label: 'Agenda', icon: CalendarDays },
+      { href: '/admin/sala-espera', label: 'Sala de espera', icon: Armchair },
       { href: '/admin/cobranca', label: 'Cobrança', icon: ReceiptEuro },
       { href: '/admin/rx', label: 'Raio-X', icon: ScanLine },
       { href: '/admin/proteses', label: 'Próteses', icon: FlaskConical },
