@@ -248,8 +248,17 @@ export function AgendaGrid({
             minWidth: 56 + columns.length * 180,
           }}
         >
-          {/* Cabeçalhos */}
-          <div style={{ borderBottom: '1px solid #EEF1F8' }} />
+          {/* Cabeçalhos — canto e coluna das horas fixos à esquerda para o
+              scroll horizontal com muitos médicos não perder a referência */}
+          <div
+            style={{
+              borderBottom: '1px solid #EEF1F8',
+              position: 'sticky',
+              left: 0,
+              zIndex: 4,
+              backgroundColor: '#FFFFFF',
+            }}
+          />
           {columns.map(col => (
             <div
               key={col.id ?? 'unassigned'}
@@ -288,8 +297,17 @@ export function AgendaGrid({
             </div>
           ))}
 
-          {/* Coluna das horas */}
-          <div style={{ position: 'relative', height }}>
+          {/* Coluna das horas (sticky) */}
+          <div
+            style={{
+              position: 'sticky',
+              left: 0,
+              zIndex: 4,
+              height,
+              backgroundColor: '#FFFFFF',
+              borderRight: '1px solid #F0F2F7',
+            }}
+          >
             {hourMarks.map(m => (
               <span
                 key={m}
