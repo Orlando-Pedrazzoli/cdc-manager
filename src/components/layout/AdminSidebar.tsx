@@ -33,6 +33,7 @@ import {
   Users,
   FlaskConical,
   Armchair,
+  Truck,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 
@@ -82,6 +83,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
         icon: FileText,
       },
       { href: '/admin/stock', label: 'Stock', icon: Package },
+      { href: '/admin/fornecedores', label: 'Fornecedores', icon: Truck },
       { href: '/admin/relatorios', label: 'Relatórios', icon: BarChart3 },
     ],
   },

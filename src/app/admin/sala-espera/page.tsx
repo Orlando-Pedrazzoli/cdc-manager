@@ -22,7 +22,7 @@ import Doctor from '@/models/Doctor';
 import TreatmentType from '@/models/TreatmentType';
 import { lisbonToUtc, todayLisbon } from '@/lib/availability';
 import { Badge } from '@/components/ui/Badge';
-import { AutoRefresh } from '@/components/sala-espera/AutoRefresh';
+import AutoRefresh from '@/components/ui/AutoRefresh';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Sala de espera' };
@@ -242,7 +242,7 @@ export default async function SalaEsperaPage({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {isToday && <AutoRefresh seconds={30} />}
+      {isToday && <AutoRefresh intervalMs={30_000} />}
 
       <div
         style={{

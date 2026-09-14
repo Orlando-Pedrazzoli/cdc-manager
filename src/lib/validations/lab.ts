@@ -39,11 +39,8 @@ export const createLabCaseSchema = z
       emptyToNull,
       z.string().regex(OBJECT_ID, 'Médico inválido').nullable(),
     ),
-    labName: z
-      .string()
-      .trim()
-      .min(2, 'Indique o laboratório')
-      .max(80, 'Nome do laboratório demasiado longo'),
+    // E3: laboratório escolhido da lista de fornecedores (pisco laboratório)
+    supplierId: z.string().regex(OBJECT_ID, 'Selecione o laboratório'),
     workType: z.enum(LAB_WORK_TYPES, { error: 'Selecione o tipo de trabalho' }),
     toothNotes: optionalShort(60, 'Campo dentes/zona'),
     shade: optionalShort(20, 'Cor'),

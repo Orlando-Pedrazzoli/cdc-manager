@@ -35,7 +35,16 @@ const LabCaseSchema = new Schema(
     },
 
     // --- O trabalho ---------------------------------------------------------
-    labName: { type: String, required: true, trim: true, maxlength: 80 },
+    // E3: laboratório = Fornecedor com pisco "laboratório" (Supplier.isLab).
+    // `labName` mantém-se como SNAPSHOT do nome (casos anteriores à Fase 2
+    // não têm supplierId; relatórios e listagens continuam a ler labName).
+    supplierId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Supplier',
+      default: null,
+      index: true,
+    },
+    labName: { type: String, required: true, trim: true, maxlength: 120 },
     workType: { type: String, enum: LAB_WORK_TYPES, required: true },
     // Dentes/zona em texto livre ("14–16 ponte", "arcada sup.") — as
     // próteses abrangem grupos e arcadas, FDI estrito seria camisa de força

@@ -36,6 +36,7 @@ import {
 } from '@/components/pacientes/DocumentsTab';
 import ClinicalDocument from '@/models/Document';
 import { signedPreviewUrl } from '@/lib/cloudinary';
+import { PatientLabCases } from '@/components/proteses/PatientLabCases';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +45,7 @@ const TABS = [
   { key: 'consultas', label: 'Consultas' },
   { key: 'clinico', label: 'Registo clínico' },
   { key: 'documentos', label: 'Documentos' },
+  { key: 'laboratorios', label: 'Laboratórios' }, // E3 (Fase 2)
   // Subrota própria (versões por URL), como na área do médico — leitura
   { key: 'odontograma', label: 'Odontograma' },
 ] as const;
@@ -287,6 +289,21 @@ export default async function PatientPage({
           }}
         >
           <DocumentsTab patientId={id} documents={documents} />
+        </div>
+      ) : tab === 'laboratorios' ? (
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #EEF1F8',
+            borderRadius: '12px',
+            padding: '20px',
+          }}
+        >
+          <PatientLabCases
+            patientId={id}
+            patientLabel={`${patient.name} · ${patient.processNumber}`}
+            mode='staff'
+          />
         </div>
       ) : (
         <div

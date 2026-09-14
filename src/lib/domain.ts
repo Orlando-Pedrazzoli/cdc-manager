@@ -431,6 +431,11 @@ export const LAB_WORK_TYPES = [
   'protese-esqueletica',
   'protese-sobre-implante',
   'goteira',
+  // E3 (Isabel): "protésico, solicitação de alinhadores ortodônticos, ou
+  // Biópsias, etc." — trabalhos a terceiros que não são prótese
+  'alinhadores',
+  'biopsia',
+  'exame-externo',
   'outro',
 ] as const;
 export type LabWorkType = (typeof LAB_WORK_TYPES)[number];
@@ -445,6 +450,9 @@ export const LAB_WORK_TYPE_LABEL: Record<LabWorkType, string> = {
   'protese-esqueletica': 'Prótese esquelética',
   'protese-sobre-implante': 'Prótese sobre implante',
   goteira: 'Goteira',
+  alinhadores: 'Alinhadores ortodônticos',
+  biopsia: 'Biópsia / anatomia patológica',
+  'exame-externo': 'Exame externo',
   outro: 'Outro trabalho',
 };
 

@@ -34,6 +34,7 @@ import { getFreeSlotsAction } from '@/actions/agenda';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
+import { TreatmentPicker } from '@/components/clinico/TreatmentPicker';
 
 export function NewAppointmentModal({
   open,
@@ -48,7 +49,7 @@ export function NewAppointmentModal({
   clinicId: string;
   initialDate: string; // 'YYYY-MM-DD' — dia atualmente aberto na agenda
   doctors: { id: string; name: string }[];
-  treatments: { id: string; name: string }[];
+  treatments: { id: string; name: string; category?: string | null }[];
 }) {
   const router = useRouter();
 
@@ -230,21 +231,19 @@ export function NewAppointmentModal({
             onChange={e => setDate(e.target.value)}
             required
           />
-          <Select
-            id='ap-treatment'
+          {/* Ato com lupa (mesmo picker da consulta e da urgência): a
+              receção escreve "coroa", "limpeza", categoria ou código */}
+          <TreatmentPicker
             name='treatmentTypeId'
-            label='Ato *'
+            options={treatments.map(t => ({
+              id: t.id,
+              name: t.name,
+              category: t.category ?? null,
+            }))}
             value={treatmentId}
-            onChange={e => setTreatmentId(e.target.value)}
-            required
-          >
-            <option value=''>— Selecionar —</option>
-            {treatments.map(t => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </Select>
+            onChange={setTreatmentId}
+            placeholder='Pesquisar ato…'
+          />
         </div>
 
         {/* Médico + horário */}

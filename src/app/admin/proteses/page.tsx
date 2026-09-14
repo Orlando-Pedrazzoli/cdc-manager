@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { FlaskConical, PhoneCall } from 'lucide-react';
 import { dbConnect } from '@/lib/mongodb';
 import LabCase from '@/models/LabCase';
+import Supplier from '@/models/Supplier';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
 import { getActiveClinics } from '@/models/Clinic';
@@ -119,8 +120,17 @@ export default async function ProtesesPage({
   const doctorById = new Map(doctors.map(d => [String(d._id), d.name]));
   const clinicById = new Map(clinics.map(c => [String(c._id), c.name]));
 
-  // Laboratórios já usados (datalist do modal — aprende com o histórico)
-  const knownLabs: string[] = await LabCase.distinct('labName');
+  // Laboratórios = fornecedores com pisco "laboratório" (E3)
+  const labs = (
+    await Supplier.find({ isLab: true, active: true })
+      .sort({ name: 1 })
+      .select('name defaultLeadDays')
+      .lean()
+  ).map(l => ({
+    id: String(l._id),
+    name: l.name,
+    defaultLeadDays: l.defaultLeadDays ?? null,
+  }));
 
   const nowMs = today0.getTime();
   const daysLate = (due: Date) =>
@@ -161,7 +171,7 @@ export default async function ProtesesPage({
         <LabCaseToolbar
           clinics={clinics.map(c => ({ id: String(c._id), name: c.name }))}
           doctors={doctors.map(d => ({ id: String(d._id), name: d.name }))}
-          knownLabs={knownLabs}
+          labs={labs}
         />
       </div>
 

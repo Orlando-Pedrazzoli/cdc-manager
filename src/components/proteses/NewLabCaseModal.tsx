@@ -2,9 +2,12 @@
 // =============================================================================
 // CDC Manager — Próteses: registar envio ao laboratório (modal + toolbar)
 // -----------------------------------------------------------------------------
-// Pesquisa de paciente igual ao modal de marcações (findPatientsAction),
-// datalist de laboratórios já usados (aprender com o histórico), datas de
-// envio (default hoje) e prevista. Submissão MANUAL preventDefault +
+// Pesquisa de paciente igual ao modal de marcações (findPatientsAction) —
+// ou paciente FIXO quando aberto a partir da ficha (E3). Laboratório
+// escolhido da lista de Fornecedores com pisco "laboratório"; o prazo
+// habitual do laboratório pré-preenche a data prevista. Modo médico: sem
+// seletor de médico (o pedido é seu). Datas de envio (default hoje) e
+// prevista. Submissão MANUAL preventDefault +
 // startTransition — o padrão anti-reset (React 19 limparia o formulário
 // em erro de validação se usássemos action={}).
 // =============================================================================
@@ -32,21 +35,52 @@ import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 
+export interface LabOption {
+  id: string;
+  name: string;
+  defaultLeadDays: number | null;
+}
+
+interface ModalProps {
+  open: boolean;
+  onClose: () => void;
+  clinics: { id: string; name: string }[];
+  doctors: { id: string; name: string }[];
+  labs: LabOption[];
+  /** Ficha do paciente: paciente fixo (sem pesquisa) */
+  lockedPatient?: { id: string; label: string };
+  /** Área do médico: sem seletor de médico */
+  doctorMode?: boolean;
+}
+
+function addDays(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
 function NewLabCaseModal({
   open,
   onClose,
   clinics,
   doctors,
-  knownLabs,
-}: {
-  open: boolean;
-  onClose: () => void;
-  clinics: { id: string; name: string }[];
-  doctors: { id: string; name: string }[];
-  knownLabs: string[];
-}) {
+  labs,
+  lockedPatient,
+  doctorMode = false,
+}: ModalProps) {
   const router = useRouter();
   const todayStr = new Date().toISOString().slice(0, 10);
+  const [sentDate, setSentDate] = useState(todayStr);
+  const [dueDate, setDueDate] = useState('');
+  const [labId, setLabId] = useState('');
+  const onLabChange = (id: string) => {
+    setLabId(id);
+    const lab = labs.find(l => l.id === id);
+    if (lab?.defaultLeadDays != null && !dueDate) {
+      setDueDate(addDays(sentDate || todayStr, lab.defaultLeadDays));
+    }
+  };
 
   // Pesquisa de paciente (mesmo padrão do modal de marcações)
   const [patientQuery, setPatientQuery] = useState('');
@@ -54,7 +88,7 @@ function NewLabCaseModal({
     { id: string; label: string }[]
   >([]);
   const [patient, setPatient] = useState<{ id: string; label: string } | null>(
-    null,
+    lockedPatient ?? null,
   );
   const [, startSearch] = useTransition();
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,18 +119,20 @@ function NewLabCaseModal({
     if (!state || state === handled.current) return;
     handled.current = state;
     if ('error' in state) return;
-    toast.success('Envio ao laboratório registado.');
+    toast.success('Pedido ao laboratório registado.');
     router.refresh();
     onClose();
-    setPatient(null);
+    if (!lockedPatient) setPatient(null);
     setPatientQuery('');
-  }, [state, router, onClose]);
+    setLabId('');
+    setDueDate('');
+  }, [state, router, onClose, lockedPatient]);
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title='Registar envio ao laboratório'
+      title='Pedido a laboratório / entidade externa'
       maxWidth={620}
     >
       <form
@@ -118,14 +154,16 @@ function NewLabCaseModal({
             label='Paciente *'
             icon={<Search size={15} />}
             value={patient ? patient.label : patientQuery}
+            readOnly={!!lockedPatient}
             onChange={e => {
+              if (lockedPatient) return;
               setPatient(null);
               setPatientQuery(e.target.value);
             }}
             placeholder='Nome, telefone ou nº de processo…'
             autoComplete='off'
           />
-          {patientResults.length > 0 && !patient && (
+          {!lockedPatient && patientResults.length > 0 && !patient && (
             <div
               style={{
                 position: 'absolute',
@@ -179,14 +217,18 @@ function NewLabCaseModal({
               </option>
             ))}
           </Select>
-          <Select id='lc-doctor' name='doctorId' label='Médico (opcional)'>
-            <option value=''>—</option>
-            {doctors.map(d => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </Select>
+          {doctorMode ? (
+            <input type='hidden' name='doctorId' value='' />
+          ) : (
+            <Select id='lc-doctor' name='doctorId' label='Médico (opcional)'>
+              <option value=''>—</option>
+              {doctors.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </Select>
+          )}
         </div>
 
         {/* Laboratório + tipo de trabalho */}
@@ -194,20 +236,29 @@ function NewLabCaseModal({
           style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}
         >
           <div>
-            <Input
+            <Select
               id='lc-lab'
-              name='labName'
-              label='Laboratório *'
+              name='supplierId'
+              label='Laboratório / entidade *'
               required
-              list='lc-known-labs'
-              placeholder='Nome da empresa'
-              autoComplete='off'
-            />
-            <datalist id='lc-known-labs'>
-              {knownLabs.map(l => (
-                <option key={l} value={l} />
+              value={labId}
+              onChange={e => onLabChange(e.target.value)}
+              help={
+                labs.length === 0
+                  ? 'Crie primeiro em Fornecedores com o pisco "laboratório"'
+                  : undefined
+              }
+            >
+              <option value=''>— Selecionar —</option>
+              {labs.map(l => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                  {l.defaultLeadDays != null
+                    ? ` (${l.defaultLeadDays} dias)`
+                    : ''}
+                </option>
               ))}
-            </datalist>
+            </Select>
           </div>
           <Select id='lc-type' name='workType' label='Trabalho *' required>
             <option value=''>— Selecionar —</option>
@@ -259,17 +310,20 @@ function NewLabCaseModal({
             name='sentDate'
             type='date'
             label='Data de envio *'
-            defaultValue={todayStr}
+            value={sentDate}
+            onChange={e => setSentDate(e.target.value)}
             required
           />
           <Input
             id='lc-due'
             name='dueDate'
             type='date'
-            label='Chegada prevista *'
-            min={todayStr}
+            label='Retorno previsto *'
+            min={sentDate || todayStr}
+            value={dueDate}
+            onChange={e => setDueDate(e.target.value)}
             required
-            help='O alerta de atraso dispara a partir desta data'
+            help='Aparece na agenda desse dia e no dashboard; o alerta de atraso dispara a partir daqui'
           />
         </div>
 
@@ -306,8 +360,8 @@ function NewLabCaseModal({
           >
             Cancelar
           </Button>
-          <Button type='submit' loading={pending} disabled={!patient}>
-            Registar envio
+          <Button type='submit' loading={pending} disabled={!patient || !labId}>
+            Registar pedido
           </Button>
         </div>
       </form>
@@ -319,25 +373,26 @@ function NewLabCaseModal({
 export function LabCaseToolbar({
   clinics,
   doctors,
-  knownLabs,
-}: {
-  clinics: { id: string; name: string }[];
-  doctors: { id: string; name: string }[];
-  knownLabs: string[];
-}) {
+  labs,
+  lockedPatient,
+  doctorMode,
+  size,
+}: Omit<ModalProps, 'open' | 'onClose'> & { size?: 'sm' | 'md' }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button onClick={() => setOpen(true)}>
+      <Button size={size} onClick={() => setOpen(true)}>
         <PackagePlus size={16} style={{ marginRight: 6 }} />
-        Registar envio
+        {lockedPatient ? 'Novo pedido a laboratório' : 'Registar pedido'}
       </Button>
       <NewLabCaseModal
         open={open}
         onClose={() => setOpen(false)}
         clinics={clinics}
         doctors={doctors}
-        knownLabs={knownLabs}
+        labs={labs}
+        lockedPatient={lockedPatient}
+        doctorMode={doctorMode}
       />
     </>
   );

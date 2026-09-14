@@ -99,6 +99,8 @@ export interface AgendaAppointment {
   cancelReason: string | null;
   /** Remarcada → id/hora da nova marcação */
   rescheduledToLabel: string | null;
+  /** P2: trabalho de laboratório com retorno previsto NESTE dia */
+  labDue: { work: string; lab: string; status: string }[];
 }
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -371,6 +373,27 @@ export function AgendaGrid({
                           </span>
                         )}
                         {a.start} · {a.patientLabel}
+                        {a.labDue.length > 0 && (
+                          <span
+                            title={a.labDue
+                              .map(l => `${l.work} · ${l.lab} (${l.status})`)
+                              .join('\n')}
+                            style={{
+                              display: 'inline-block',
+                              marginLeft: 5,
+                              padding: '0 5px',
+                              borderRadius: '4px',
+                              backgroundColor: '#2743A6',
+                              color: '#FFFFFF',
+                              fontSize: '9px',
+                              fontWeight: 800,
+                              letterSpacing: '0.5px',
+                              verticalAlign: 'middle',
+                            }}
+                          >
+                            LAB
+                          </span>
+                        )}
                       </span>
                       <span
                         style={{
@@ -465,6 +488,15 @@ export function AgendaGrid({
               {selected.note && (
                 <span>
                   <strong>Obs.:</strong> {selected.note}
+                </span>
+              )}
+              {selected.labDue.length > 0 && (
+                <span style={{ color: '#2743A6' }}>
+                  <strong>Laboratório hoje:</strong>{' '}
+                  {selected.labDue
+                    .map(l => `${l.work} · ${l.lab} — ${l.status}`)
+                    .join('; ')}
+                  {' — confirmar a entrega antes da consulta'}
                 </span>
               )}
               {selected.status === 'cancelled' && (

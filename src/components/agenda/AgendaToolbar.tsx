@@ -21,7 +21,7 @@ export function AgendaToolbar({
   clinicId: string;
   date: string;
   doctors: { id: string; name: string }[];
-  treatments: { id: string; name: string }[];
+  treatments: { id: string; name: string; category?: string | null }[];
   buttonLabel: ReactNode;
 }) {
   const [open, setOpen] = useState(false);

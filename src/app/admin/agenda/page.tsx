@@ -34,6 +34,13 @@ import Appointment, { type AppointmentStatus } from '@/models/Appointment';
 import TreatmentType from '@/models/TreatmentType';
 import Patient from '@/models/Patient';
 import User from '@/models/User';
+import LabCase from '@/models/LabCase';
+import {
+  LAB_WORK_TYPE_LABEL,
+  LAB_CASE_STATUS_LABEL,
+  type LabWorkType,
+  type LabCaseStatus,
+} from '@/lib/domain';
 import {
   workingRangesForDate,
   lisbonToUtc,
@@ -292,6 +299,38 @@ export default async function AgendaPage({
   const rescheduledById = new Map(
     rescheduledTargets.map(r => [String(r._id), r.startAt]),
   );
+  // P2 (Victor): "sinalizar se naquele dia determinado paciente tem trabalho
+  // de laboratório para ser confirmada a entrega" — pedidos com retorno
+  // previsto no dia da marcação, ainda não colocados
+  const labDueByPatientDay = new Map<
+    string,
+    { work: string; lab: string; status: string }[]
+  >();
+  if (appts.length > 0) {
+    const days = Array.from(
+      new Set(appts.map(a => utcToLisbonMin(a.startAt).date)),
+    ).sort();
+    const labCases = await LabCase.find({
+      patientId: { $in: appts.map(a => a.patientId) },
+      status: { $in: ['sent', 'received'] },
+      dueDate: {
+        $gte: lisbonToUtc(days[0], 0),
+        $lt: lisbonToUtc(days[days.length - 1], 24 * 60),
+      },
+    })
+      .select('patientId labName workType status dueDate')
+      .lean();
+    for (const c of labCases) {
+      const key = `${String(c.patientId)}|${utcToLisbonMin(c.dueDate as Date).date}`;
+      const arr = labDueByPatientDay.get(key) ?? [];
+      arr.push({
+        work: LAB_WORK_TYPE_LABEL[c.workType as LabWorkType],
+        lab: c.labName,
+        status: LAB_CASE_STATUS_LABEL[c.status as LabCaseStatus],
+      });
+      labDueByPatientDay.set(key, arr);
+    }
+  }
   const lisbonStamp = (d: Date) =>
     new Intl.DateTimeFormat('pt-PT', {
       day: '2-digit',
@@ -351,6 +390,7 @@ export default async function AgendaPage({
           : null;
         return t ? lisbonStamp(t) : null;
       })(),
+      labDue: labDueByPatientDay.get(`${String(a.patientId)}|${s.date}`) ?? [],
     };
   });
 
@@ -528,6 +568,7 @@ export default async function AgendaPage({
             treatments={treatments.map(t => ({
               id: String(t._id),
               name: t.name,
+              category: (t.category as string | null) ?? null,
             }))}
             buttonLabel={
               <>

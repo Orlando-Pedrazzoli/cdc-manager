@@ -47,6 +47,8 @@ import Doctor from '@/models/Doctor';
 import TreatmentType from '@/models/TreatmentType';
 import RxRequest from '@/models/RxRequest';
 import LabCase from '@/models/LabCase';
+import { LAB_WORK_TYPE_LABEL, type LabWorkType } from '@/lib/domain';
+import { FlaskConical } from 'lucide-react';
 import { getActiveClinics } from '@/models/Clinic';
 import {
   lisbonToUtc,
@@ -132,6 +134,7 @@ export default async function AdminDashboardPage() {
     occupancyRaw,
     rxPending,
     labOverdue,
+    labDueRaw,
   ] = await Promise.all([
     getActiveClinics(),
     // Marcações de hoje agrupadas por clínica × estado
@@ -330,7 +333,54 @@ export default async function AdminDashboardPage() {
     // Próteses atrasadas: no laboratório com data prevista ultrapassada —
     // sinal de COBRANÇA (a receção liga ao laboratório); /admin/proteses
     LabCase.countDocuments({ status: 'sent', dueDate: { $lt: dayStart } }),
+    // E3 (Isabel): "no dashboard deve haver um que refere quais os
+    // laboratórios com entregas para cada dia" — retornos previstos HOJE e
+    // AMANHÃ ainda no laboratório, agrupados por laboratório
+    LabCase.find({
+      status: 'sent',
+      dueDate: { $gte: dayStart, $lt: tomorrowEnd },
+    })
+      .select('labName workType patientId dueDate clinicId')
+      .sort({ dueDate: 1, labName: 1 })
+      .lean(),
   ]);
+
+  // Entregas de laboratório hoje/amanhã, por laboratório (E3)
+  const labDuePatients = labDueRaw.length
+    ? await Patient.find({ _id: { $in: labDueRaw.map(c => c.patientId) } })
+        .select('name')
+        .lean()
+    : [];
+  const labDuePatientById = new Map(
+    labDuePatients.map(p => [String(p._id), p.name]),
+  );
+  const labDueGroups = new Map<
+    string,
+    {
+      lab: string;
+      today: number;
+      items: { id: string; work: string; patient: string; isToday: boolean }[];
+    }
+  >();
+  for (const c of labDueRaw) {
+    const isToday = new Date(c.dueDate).getTime() < dayEnd.getTime();
+    const g = labDueGroups.get(c.labName) ?? {
+      lab: c.labName,
+      today: 0,
+      items: [],
+    };
+    if (isToday) g.today++;
+    g.items.push({
+      id: String(c._id),
+      work: LAB_WORK_TYPE_LABEL[c.workType as LabWorkType],
+      patient: labDuePatientById.get(String(c.patientId)) ?? '—',
+      isToday,
+    });
+    labDueGroups.set(c.labName, g);
+  }
+  const labDue = Array.from(labDueGroups.values()).sort(
+    (a, b) => b.today - a.today,
+  );
 
   // Reorganizar agregações
   const perClinic = new Map<
@@ -970,6 +1020,117 @@ export default async function AdminDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Entregas de laboratório hoje / amanhã, por laboratório (E3) */}
+      {labDue.length > 0 && (
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #EEF1F8',
+            borderRadius: '14px',
+            padding: '16px 18px',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 10,
+            }}
+          >
+            <h2
+              style={{
+                margin: 0,
+                fontSize: '15px',
+                fontWeight: 700,
+                color: '#1B2A6B',
+              }}
+            >
+              <FlaskConical
+                size={16}
+                style={{ marginRight: 6, verticalAlign: -3, color: '#2743A6' }}
+              />
+              Entregas de laboratório — hoje e amanhã
+            </h2>
+            <Link
+              href='/admin/proteses?filtro=a-chegar'
+              style={{
+                fontSize: '12px',
+                color: '#2743A6',
+                fontWeight: 600,
+                textDecoration: 'none',
+              }}
+            >
+              Ver todas →
+            </Link>
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+              gap: 10,
+            }}
+          >
+            {labDue.map(g => (
+              <div
+                key={g.lab}
+                style={{
+                  border: '1px solid #EEF1F8',
+                  borderRadius: '10px',
+                  padding: '10px 12px',
+                  backgroundColor: g.today > 0 ? '#EEF2FF' : '#F8F9FD',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: '#1B2A6B',
+                    marginBottom: 6,
+                  }}
+                >
+                  {g.lab}
+                  <span
+                    style={{
+                      marginLeft: 8,
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: '#6A7186',
+                    }}
+                  >
+                    {g.today} hoje · {g.items.length - g.today} amanhã
+                  </span>
+                </div>
+                {g.items.map(it => (
+                  <div
+                    key={it.id}
+                    style={{
+                      fontSize: '12px',
+                      color: '#3D4257',
+                      display: 'flex',
+                      gap: 6,
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: it.isToday ? '#2743A6' : '#9AA1B4',
+                        fontWeight: 700,
+                        minWidth: 48,
+                      }}
+                    >
+                      {it.isToday ? 'Hoje' : 'Amanhã'}
+                    </span>
+                    <span>
+                      {it.work} · {it.patient}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Faltas de hoje (acionáveis) + aniversários — só quando existem */}
       {(missed.length > 0 || birthdays.length > 0) && (

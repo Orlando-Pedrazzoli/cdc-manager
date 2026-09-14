@@ -19,6 +19,7 @@ import { logAudit } from '@/lib/audit';
 import { lisbonToUtc } from '@/lib/availability';
 import LabCase from '@/models/LabCase';
 import Patient from '@/models/Patient';
+import Supplier from '@/models/Supplier';
 import { LAB_WORK_TYPE_LABEL } from '@/lib/domain';
 import {
   createLabCaseSchema,
@@ -55,6 +56,9 @@ const midday = (dateStr: string) => lisbonToUtc(dateStr, 12 * 60);
 function revalidateAll() {
   revalidatePath('/admin/proteses');
   revalidatePath('/admin/dashboard');
+  revalidatePath('/admin/agenda');
+  revalidatePath('/admin/pacientes/[id]', 'page');
+  revalidatePath('/doutor/pacientes/[id]', 'page');
 }
 
 // -----------------------------------------------------------------------------
@@ -84,14 +88,21 @@ export async function createLabCaseAction(
     }
     const data = parsed.data;
 
-    const patient = await Patient.findById(data.patientId).select('name');
+    const [patient, supplier] = await Promise.all([
+      Patient.findById(data.patientId).select('name'),
+      Supplier.findById(data.supplierId).select('name isLab active'),
+    ]);
     if (!patient) return { error: 'Paciente não encontrado.' };
+    if (!supplier || !supplier.isLab || !supplier.active) {
+      return { error: 'Laboratório inválido ou inativo.' };
+    }
 
     const created = await LabCase.create({
       clinicId: data.clinicId,
       patientId: data.patientId,
       doctorId: data.doctorId,
-      labName: data.labName,
+      supplierId: supplier._id,
+      labName: supplier.name, // snapshot
       workType: data.workType,
       toothNotes: data.toothNotes,
       shade: data.shade,
@@ -110,7 +121,7 @@ export async function createLabCaseAction(
       entityId: String(created._id),
       patientId: data.patientId,
       clinicId: data.clinicId,
-      summary: `Prótese enviada: ${LAB_WORK_TYPE_LABEL[data.workType]} → ${data.labName} (prevista ${data.dueDate})`,
+      summary: `Pedido ao laboratório: ${LAB_WORK_TYPE_LABEL[data.workType]} → ${supplier.name} (prevista ${data.dueDate})`,
     });
 
     revalidateAll();

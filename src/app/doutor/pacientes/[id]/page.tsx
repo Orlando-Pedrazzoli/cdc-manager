@@ -35,6 +35,7 @@ import {
 } from '@/components/pacientes/DocumentsTab';
 import ClinicalDocument from '@/models/Document';
 import { signedPreviewUrl } from '@/lib/cloudinary';
+import { PatientLabCases } from '@/components/proteses/PatientLabCases';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,6 +88,7 @@ const TABS = [
   { key: 'anamnese', label: 'Anamnese' },
   { key: 'historico', label: 'Histórico clínico' },
   { key: 'documentos', label: 'Documentos' },
+  { key: 'laboratorios', label: 'Laboratórios' }, // E3 — pedidos a terceiros
   { key: 'odontograma', label: 'Odontograma' },
 ] as const;
 
@@ -104,7 +106,9 @@ export default async function DoctorPatientPage({
       ? 'historico'
       : tab === 'documentos'
         ? 'documentos'
-        : 'anamnese';
+        : tab === 'laboratorios'
+          ? 'laboratorios'
+          : 'anamnese';
 
   const session = await auth();
   const doctorId = session?.user?.doctorId;
@@ -337,6 +341,21 @@ export default async function DoctorPatientPage({
           }}
         >
           <DocumentsTab patientId={id} documents={documents} />
+        </div>
+      ) : activeTab === 'laboratorios' ? (
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #EEF1F8',
+            borderRadius: '14px',
+            padding: '20px',
+          }}
+        >
+          <PatientLabCases
+            patientId={id}
+            patientLabel={`${patient.name} · ${patient.processNumber}`}
+            mode='doctor'
+          />
         </div>
       ) : (
         <div
