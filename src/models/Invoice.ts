@@ -116,13 +116,13 @@ const InvoiceSchema = new Schema(
     },
     // --- Referências Moloni (o documento certificado real) ------------------
     // NULOS enquanto 'awaiting-emission' (pré-ativação Moloni); unique
-    // sparse permite múltiplos nulls e continua a garantir unicidade
-    // dos documentos emitidos
+    // Unicidade garantida por índice PARCIAL (ver abaixo): `sparse` NÃO
+    // chega — só ignora documentos sem o campo, e com `default: null` o
+    // campo existe, logo a 2.ª fatura sem Moloni dava E11000. (Bug apanhado
+    // no teste da Fase 1; corrigido com scripts/fix-invoice-index.ts.)
     moloniDocumentId: {
       type: Number, // document_id devolvido pela API Moloni
       default: null,
-      unique: true,
-      sparse: true,
     },
     // Identificação legível: "FR COL/123" (série + número da AT)
     moloniDocumentNumber: {
@@ -164,6 +164,14 @@ const InvoiceSchema = new Schema(
 );
 
 // Portal do paciente: as minhas faturas (das duas clínicas), recentes primeiro
+// Único apenas quando há documento Moloni (número); nulls ficam de fora
+InvoiceSchema.index(
+  { moloniDocumentId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { moloniDocumentId: { $type: 'number' } },
+  },
+);
 InvoiceSchema.index({ patientId: 1, createdAt: -1 });
 // Relatórios de faturação por período — globais e por clínica
 InvoiceSchema.index({ status: 1, paidAt: -1 });
