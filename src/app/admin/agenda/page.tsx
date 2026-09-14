@@ -565,7 +565,7 @@ export default async function AgendaPage({
             {/* Histórico de apagadas/remarcadas (P7) */}
             <Link
               href={`/admin/agenda/historico?clinic=${clinic.slug}`}
-              style={navBtnStyle}
+              style={{ ...todayBtnStyle, whiteSpace: 'nowrap' }}
               title='Marcações apagadas e remarcadas'
             >
               <History size={16} style={{ marginRight: 6 }} />

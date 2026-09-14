@@ -361,6 +361,11 @@ export function AgendaGrid({
                     a.status === 'cancelled' || a.status === 'no-show';
                   const lp = laneMap.get(a.id) ?? { lane: 0, lanes: 1 };
                   const laneW = 100 / lp.lanes;
+                  // Altura real do slot; cartões curtos (urgência de 20 min)
+                  // mostram só a 1.ª linha em vez de a cortar a meio
+                  const slotPx = (a.endMin - a.startMin) * PX_PER_MIN - 2;
+                  const cardPx = Math.max(slotPx, 26);
+                  const twoLines = cardPx >= 42;
                   return (
                     <button
                       key={a.id}
@@ -369,10 +374,7 @@ export function AgendaGrid({
                       style={{
                         position: 'absolute',
                         top: (a.startMin - gridStart) * PX_PER_MIN,
-                        height: Math.max(
-                          (a.endMin - a.startMin) * PX_PER_MIN - 2,
-                          24,
-                        ),
+                        height: cardPx,
                         left: `calc(${lp.lane * laneW}% + 4px)`,
                         width: `calc(${laneW}% - ${lp.lanes > 1 ? 6 : 8}px)`,
                         zIndex: a.isUrgent ? 2 : 1,
@@ -386,7 +388,7 @@ export function AgendaGrid({
                             ? '#FDEDED'
                             : '#EAF0FF',
                         opacity: cancelled ? 0.55 : 1,
-                        padding: '4px 8px',
+                        padding: twoLines ? '4px 8px' : '2px 8px',
                         cursor: 'pointer',
                         overflow: 'hidden',
                       }}
@@ -444,18 +446,21 @@ export function AgendaGrid({
                           </span>
                         )}
                       </span>
-                      <span
-                        style={{
-                          display: 'block',
-                          fontSize: '11px',
-                          color: '#6A7186',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {a.treatmentName} · {STATUS_LABEL[a.status] ?? a.status}
-                      </span>
+                      {twoLines ? (
+                        <span
+                          style={{
+                            display: 'block',
+                            fontSize: '11px',
+                            color: '#6A7186',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {a.treatmentName} ·{' '}
+                          {STATUS_LABEL[a.status] ?? a.status}
+                        </span>
+                      ) : null}
                     </button>
                   );
                 })}
