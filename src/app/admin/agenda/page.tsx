@@ -410,107 +410,124 @@ export default async function AgendaPage({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* Cabeçalho + navegação */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '12px',
-          flexWrap: 'wrap',
-        }}
-      >
-        <div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: '22px',
-              fontWeight: 700,
-              color: '#1B2A6B',
-            }}
-          >
-            Agenda
-          </h1>
-          <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#6A7186' }}>
-            {view === 'lista'
-              ? `${dateLabel} → ${ptDateLabel(shiftDate(date, listDays - 1))} (7 dias)`
-              : dateLabel}
-          </p>
-        </div>
-
+      {/* Cabeçalho + navegação — 2 linhas:
+          1) título · clínica · vista        2) data · histórico · ações
+          Cada grupo faz wrap sozinho (mobile) sem cortar botões. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: '22px',
+                fontWeight: 700,
+                color: '#1B2A6B',
+              }}
+            >
+              Agenda
+            </h1>
+            <p
+              style={{ margin: '2px 0 0', fontSize: '13px', color: '#6A7186' }}
+            >
+              {view === 'lista'
+                ? `${dateLabel} → ${ptDateLabel(shiftDate(date, listDays - 1))} (7 dias)`
+                : dateLabel}
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              flexWrap: 'wrap',
+            }}
+          >
+            {/* Seletor de clínica */}
+            <div
+              style={{
+                display: 'inline-flex',
+                border: '1px solid #D8DEEF',
+                borderRadius: '10px',
+                overflow: 'hidden',
+              }}
+            >
+              {clinics.map(c => {
+                const active = String(c._id) === clinicId;
+                return (
+                  <Link
+                    key={c.slug}
+                    href={buildHref({ clinic: c.slug, medico: null })}
+                    style={{
+                      padding: '8px 14px',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                      color: active ? '#FFFFFF' : '#1B2A6B',
+                      backgroundColor: active ? '#2743A6' : '#FFFFFF',
+                    }}
+                  >
+                    {c.slug === 'colombo' ? 'Colombo' : 'Buraca'}
+                  </Link>
+                );
+              })}
+            </div>
+
+            {/* Vista Dia | Lista */}
+            <div
+              style={{
+                display: 'inline-flex',
+                border: '1px solid #D8DEEF',
+                borderRadius: '10px',
+                overflow: 'hidden',
+              }}
+            >
+              {(
+                [
+                  ['dia', 'Dia'],
+                  ['lista', 'Lista (7 dias)'],
+                ] as const
+              ).map(([value, label]) => {
+                const active = view === value;
+                return (
+                  <Link
+                    key={value}
+                    href={buildHref({ view: value, estado: null })}
+                    style={{
+                      padding: '8px 14px',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                      color: active ? '#FFFFFF' : '#1B2A6B',
+                      backgroundColor: active ? '#1B2A6B' : '#FFFFFF',
+                    }}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Linha 2: datas à esquerda, ações à direita */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
             gap: '10px',
             flexWrap: 'wrap',
           }}
         >
-          {/* Seletor de clínica */}
-          <div
-            style={{
-              display: 'inline-flex',
-              border: '1px solid #D8DEEF',
-              borderRadius: '10px',
-              overflow: 'hidden',
-            }}
-          >
-            {clinics.map(c => {
-              const active = String(c._id) === clinicId;
-              return (
-                <Link
-                  key={c.slug}
-                  href={buildHref({ clinic: c.slug, medico: null })}
-                  style={{
-                    padding: '8px 14px',
-                    fontSize: '13px',
-                    fontWeight: 700,
-                    textDecoration: 'none',
-                    color: active ? '#FFFFFF' : '#1B2A6B',
-                    backgroundColor: active ? '#2743A6' : '#FFFFFF',
-                  }}
-                >
-                  {c.slug === 'colombo' ? 'Colombo' : 'Buraca'}
-                </Link>
-              );
-            })}
-          </div>
-
-          {/* Vista Dia | Lista */}
-          <div
-            style={{
-              display: 'inline-flex',
-              border: '1px solid #D8DEEF',
-              borderRadius: '10px',
-              overflow: 'hidden',
-            }}
-          >
-            {(
-              [
-                ['dia', 'Dia'],
-                ['lista', 'Lista (7 dias)'],
-              ] as const
-            ).map(([value, label]) => {
-              const active = view === value;
-              return (
-                <Link
-                  key={value}
-                  href={buildHref({ view: value, estado: null })}
-                  style={{
-                    padding: '8px 14px',
-                    fontSize: '13px',
-                    fontWeight: 700,
-                    textDecoration: 'none',
-                    color: active ? '#FFFFFF' : '#1B2A6B',
-                    backgroundColor: active ? '#1B2A6B' : '#FFFFFF',
-                  }}
-                >
-                  {label}
-                </Link>
-              );
-            })}
-          </div>
-
           {/* Navegação de datas: setas + Hoje + salto direto de calendário */}
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Link
@@ -537,46 +554,55 @@ export default async function AgendaPage({
             <DateJump date={date} makeHref={buildHref({ date: '__DATE__' })} />
           </div>
 
-          {/* Histórico de apagadas/remarcadas (P7) */}
-          <Link
-            href={`/admin/agenda/historico?clinic=${clinic.slug}`}
-            style={navBtnStyle}
-            title='Marcações apagadas e remarcadas'
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              flexWrap: 'wrap',
+            }}
           >
-            <History size={16} style={{ marginRight: 6 }} />
-            Histórico
-          </Link>
+            {/* Histórico de apagadas/remarcadas (P7) */}
+            <Link
+              href={`/admin/agenda/historico?clinic=${clinic.slug}`}
+              style={navBtnStyle}
+              title='Marcações apagadas e remarcadas'
+            >
+              <History size={16} style={{ marginRight: 6 }} />
+              Histórico
+            </Link>
 
-          {/* Urgência sem marcação (P5) — só faz sentido no dia de hoje */}
-          {date === todayLisbon() && (
-            <WalkInButton
+            {/* Urgência sem marcação (P5) — só faz sentido no dia de hoje */}
+            {date === todayLisbon() && (
+              <WalkInButton
+                clinicId={clinicId}
+                doctors={doctorColumns.map(d => ({ id: d.id, name: d.name }))}
+                treatments={treatments.map(t => ({
+                  id: String(t._id),
+                  name: t.name,
+                  category: (t.category as string | null) ?? null,
+                }))}
+              />
+            )}
+
+            {/* Nova marcação (o modal tem seletor de data próprio) */}
+            <AgendaToolbar
               clinicId={clinicId}
+              date={date}
               doctors={doctorColumns.map(d => ({ id: d.id, name: d.name }))}
               treatments={treatments.map(t => ({
                 id: String(t._id),
                 name: t.name,
                 category: (t.category as string | null) ?? null,
               }))}
+              buttonLabel={
+                <>
+                  <CalendarPlus size={16} style={{ marginRight: 6 }} />
+                  Nova marcação
+                </>
+              }
             />
-          )}
-
-          {/* Nova marcação (o modal tem seletor de data próprio) */}
-          <AgendaToolbar
-            clinicId={clinicId}
-            date={date}
-            doctors={doctorColumns.map(d => ({ id: d.id, name: d.name }))}
-            treatments={treatments.map(t => ({
-              id: String(t._id),
-              name: t.name,
-              category: (t.category as string | null) ?? null,
-            }))}
-            buttonLabel={
-              <>
-                <CalendarPlus size={16} style={{ marginRight: 6 }} />
-                Nova marcação
-              </>
-            }
-          />
+          </div>
         </div>
       </div>
 

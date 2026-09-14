@@ -76,6 +76,46 @@ const ACTIONS_BY_STATUS: Record<
 
 const CANCELLABLE: string[] = ['pending', 'confirmed', 'checked-in'];
 
+/**
+ * Sobreposições (ex.: urgência às 12:48 + marcação às 13:00): agrupa as
+ * marcações que se tocam no tempo e atribui a cada uma uma "faixa" dentro do
+ * grupo, para se mostrarem LADO A LADO em vez de uma em cima da outra.
+ * Devolve, por id, { lane, lanes }.
+ */
+function packLanes(
+  items: { id: string; startMin: number; endMin: number }[],
+): Map<string, { lane: number; lanes: number }> {
+  const sorted = [...items].sort(
+    (a, b) => a.startMin - b.startMin || b.endMin - a.endMin,
+  );
+  const out = new Map<string, { lane: number; lanes: number }>();
+  let cluster: {
+    id: string;
+    startMin: number;
+    endMin: number;
+    lane: number;
+  }[] = [];
+  let clusterEnd = -1;
+  const flush = () => {
+    const lanes = cluster.reduce((m, c) => Math.max(m, c.lane + 1), 1);
+    for (const c of cluster) out.set(c.id, { lane: c.lane, lanes });
+    cluster = [];
+  };
+  for (const it of sorted) {
+    if (cluster.length > 0 && it.startMin >= clusterEnd) flush();
+    // primeira faixa livre neste instante
+    const busy = new Set(
+      cluster.filter(c => c.endMin > it.startMin).map(c => c.lane),
+    );
+    let lane = 0;
+    while (busy.has(lane)) lane++;
+    cluster.push({ ...it, lane });
+    clusterEnd = Math.max(clusterEnd, it.endMin);
+  }
+  if (cluster.length) flush();
+  return out;
+}
+
 export interface AgendaAppointment {
   id: string;
   doctorId: string | null;
@@ -271,6 +311,12 @@ export function AgendaGrid({
             const colAppts = appointments.filter(a =>
               col.id === null ? a.doctorId === null : a.doctorId === col.id,
             );
+            // Canceladas/faltas não disputam espaço com as ativas
+            const laneMap = packLanes(
+              colAppts.filter(
+                a => a.status !== 'cancelled' && a.status !== 'no-show',
+              ),
+            );
             const workRanges = 'ranges' in col ? col.ranges : [];
             return (
               <div
@@ -313,6 +359,8 @@ export function AgendaGrid({
                 {colAppts.map(a => {
                   const cancelled =
                     a.status === 'cancelled' || a.status === 'no-show';
+                  const lp = laneMap.get(a.id) ?? { lane: 0, lanes: 1 };
+                  const laneW = 100 / lp.lanes;
                   return (
                     <button
                       key={a.id}
@@ -325,8 +373,9 @@ export function AgendaGrid({
                           (a.endMin - a.startMin) * PX_PER_MIN - 2,
                           24,
                         ),
-                        left: 4,
-                        right: 4,
+                        left: `calc(${lp.lane * laneW}% + 4px)`,
+                        width: `calc(${laneW}% - ${lp.lanes > 1 ? 6 : 8}px)`,
+                        zIndex: a.isUrgent ? 2 : 1,
                         textAlign: 'left',
                         border: '1px solid #E3E8F5',
                         borderLeft: `4px solid ${'color' in col ? col.color : '#9AA1B4'}`,
