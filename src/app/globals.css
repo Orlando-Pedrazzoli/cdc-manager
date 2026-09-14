@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 :root {
   --background: #ffffff;
@@ -23,4 +23,15 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* X1 — campos de formulário destacados (components/ui/Input.tsx) */
+.cdc-field:focus {
+  outline: none;
+  border-color: #2743a6 !important;
+  background-color: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(39, 67, 166, 0.16) !important;
+}
+.cdc-field::placeholder {
+  color: #9aa1b4;
 }

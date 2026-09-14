@@ -37,6 +37,7 @@ import { cancelRecallForProcedure } from '@/lib/recalls';
 import { reverseStockForProcedure } from '@/lib/stock-consumption';
 import Invoice from '@/models/Invoice';
 import Procedure from '@/models/Procedure';
+import Patient from '@/models/Patient';
 import User, { canOperateClinic } from '@/models/User';
 
 export type BillingActionState =
@@ -97,6 +98,15 @@ export async function checkoutAction(
     const totalCents = procedures.reduce((s, p) => s + p.priceCents, 0);
     const now = new Date();
 
+    // E12: seguradora + nº de cartão da ficha → cabeçalho do documento
+    const patientForInvoice = await Patient.findById(data.patientId)
+      .select('insurance')
+      .lean();
+    const insuranceSnapshot = {
+      company: patientForInvoice?.insurance?.company ?? null,
+      cardNumber: patientForInvoice?.insurance?.cardNumber ?? null,
+    };
+
     const mongooseSession = await mongoose.startSession();
     let invoiceId: mongoose.Types.ObjectId | null = null;
     try {
@@ -120,6 +130,7 @@ export async function checkoutAction(
               paymentMethod: data.paymentMethod,
               paidAt: now,
               nifSnapshot: data.nif,
+              insuranceSnapshot,
               issuedByUserId: session.user.id,
             },
           ],

@@ -35,7 +35,16 @@ import {
 } from '@/actions/patients';
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Input, Select, Textarea } from '@/components/ui/Input';
-import { MARITAL_STATUSES, MARITAL_STATUS_LABEL } from '@/lib/domain';
+import {
+  MARITAL_STATUSES,
+  MARITAL_STATUS_LABEL,
+  SEXES,
+  SEX_LABEL,
+} from '@/lib/domain';
+import {
+  RelativesEditor,
+  type RelativeRow,
+} from '@/components/pacientes/RelativesEditor';
 import { Modal } from '@/components/ui/Modal';
 
 // Valores iniciais (modo edit) — datas já serializadas para o input
@@ -52,6 +61,15 @@ export interface PatientFormInitial {
   maritalStatus: string;
   nationality: string;
   referredBy: string;
+  // --- Fase 3 ---
+  sex: string;
+  snsNumber: string;
+  homePhone: string;
+  emergencyName: string;
+  emergencyPhone: string;
+  insuranceCompany: string;
+  insuranceCardNumber: string;
+  relatives: RelativeRow[];
   deceased: boolean;
   preferredChannel: string;
   preferredDoctorId: string;
@@ -70,6 +88,14 @@ const EMPTY: PatientFormInitial = {
   maritalStatus: '',
   nationality: '',
   referredBy: '',
+  sex: '',
+  snsNumber: '',
+  homePhone: '',
+  emergencyName: '',
+  emergencyPhone: '',
+  insuranceCompany: '',
+  insuranceCardNumber: '',
+  relatives: [],
   deceased: false,
   street: '',
   postalCode: '',
@@ -336,6 +362,23 @@ export function PatientForm({
               placeholder='9 dígitos'
               help='Vai nas faturas para dedução no IRS'
             />
+            <Select id='sex' name='sex' label='Sexo' defaultValue={values.sex}>
+              <option value=''>—</option>
+              {SEXES.map(x => (
+                <option key={x} value={x}>
+                  {SEX_LABEL[x]}
+                </option>
+              ))}
+            </Select>
+            <Input
+              id='snsNumber'
+              name='snsNumber'
+              label='Nº de utente (SNS)'
+              inputMode='numeric'
+              maxLength={9}
+              defaultValue={values.snsNumber}
+              placeholder='9 dígitos'
+            />
             <Input
               id='profession'
               name='profession'
@@ -450,6 +493,34 @@ export function PatientForm({
           </div>
           <div style={grid2}>
             <Input
+              id='homePhone'
+              name='homePhone'
+              label='Contacto de casa'
+              inputMode='tel'
+              maxLength={30}
+              defaultValue={values.homePhone}
+            />
+            <div style={grid2}>
+              <Input
+                id='emergencyName'
+                name='emergencyName'
+                label='Contacto de emergência'
+                maxLength={120}
+                defaultValue={values.emergencyName}
+                placeholder='Nome'
+              />
+              <Input
+                id='emergencyPhone'
+                name='emergencyPhone'
+                label='Telefone de emergência'
+                inputMode='tel'
+                maxLength={30}
+                defaultValue={values.emergencyPhone}
+              />
+            </div>
+          </div>
+          <div style={grid2}>
+            <Input
               id='street'
               name='street'
               label='Morada'
@@ -549,6 +620,39 @@ export function PatientForm({
             />
           </section>
         )}
+
+        {/* --- Seguradora (E12) ----------------------------------------------- */}
+        <section
+          style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+        >
+          <h3 style={sectionTitle}>Seguradora</h3>
+          <div style={grid2}>
+            <Input
+              id='insuranceCompany'
+              name='insuranceCompany'
+              label='Seguradora / subsistema'
+              maxLength={120}
+              defaultValue={values.insuranceCompany}
+              placeholder='ex.: Médis, Multicare, ADSE'
+              help='Vai no cabeçalho da fatura para o paciente pedir o reembolso'
+            />
+            <Input
+              id='insuranceCardNumber'
+              name='insuranceCardNumber'
+              label='Nº do cartão / beneficiário'
+              maxLength={60}
+              defaultValue={values.insuranceCardNumber}
+            />
+          </div>
+        </section>
+
+        {/* --- Familiares (E11) ----------------------------------------------- */}
+        <section
+          style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+        >
+          <h3 style={sectionTitle}>Familiares e contactos de referência</h3>
+          <RelativesEditor initial={values.relatives} />
+        </section>
 
         {/* --- RGPD ----------------------------------------------------------- */}
         <section

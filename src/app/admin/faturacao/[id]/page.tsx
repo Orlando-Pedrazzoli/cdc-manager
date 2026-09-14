@@ -178,6 +178,13 @@ export default async function InvoiceDetailPage({
           label='NIF no documento'
           value={inv.nifSnapshot ?? 'Consumidor final'}
         />
+        {/* E12: seguradora no cabeçalho — o paciente pede o reembolso */}
+        {inv.insuranceSnapshot?.company && (
+          <InfoRow
+            label='Seguradora / nº cartão'
+            value={`${inv.insuranceSnapshot.company}${inv.insuranceSnapshot.cardNumber ? ` · ${inv.insuranceSnapshot.cardNumber}` : ''}`}
+          />
+        )}
         <InfoRow label='Clínica' value={clinic?.name ?? '—'} />
         <InfoRow label='Data' value={lisbonDateTime(when)} />
         <InfoRow

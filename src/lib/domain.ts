@@ -346,6 +346,14 @@ export const DOCUMENT_CATEGORIES = [
   'consent', // consentimento informado assinado
   'report', // relatório/carta externa
   'prescription', // receita (PDF gerado)
+  // Fase 3 (E10 Isabel + P12 Victor): documentos trazidos pelo paciente e
+  // papéis do circuito clínico
+  'external-exam', // RX / TAC feitos fora
+  'specialist-report', // relatório de outra especialidade (cardio, endo…)
+  'authorization', // autorizações
+  'referral', // encaminhamentos
+  'medical-request', // pedidos médicos (análises, exames)
+  'certificate', // atestados / certificados
   'other',
 ] as const;
 export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
@@ -357,8 +365,72 @@ export const DOCUMENT_CATEGORY_LABEL: Record<DocumentCategory, string> = {
   consent: 'Consentimento assinado',
   report: 'Relatório externo',
   prescription: 'Receita',
+  'external-exam': 'Exame externo (RX/TAC feito fora)',
+  'specialist-report': 'Relatório de outra especialidade',
+  authorization: 'Autorização',
+  referral: 'Encaminhamento',
+  'medical-request': 'Pedido médico',
+  certificate: 'Atestado / certificado',
   other: 'Outro',
 };
+
+// -----------------------------------------------------------------------------
+// FICHA DO PACIENTE — Fase 3 (E11, E12, E19/ficha de anamnese)
+// -----------------------------------------------------------------------------
+export const SEXES = ['F', 'M', 'other'] as const;
+export type Sex = (typeof SEXES)[number];
+export const SEX_LABEL: Record<Sex, string> = {
+  F: 'Feminino',
+  M: 'Masculino',
+  other: 'Outro',
+};
+
+/** Graus de parentesco (E11) — os que a Isabel listou + companheiro/a e filho/a */
+export const RELATIONSHIPS = [
+  'mae',
+  'pai',
+  'irmao',
+  'filho',
+  'conjuge',
+  'tio',
+  'avo',
+  'primo',
+  'amigo',
+  'outro',
+] as const;
+export type Relationship = (typeof RELATIONSHIPS)[number];
+export const RELATIONSHIP_LABEL: Record<Relationship, string> = {
+  mae: 'Mãe',
+  pai: 'Pai',
+  irmao: 'Irmão / Irmã',
+  filho: 'Filho / Filha',
+  conjuge: 'Cônjuge / Companheiro(a)',
+  tio: 'Tio / Tia',
+  avo: 'Avô / Avó',
+  primo: 'Primo / Prima',
+  amigo: 'Amigo / Amiga',
+  outro: 'Outro',
+};
+
+/**
+ * Texto do consentimento RGPD apresentado ao paciente (P10 — botão RGPD na
+ * ficha). Snapshot congelado no Document 'consent' no momento da assinatura.
+ * A Isabel pode ajustar o texto aqui; assinaturas antigas mantêm o texto
+ * que assinaram.
+ */
+export const GDPR_CONSENT_TEXT = `CONSENTIMENTO PARA TRATAMENTO DE DADOS PESSOAIS E DE SAÚDE
+Centro Dentário Colombo — D. Amaral, Assistência Prev. Dentária, Lda. (NIPC 505 887 533)
+
+Nos termos do Regulamento (UE) 2016/679 (RGPD) e da Lei n.º 58/2019, declaro que fui informado(a) de que os meus dados pessoais e de saúde são recolhidos e tratados pelo Centro Dentário Colombo com as seguintes finalidades:
+1. Prestação de cuidados de saúde oral, incluindo registo clínico, anamnese, odontograma, imagiologia, planos de tratamento e prescrições;
+2. Gestão administrativa e faturação, incluindo a comunicação de dados à Autoridade Tributária quando legalmente exigido;
+3. Contactos relativos a consultas (confirmações, lembretes e alterações), pelos canais que autorizar.
+
+Os dados são conservados pelo prazo legalmente exigido para processos clínicos e só são partilhados com terceiros quando necessário à prestação dos cuidados (laboratórios de prótese, entidades de imagiologia, médicos assistentes) ou por obrigação legal.
+
+Tenho o direito de aceder, retificar, limitar ou opor-me ao tratamento dos meus dados, bem como o direito à portabilidade e a apresentar reclamação junto da CNPD, contactando a clínica pelos meios habituais.
+
+Declaro que li e compreendi esta informação e que consinto no tratamento dos meus dados para as finalidades indicadas.`;
 
 // -----------------------------------------------------------------------------
 // Raio-X — pedidos do médico à sala de RX (módulo de imagiologia)

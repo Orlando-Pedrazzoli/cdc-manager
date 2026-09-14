@@ -18,7 +18,7 @@
 // =============================================================================
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
-import { MARITAL_STATUSES } from '@/lib/domain';
+import { MARITAL_STATUSES, SEXES, RELATIONSHIPS } from '@/lib/domain';
 
 export const PATIENT_STATUS = ['active', 'inactive', 'anonymized'] as const;
 export type PatientStatus = (typeof PATIENT_STATUS)[number];
@@ -53,6 +53,51 @@ const PatientSchema = new Schema(
       trim: true,
       match: [/^\d{9}$/, 'NIF deve ter 9 dígitos'],
       default: null,
+    },
+    // --- Fase 3 (ficha de anamnese / P10 / E12 / E11) ------------------------
+    sex: { type: String, enum: [...SEXES, null], default: null },
+    // Nº de utente do SNS (9 dígitos) — pedido do Victor (P10)
+    snsNumber: {
+      type: String,
+      trim: true,
+      match: [/^\d{9}$/, 'Nº de utente deve ter 9 dígitos'],
+      default: null,
+    },
+    homePhone: { type: String, trim: true, maxlength: 30, default: null },
+    emergencyContact: {
+      name: { type: String, trim: true, maxlength: 120, default: null },
+      phone: { type: String, trim: true, maxlength: 30, default: null },
+    },
+    // E12 (Isabel): seguradora + nº do cartão — vai no cabeçalho da fatura
+    // para o paciente pedir o reembolso (a clínica não trabalha com seguros)
+    insurance: {
+      company: { type: String, trim: true, maxlength: 120, default: null },
+      cardNumber: { type: String, trim: true, maxlength: 60, default: null },
+    },
+    // E11 (Isabel): familiares / pessoas de referência — outro paciente da
+    // clínica (patientId) OU contacto livre; ajuda quando o paciente não
+    // responde às confirmações ou o número está errado
+    relatives: {
+      type: [
+        new Schema(
+          {
+            patientId: {
+              type: Schema.Types.ObjectId,
+              ref: 'Patient',
+              default: null,
+            },
+            name: { type: String, required: true, trim: true, maxlength: 120 },
+            phone: { type: String, trim: true, maxlength: 30, default: null },
+            relationship: {
+              type: String,
+              enum: RELATIONSHIPS,
+              required: true,
+            },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
     },
     // Contactos
     phone: {
@@ -140,6 +185,13 @@ const PatientSchema = new Schema(
       dataProcessingAt: { type: Date, default: null }, // tratamento de dados
       remindersAt: { type: Date, default: null }, // lembretes de consulta
       marketingAt: { type: Date, default: null }, // recalls/campanhas
+      // P10: consentimento RGPD ASSINADO (Document 'consent' com o texto)
+      gdprSignedAt: { type: Date, default: null },
+      gdprDocumentId: {
+        type: Schema.Types.ObjectId,
+        ref: 'Document',
+        default: null,
+      },
     },
     status: {
       type: String,

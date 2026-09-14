@@ -37,6 +37,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { PatientStatusBadge } from '@/components/ui/Badge';
+import { GdprConsentButton } from '@/components/pacientes/GdprConsentButton';
 
 export interface PatientHeaderData {
   id: string;
@@ -52,6 +53,8 @@ export interface PatientHeaderData {
   deceased: boolean;
   firstConsultLabel: string | null;
   lastConsultLabel: string | null;
+  /** P10: data da assinatura RGPD ("14/09/2026") ou null */
+  gdprSignedLabel: string | null;
 }
 
 function ageFrom(iso: string | null): number | null {
@@ -409,6 +412,12 @@ export function PatientHeader({ patient }: { patient: PatientHeaderData }) {
 
       {/* Ações */}
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        {patient.status === 'active' && (
+          <GdprConsentButton
+            patientId={patient.id}
+            signedAtLabel={patient.gdprSignedLabel}
+          />
+        )}
         {patient.portalStatus !== 'active' && patient.status === 'active' && (
           <Button variant='secondary' onClick={() => setInviteModal(true)}>
             <KeyRound size={15} style={{ marginRight: 6 }} />

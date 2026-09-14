@@ -119,6 +119,9 @@ export default async function PatientPage({
     deceased: Boolean(patient.deceasedAt),
     firstConsultLabel: bounds?.first ? lisbonShort.format(bounds.first) : null,
     lastConsultLabel: bounds?.last ? lisbonShort.format(bounds.last) : null,
+    gdprSignedLabel: patient.consents?.gdprSignedAt
+      ? lisbonShort.format(patient.consents.gdprSignedAt)
+      : null,
     portalStatus:
       portalUser?.status === 'active'
         ? 'active'
@@ -188,6 +191,19 @@ export default async function PatientPage({
     maritalStatus: patient.maritalStatus ?? '',
     nationality: patient.nationality ?? '',
     referredBy: patient.referredBy ?? '',
+    sex: patient.sex ?? '',
+    snsNumber: patient.snsNumber ?? '',
+    homePhone: patient.homePhone ?? '',
+    emergencyName: patient.emergencyContact?.name ?? '',
+    emergencyPhone: patient.emergencyContact?.phone ?? '',
+    insuranceCompany: patient.insurance?.company ?? '',
+    insuranceCardNumber: patient.insurance?.cardNumber ?? '',
+    relatives: (patient.relatives ?? []).map(r => ({
+      patientId: r.patientId ? String(r.patientId) : null,
+      name: r.name,
+      phone: r.phone ?? '',
+      relationship: r.relationship,
+    })),
     deceased: Boolean(patient.deceasedAt),
     street: patient.address?.street ?? '',
     postalCode: patient.address?.postalCode ?? '',

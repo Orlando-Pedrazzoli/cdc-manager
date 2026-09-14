@@ -42,6 +42,13 @@ import User from '@/models/User';
 import { createActivationCode } from '@/lib/activation';
 import { sendActivationEmail } from '@/lib/resend';
 import { logAudit } from '@/lib/audit';
+import mongoose from 'mongoose';
+import ClinicalDocument from '@/models/Document';
+import { GDPR_CONSENT_TEXT } from '@/lib/domain';
+import {
+  patientDocumentPublicId,
+  uploadAuthenticatedDataUrl,
+} from '@/lib/cloudinary';
 import {
   createPatientSchema,
   updatePatientSchema,
@@ -241,6 +248,15 @@ export async function createPatientAction(
     maritalStatus: data.maritalStatus,
     nationality: data.nationality,
     referredBy: data.referredBy,
+    sex: data.sex,
+    snsNumber: data.snsNumber,
+    homePhone: data.homePhone,
+    emergencyContact: { name: data.emergencyName, phone: data.emergencyPhone },
+    insurance: {
+      company: data.insuranceCompany,
+      cardNumber: data.insuranceCardNumber,
+    },
+    relatives: data.relatives,
     preferredChannel: data.preferredChannel,
     preferredDoctorId: data.preferredDoctorId,
     notes: data.notes,
@@ -372,6 +388,14 @@ export async function updatePatientAction(
     maritalStatus: data.maritalStatus,
     nationality: data.nationality,
     referredBy: data.referredBy,
+    sex: data.sex,
+    snsNumber: data.snsNumber,
+    homePhone: data.homePhone,
+    'emergencyContact.name': data.emergencyName,
+    'emergencyContact.phone': data.emergencyPhone,
+    'insurance.company': data.insuranceCompany,
+    'insurance.cardNumber': data.insuranceCardNumber,
+    relatives: data.relatives,
     preferredChannel: data.preferredChannel,
     preferredDoctorId: data.preferredDoctorId,
     notes: data.notes,
@@ -725,4 +749,94 @@ export async function quickSearchPatientsAction(
     phone: (p.phone as string | null) ?? null,
     birth: p.birthDate ? quickBirthFmt.format(p.birthDate as Date) : null,
   }));
+}
+
+// -----------------------------------------------------------------------------
+// RGPD ASSINADO (Fase 3, P10 — "botão para RGPD" na ficha)
+// -----------------------------------------------------------------------------
+// Mesmo padrão do consentimento RX: a assinatura (PNG) sobe para o
+// Cloudinary (authenticated), nasce um Document 'consent' com o SNAPSHOT do
+// texto apresentado, e a ficha fica com consents.gdprSignedAt +
+// gdprDocumentId. Também preenche dataProcessingAt se ainda estava vazio.
+// RBAC: admin + receção (é no balcão que se recolhe a assinatura).
+// -----------------------------------------------------------------------------
+export async function signGdprConsentAction(input: {
+  patientId: string;
+  signatureDataUrl: string;
+}): Promise<{ error?: string; documentId?: string }> {
+  try {
+    const session = await auth();
+    const role = session?.user?.role;
+    if (!session?.user?.id || (role !== 'admin' && role !== 'receptionist')) {
+      return { error: 'Sem permissões.' };
+    }
+    if (!/^[0-9a-fA-F]{24}$/.test(input.patientId)) {
+      return { error: 'Paciente inválido.' };
+    }
+    if (!/^data:image\/png;base64,/.test(input.signatureDataUrl)) {
+      return { error: 'Assinatura em falta.' };
+    }
+    if (input.signatureDataUrl.length > 400_000) {
+      return { error: 'Assinatura demasiado grande.' };
+    }
+    await dbConnect();
+    const patient = await Patient.findById(input.patientId).select(
+      'name consents status',
+    );
+    if (!patient || patient.status !== 'active') {
+      return { error: 'Paciente não encontrado ou inativo.' };
+    }
+
+    const docId = new mongoose.Types.ObjectId();
+    const publicId = patientDocumentPublicId(String(docId));
+    const asset = await uploadAuthenticatedDataUrl(
+      publicId,
+      input.signatureDataUrl,
+    );
+    const now = new Date();
+    const dateLabel = new Intl.DateTimeFormat('pt-PT', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      timeZone: 'Europe/Lisbon',
+    }).format(now);
+
+    await ClinicalDocument.create({
+      _id: docId,
+      patientId: patient._id,
+      category: 'consent',
+      title: `Consentimento RGPD — ${dateLabel}`,
+      publicId,
+      resourceType: 'image',
+      format: asset.format,
+      bytes: asset.bytes,
+      visibleToPatient: true,
+      uploadedByUserId: session.user.id,
+      appointmentId: null,
+      note: GDPR_CONSENT_TEXT, // snapshot imutável do texto assinado
+    });
+
+    const $set: Record<string, unknown> = {
+      'consents.gdprSignedAt': now,
+      'consents.gdprDocumentId': docId,
+    };
+    if (!patient.consents?.dataProcessingAt) {
+      $set['consents.dataProcessingAt'] = now;
+    }
+    await Patient.updateOne({ _id: patient._id }, { $set });
+
+    await logAudit({
+      userId: session.user.id,
+      action: 'create',
+      entityType: 'Document',
+      entityId: String(docId),
+      patientId: String(patient._id),
+      summary: 'Consentimento RGPD assinado na ficha',
+    });
+
+    revalidatePath(`/admin/pacientes/${input.patientId}`);
+    return { documentId: String(docId) };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Erro inesperado.' };
+  }
 }

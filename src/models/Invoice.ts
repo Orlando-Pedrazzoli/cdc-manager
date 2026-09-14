@@ -114,6 +114,12 @@ const InvoiceSchema = new Schema(
       match: [/^\d{9}$/, 'NIF inválido'],
       default: null,
     },
+    // E12 (Isabel): seguradora + nº de cartão no CABEÇALHO da fatura — para
+    // o paciente pedir reembolso. Snapshot da ficha no momento da cobrança.
+    insuranceSnapshot: {
+      company: { type: String, trim: true, default: null },
+      cardNumber: { type: String, trim: true, default: null },
+    },
     // --- Referências Moloni (o documento certificado real) ------------------
     // NULOS enquanto 'awaiting-emission' (pré-ativação Moloni); unique
     // Unicidade garantida por índice PARCIAL (ver abaixo): `sparse` NÃO

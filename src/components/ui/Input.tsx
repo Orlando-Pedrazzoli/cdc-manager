@@ -14,20 +14,24 @@ import type {
   TextareaHTMLAttributes,
 } from 'react';
 
-const FIELD_BORDER = '#D8DEEF';
+const FIELD_BORDER = '#B9C3E0';
 const FIELD_TEXT = '#1B2A6B';
 const LABEL_COLOR = '#3A3F4A';
 const ERROR_COLOR = '#B3261E';
 const HELP_COLOR = '#6A7186';
 
+// X1 (Victor): "os campos de inserção de dados podem estar mais destacados"
+// — borda mais forte, fundo ligeiramente tingido e foco azul visível
+// (.cdc-field em globals.css; inline styles não fazem :focus)
 const baseFieldStyle = {
   width: '100%',
   borderRadius: '8px',
-  border: `1px solid ${FIELD_BORDER}`,
-  padding: '9px 12px',
+  border: `1.5px solid ${FIELD_BORDER}`,
+  padding: '10px 12px',
   fontSize: '14px',
   color: FIELD_TEXT,
-  backgroundColor: '#FFFFFF',
+  backgroundColor: '#FBFCFF',
+  boxShadow: 'inset 0 1px 2px rgba(27,42,107,0.04)',
 } as const;
 
 function FieldShell({
@@ -104,7 +108,7 @@ export function Input({
         )}
         <input
           id={id}
-          className='outline-none focus:ring-2'
+          className='cdc-field'
           style={{
             ...baseFieldStyle,
             paddingLeft: icon ? 38 : 12,
@@ -141,7 +145,7 @@ export function Textarea({
       <textarea
         id={id}
         rows={rows}
-        className='outline-none focus:ring-2'
+        className='cdc-field'
         style={{
           ...baseFieldStyle,
           resize: 'vertical',
@@ -177,7 +181,7 @@ export function Select({
     <FieldShell label={label} htmlFor={id} error={error} help={help}>
       <select
         id={id}
-        className='outline-none focus:ring-2'
+        className='cdc-field'
         style={{
           ...baseFieldStyle,
           borderColor: error ? ERROR_COLOR : FIELD_BORDER,

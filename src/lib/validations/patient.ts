@@ -19,7 +19,7 @@
 // =============================================================================
 
 import { z } from 'zod';
-import { MARITAL_STATUSES } from '@/lib/domain';
+import { MARITAL_STATUSES, SEXES, RELATIONSHIPS } from '@/lib/domain';
 
 // -----------------------------------------------------------------------------
 // NIF — validação com dígito de controlo (módulo 11)
@@ -189,6 +189,55 @@ export const createPatientSchema = z.object({
   ),
   nationality: optionalText(60).default(null),
   referredBy: optionalText(120).default(null),
+  // --- Fase 3 ---
+  sex: z.preprocess(
+    v => (typeof v === 'string' && v.trim() === '' ? null : v),
+    z.enum(SEXES).nullable().default(null),
+  ),
+  snsNumber: z.preprocess(
+    v => (typeof v === 'string' ? v.replace(/\s/g, '') : v),
+    z
+      .union([
+        z.literal(''),
+        z.string().regex(/^\d{9}$/, 'Nº de utente deve ter 9 dígitos'),
+      ])
+      .transform(v => (v === '' ? null : v))
+      .nullable()
+      .default(null),
+  ),
+  homePhone: optionalText(30).default(null),
+  emergencyName: optionalText(120).default(null),
+  emergencyPhone: optionalText(30).default(null),
+  insuranceCompany: optionalText(120).default(null),
+  insuranceCardNumber: optionalText(60).default(null),
+  // Familiares: JSON serializado pelo editor do formulário
+  relatives: z.preprocess(
+    v => {
+      if (typeof v !== 'string' || v.trim() === '') return [];
+      try {
+        return JSON.parse(v);
+      } catch {
+        return 'invalid';
+      }
+    },
+    z
+      .array(
+        z.object({
+          patientId: z
+            .string()
+            .regex(/^[0-9a-fA-F]{24}$/)
+            .nullable()
+            .default(null),
+          name: z.string().trim().min(2, 'Nome do familiar em falta').max(120),
+          phone: z.string().trim().max(30).nullable().default(null),
+          relationship: z.enum(RELATIONSHIPS, {
+            error: 'Indique o grau de parentesco',
+          }),
+        }),
+      )
+      .max(10, 'Máximo 10 familiares')
+      .default([]),
+  ),
   preferredChannel: z
     .enum(['whatsapp', 'sms', 'email', 'phone'])
     .default('whatsapp'),
