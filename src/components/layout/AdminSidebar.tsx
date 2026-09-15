@@ -34,6 +34,7 @@ import {
   FlaskConical,
   Armchair,
   Truck,
+  ListChecks,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 
@@ -90,6 +91,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
         icon: FileText,
       },
       { href: '/admin/relatorios', label: 'Relatórios', icon: BarChart3 },
+      { href: '/admin/listagens', label: 'Listagens', icon: ListChecks },
     ],
   },
   {

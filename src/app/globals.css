@@ -35,3 +35,28 @@ body {
 .cdc-field::placeholder {
   color: #9aa1b4;
 }
+
+/* Listagens — impressão: só a área da tabela (Fase 5B) */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 12mm;
+  }
+  .no-print {
+    display: none !important;
+  }
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+}
