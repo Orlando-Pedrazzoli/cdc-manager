@@ -144,7 +144,14 @@ async function callLLM(
 const hash = (s: string) =>
   createHash('sha1').update(s).digest('hex').slice(0, 16);
 
-/** Traduz N títulos numa só chamada; devolve na mesma ordem (ou null) */
+class TranslateFailed extends Error {}
+
+/**
+ * Traduz N títulos numa só chamada; devolve na mesma ordem (ou null).
+ * IMPORTANTE: a função cacheada LANÇA em caso de falha — o unstable_cache
+ * não guarda erros, por isso uma falha (modelo indisponível, quota) nunca
+ * fica 7 dias em cache. O wrapper apanha e devolve null.
+ */
 export async function translateTitles(
   titles: string[],
 ): Promise<string[] | null> {
@@ -154,47 +161,57 @@ export async function translateTitles(
     async () => {
       const numbered = titles.map((t, i) => `${i + 1}. ${t}`).join('\n');
       const out = await callLLM(
-        `Traduz cada título abaixo. Responde APENAS com um array JSON de strings, na mesma ordem, sem numeração:\n\n${numbered}`,
+        `Traduz cada título abaixo. Responde APENAS com um array JSON de strings, na mesma ordem, sem numeração e sem texto fora do JSON:\n\n${numbered}`,
         2500,
       );
-      if (!out) return null;
-      try {
-        const arr = JSON.parse(
-          out.replace(/^```json\s*|```$/g, '').trim(),
-        ) as unknown;
-        if (
-          Array.isArray(arr) &&
-          arr.length === titles.length &&
-          arr.every(x => typeof x === 'string')
-        ) {
-          return arr as string[];
-        }
-      } catch {
-        /* cai para null */
+      if (!out) throw new TranslateFailed('sem resposta');
+      // Extrai o primeiro array JSON mesmo que venha com ```json ou texto à volta
+      const m = out.match(/\[[\s\S]*\]/);
+      if (!m) throw new TranslateFailed('resposta sem JSON');
+      const arr = JSON.parse(m[0]) as unknown;
+      if (
+        !Array.isArray(arr) ||
+        arr.length !== titles.length ||
+        !arr.every(x => typeof x === 'string')
+      ) {
+        throw new TranslateFailed('array inválido');
       }
-      return null;
+      return arr as string[];
     },
-    ['pubmed-titles', key],
+    ['pubmed-titles-v2', key],
     { revalidate: 7 * 24 * 3600 },
   );
-  return run();
+  try {
+    return await run();
+  } catch (e) {
+    console.error('[translate] títulos:', e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
-/** Traduz um abstract (texto corrido) — cache por pmid */
+/** Traduz um abstract (texto corrido) — cache por pmid; falhas não ficam em cache */
 export async function translateAbstract(
   pmid: string,
   text: string,
 ): Promise<string | null> {
   const run = unstable_cache(
-    async () =>
-      callLLM(
+    async () => {
+      const out = await callLLM(
         `Traduz o resumo científico abaixo, mantendo a estrutura (parágrafos / secções como Objetivo, Métodos, Resultados, Conclusões quando existirem). Responde só com a tradução.\n\n${text}`,
         2000,
-      ),
-    ['pubmed-abstract-pt', pmid, hash(text)],
+      );
+      if (!out) throw new TranslateFailed('sem resposta');
+      return out;
+    },
+    ['pubmed-abstract-pt-v2', pmid, hash(text)],
     { revalidate: 7 * 24 * 3600 },
   );
-  return run();
+  try {
+    return await run();
+  } catch (e) {
+    console.error('[translate] abstract:', e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
 export const translationEnabled = () => provider() !== null;
