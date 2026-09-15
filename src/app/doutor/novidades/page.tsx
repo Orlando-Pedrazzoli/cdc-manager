@@ -164,10 +164,10 @@ export default async function NovidadesPage({
             <>
               <span style={{ marginLeft: 'auto' }} />
               <Link href={href({ lang: 'pt' })} style={chip(lang === 'pt')}>
-                🇵🇹 Português
+                Português
               </Link>
               <Link href={href({ lang: 'en' })} style={chip(lang === 'en')}>
-                🇬🇧 Original
+                Original (inglês)
               </Link>
             </>
           )}
