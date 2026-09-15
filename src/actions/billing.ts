@@ -39,6 +39,7 @@ import { needsAdjustmentOnVoid } from '@/lib/commission-accounting';
 import { createVoidAdjustment } from '@/actions/procedures';
 import { cancelRecallForProcedure } from '@/lib/recalls';
 import { reverseStockForProcedure } from '@/lib/stock-consumption';
+import { emitCreditNoteForInvoice, tryEmitInvoice } from '@/actions/moloni';
 import Invoice from '@/models/Invoice';
 import Procedure from '@/models/Procedure';
 import Patient from '@/models/Patient';
@@ -197,6 +198,9 @@ export async function checkoutAction(
     });
 
     revalidatePath('/admin/cobranca');
+    // Fase 7A: emissão automática no Moloni (só se totalmente pago e o
+    // Moloni estiver configurado; falha não afeta a cobrança registada)
+    if (!isPartial && invoiceId) await tryEmitInvoice(String(invoiceId));
     revalidatePath('/admin/dashboard');
     return { success: true };
   } catch (e) {
@@ -302,6 +306,18 @@ export async function voidInvoiceAction(
       }
     }
 
+    // Fase 7A: nota de crédito no Moloni se a fatura já lá estava emitida
+    // (best-effort — o registo interno já está anulado)
+    let creditNote: string | null = null;
+    if (invoice.moloniDocumentId) {
+      const cn = await emitCreditNoteForInvoice(
+        String(invoice._id),
+        data.reason,
+      );
+      if (cn.error) console.error('[moloni] nota de crédito:', cn.error);
+      creditNote = cn.number ?? null;
+    }
+
     await logAudit({
       userId: session.user.id,
       action: 'invoice-void',
@@ -310,8 +326,8 @@ export async function voidInvoiceAction(
       patientId: String(invoice.patientId),
       clinicId: String(invoice.clinicId),
       summary: data.voidProcedures
-        ? `Fatura anulada com linha de balanço: ${procedures.length} ato(s) anulado(s), ${adjustments} estorno(s) de comissão — ${data.reason}`
-        : `Fatura anulada (documento): ${procedures.length} ato(s) devolvido(s) à cobrança — ${data.reason}`,
+        ? `Fatura anulada com linha de balanço: ${procedures.length} ato(s) anulado(s), ${adjustments} estorno(s) de comissão — ${data.reason}${creditNote ? ` · NC Moloni ${creditNote}` : ''}`
+        : `Fatura anulada (documento): ${procedures.length} ato(s) devolvido(s) à cobrança — ${data.reason}${creditNote ? ` · NC Moloni ${creditNote}` : ''}`,
     });
 
     revalidatePath(`/admin/faturacao/${data.invoiceId}`);

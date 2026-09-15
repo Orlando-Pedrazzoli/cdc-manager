@@ -29,6 +29,8 @@ import {
   UsersPanel,
   type TeamUser,
 } from '@/components/configuracoes/UsersPanel';
+import { MoloniPanel } from '@/components/configuracoes/MoloniPanel';
+import { isMoloniConfigured, isMoloniEmissionReady } from '@/lib/moloni';
 import User from '@/models/User';
 
 export const dynamic = 'force-dynamic';
@@ -37,6 +39,7 @@ export const metadata = { title: 'Configurações' };
 const TABS = [
   { key: 'clinicas', label: 'Clínicas & horários' },
   { key: 'utilizadores', label: 'Utilizadores' },
+  { key: 'integracoes', label: 'Integrações' }, // Fase 7A — Moloni
   { key: 'conta', label: 'A minha conta' },
 ] as const;
 
@@ -55,7 +58,9 @@ export default async function ConfiguracoesPage({
       ? 'conta'
       : tab === 'utilizadores'
         ? 'utilizadores'
-        : 'clinicas';
+        : tab === 'integracoes'
+          ? 'integracoes'
+          : 'clinicas';
 
   const session = await auth();
   if (!session?.user) return null;
@@ -222,6 +227,26 @@ export default async function ConfiguracoesPage({
         <UsersPanel users={teamUsers} currentUserId={session.user.id ?? ''} />
       ) : activeTab === 'conta' ? (
         <ChangePasswordForm email={session.user.email ?? ''} />
+      ) : activeTab === 'integracoes' ? (
+        <MoloniPanel
+          configured={isMoloniConfigured()}
+          ready={isMoloniEmissionReady()}
+          present={Object.fromEntries(
+            [
+              'MOLONI_CLIENT_ID',
+              'MOLONI_CLIENT_SECRET',
+              'MOLONI_USERNAME',
+              'MOLONI_PASSWORD',
+              'MOLONI_COMPANY_ID',
+              'MOLONI_DOCUMENT_SET_ID',
+              'MOLONI_CREDIT_SET_ID',
+              'MOLONI_CATEGORY_ID',
+              'MOLONI_UNIT_ID',
+              'MOLONI_PAYMENT_METHODS',
+              'MOLONI_EXEMPTION_REASON',
+            ].map(k => [k, !!process.env[k]]),
+          )}
+        />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/* Sub-seletor de clínica (?clinic=, mesmo param da agenda) */}

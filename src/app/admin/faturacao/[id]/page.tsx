@@ -25,6 +25,8 @@ import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/domain';
 import { Badge, type BadgeVariant } from '@/components/ui/Badge';
 import { VoidInvoiceModal } from '@/components/faturacao/VoidInvoiceModal';
 import { PaymentsPanel } from '@/components/faturacao/PaymentsPanel';
+import { MoloniButtons } from '@/components/faturacao/MoloniButtons';
+import { isMoloniEmissionReady } from '@/lib/moloni';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Documento' };
@@ -137,8 +139,21 @@ export default async function InvoiceDetailPage({
           <Badge variant={STATUS_VARIANT[inv.status]}>
             {INVOICE_STATUS_LABEL[inv.status]}
           </Badge>
+          {inv.status !== 'voided' && (
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+              <MoloniButtons
+                invoiceId={String(inv._id)}
+                emitted={inv.moloniDocumentId != null}
+                ready={
+                  isMoloniEmissionReady() &&
+                  (inv.moloniDocumentId != null ||
+                    (inv.paidCents ?? inv.totalCents) >= inv.totalCents)
+                }
+              />
+            </div>
+          )}
           {session.user.role === 'admin' && inv.status !== 'voided' && (
-            <div style={{ marginLeft: 'auto' }}>
+            <div>
               <VoidInvoiceModal
                 invoiceId={String(inv._id)}
                 docLabel={docLabel}
