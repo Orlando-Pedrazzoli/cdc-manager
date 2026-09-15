@@ -55,7 +55,7 @@ const CommissionAdjustmentSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: 'Procedure',
       default: null,
-      index: true,
+      // índice único (sparse) declarado em schema.index() mais abaixo
     },
     invoiceId: {
       type: Schema.Types.ObjectId,

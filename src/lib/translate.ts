@@ -36,7 +36,7 @@ async function callLLM(
   const p = provider();
   try {
     if (p === 'gemini') {
-      const model = process.env.TRANSLATE_MODEL ?? 'gemini-2.0-flash';
+      const model = process.env.TRANSLATE_MODEL ?? 'gemini-3.6-flash';
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
         {
