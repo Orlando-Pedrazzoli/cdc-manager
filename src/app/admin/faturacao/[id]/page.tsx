@@ -24,6 +24,7 @@ import { INVOICE_STATUS_LABEL } from '@/lib/labels';
 import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/domain';
 import { Badge, type BadgeVariant } from '@/components/ui/Badge';
 import { VoidInvoiceModal } from '@/components/faturacao/VoidInvoiceModal';
+import { PaymentsPanel } from '@/components/faturacao/PaymentsPanel';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Documento' };
@@ -72,6 +73,17 @@ export default async function InvoiceDetailPage({
   const inv = await Invoice.findById(id).lean();
   if (!inv) notFound();
 
+  // Fase 5C: nomes de quem recebeu cada pagamento
+  const receiverIds = Array.from(
+    new Set((inv.payments ?? []).map(p => String(p.receivedByUserId))),
+  );
+  const receivers = receiverIds.length
+    ? await User.find({ _id: { $in: receiverIds } })
+        .select('name')
+        .lean()
+    : [];
+  const receiverName = new Map(receivers.map(u => [String(u._id), u.name]));
+  const paidCents = inv.paidCents ?? inv.totalCents;
   const [patient, clinic, issuer] = await Promise.all([
     Patient.findById(inv.patientId).select('name processNumber nif').lean(),
     getClinicById(String(inv.clinicId)),
@@ -288,6 +300,27 @@ export default async function InvoiceDetailPage({
           </tbody>
         </table>
       </div>
+
+      {/* Fase 5C: pagamentos / recibos / saldo */}
+      {inv.status !== 'voided' && (
+        <PaymentsPanel
+          invoiceId={String(inv._id)}
+          totalCents={inv.totalCents}
+          paidCents={paidCents}
+          payments={(inv.payments ?? []).map(p => ({
+            id: String(p._id),
+            amountCents: p.amountCents,
+            method: p.method,
+            paidAtLabel: lisbonDateTime(p.paidAt as Date),
+            receivedBy: receiverName.get(String(p.receivedByUserId)) ?? '—',
+            note: (p.note as string | null) ?? null,
+          }))}
+          canRegister={
+            session.user.role === 'admin' ||
+            session.user.role === 'receptionist'
+          }
+        />
+      )}
 
       {/* Referências fiscais (quando emitida) */}
       {inv.moloniDocumentId !== null && (

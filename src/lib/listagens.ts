@@ -37,7 +37,8 @@ export type ListingKey =
   | 'documentos-emitidos'
   | 'nao-faturados'
   | 'faturacao-categoria'
-  | 'planos';
+  | 'planos'
+  | 'saldos';
 
 export interface ListingDef {
   key: ListingKey;
@@ -670,6 +671,61 @@ export async function runListing(
         ],
         rows,
         totals: { n: rows.reduce((a, r) => a + r.n, 0), valor: total },
+      };
+    }
+
+    case 'saldos': {
+      const inv = await Invoice.find({
+        ...clinicMatch(p),
+        status: { $ne: 'voided' },
+        paidCents: { $ne: null },
+      })
+        .select('patientId createdAt totalCents paidCents moloniDocumentNumber')
+        .lean();
+      const open = inv.filter(
+        i => (i.paidCents ?? i.totalCents) < i.totalCents,
+      );
+      const patients = await Patient.find({
+        _id: { $in: open.map(i => i.patientId) },
+      })
+        .select('name processNumber phone')
+        .lean();
+      const pBy = new Map(patients.map(x => [String(x._id), x]));
+      const rows = open
+        .map(i => {
+          const pt = pBy.get(String(i.patientId));
+          return {
+            data: ptDate(i.createdAt as Date),
+            documento:
+              i.moloniDocumentNumber ??
+              `Interno #${String(i._id).slice(-6).toUpperCase()}`,
+            processo: pt ? String(pt.processNumber) : '—',
+            paciente: pt?.name ?? '(removido)',
+            telefone: pt?.phone ?? '',
+            total: i.totalCents,
+            pago: i.paidCents ?? 0,
+            divida: i.totalCents - (i.paidCents ?? 0),
+          };
+        })
+        .sort((a, b) => b.divida - a.divida);
+      return {
+        columns: [
+          { key: 'data', label: 'Data' },
+          { key: 'documento', label: 'Documento' },
+          { key: 'processo', label: 'Nº' },
+          { key: 'paciente', label: 'Paciente' },
+          { key: 'telefone', label: 'Telefone' },
+          { key: 'total', label: 'Total', kind: 'cents', align: 'right' },
+          { key: 'pago', label: 'Pago', kind: 'cents', align: 'right' },
+          { key: 'divida', label: 'Em dívida', kind: 'cents', align: 'right' },
+        ],
+        rows,
+        totals: {
+          total: rows.reduce((a, r) => a + r.total, 0),
+          pago: rows.reduce((a, r) => a + r.pago, 0),
+          divida: rows.reduce((a, r) => a + r.divida, 0),
+        },
+        note: 'Para registar o pagamento em falta, abrir o documento em Faturação.',
       };
     }
 

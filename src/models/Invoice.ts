@@ -37,7 +37,7 @@ export const INVOICE_STATUS = [
   // e transita para 'issued'.
   'awaiting-emission',
   'issued', // emitida e paga no ato (fatura-recibo — o caso normal no balcão)
-  'pending', // emitida, pagamento por regularizar (transferência a confirmar)
+  'pending', // pagamento por regularizar: parcial (Fase 5C) ou transferência a confirmar
   'voided', // anulada via nota de crédito no Moloni
 ] as const;
 export type InvoiceStatus = (typeof INVOICE_STATUS)[number];
@@ -102,12 +102,38 @@ const InvoiceSchema = new Schema(
     paymentMethod: {
       type: String,
       enum: PAYMENT_METHODS,
-      required: true,
+      required: true, // meio do 1.º pagamento (compatibilidade)
     },
     paidAt: {
       type: Date,
-      default: null, // null enquanto status 'pending'
+      default: null, // data do 1.º pagamento (null se ainda nada pago)
     },
+    // -------------------------------------------------------------------------
+    // Fase 5C (P16 — "pagamentos em 2x, o que não foi pago, recibos"):
+    // cada pagamento é um RECIBO. `paidCents` materializado = soma.
+    // Documentos anteriores à Fase 5C não têm `payments` → lêem-se como
+    // totalmente pagos (paidCents null ⇒ = totalCents).
+    // -------------------------------------------------------------------------
+    payments: {
+      type: [
+        new Schema(
+          {
+            amountCents: { type: Number, required: true, min: 1 },
+            method: { type: String, enum: PAYMENT_METHODS, required: true },
+            paidAt: { type: Date, required: true },
+            receivedByUserId: {
+              type: Schema.Types.ObjectId,
+              ref: 'User',
+              required: true,
+            },
+            note: { type: String, trim: true, maxlength: 200, default: null },
+          },
+          { _id: true },
+        ),
+      ],
+      default: undefined,
+    },
+    paidCents: { type: Number, min: 0, default: null },
     // NIF no documento (para dedução IRS; null = consumidor final)
     nifSnapshot: {
       type: String,

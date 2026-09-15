@@ -417,6 +417,22 @@ export default async function FaturacaoPage({
                     }}
                   >
                     {formatCents(inv.totalCents)}
+                    {/* Fase 5C: saldo em dívida (pagamento parcial) */}
+                    {inv.status !== 'voided' &&
+                      inv.paidCents != null &&
+                      inv.paidCents < inv.totalCents && (
+                        <span
+                          style={{
+                            display: 'block',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            color: '#B3261E',
+                          }}
+                        >
+                          em dívida{' '}
+                          {formatCents(inv.totalCents - inv.paidCents)}
+                        </span>
+                      )}
                   </td>
                   <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                     <Badge variant={STATUS_VARIANT[inv.status]}>

@@ -39,6 +39,7 @@ import ClinicalDocument from '@/models/Document';
 import { signedPreviewUrl } from '@/lib/cloudinary';
 import { PatientLabCases } from '@/components/proteses/PatientLabCases';
 import { IssueDocumentToolbar } from '@/components/documentos/IssueDocumentToolbar';
+import { PatientAccount } from '@/components/faturacao/PatientAccount';
 import ClinicalRecord from '@/models/ClinicalRecord';
 import { AnamnesisQuestionnaire } from '@/components/clinico/AnamnesisQuestionnaire';
 import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
@@ -52,6 +53,7 @@ const TABS = [
   { key: 'anamnese', label: 'Anamnese' }, // Fase 3B (E19) — receção preenche/renova
   { key: 'documentos', label: 'Documentos' },
   { key: 'laboratorios', label: 'Laboratórios' }, // E3 (Fase 2)
+  { key: 'conta', label: 'Conta-corrente' }, // P16 (Fase 5C)
   // Subrota própria (versões por URL), como na área do médico — leitura
   { key: 'odontograma', label: 'Odontograma' },
 ] as const;
@@ -341,6 +343,17 @@ export default async function PatientPage({
             patientLabel={`${patient.name} · ${patient.processNumber}`}
             mode='staff'
           />
+        </div>
+      ) : tab === 'conta' ? (
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #EEF1F8',
+            borderRadius: '12px',
+            padding: '20px',
+          }}
+        >
+          <PatientAccount patientId={id} />
         </div>
       ) : tab === 'anamnese' ? null : (
         <div

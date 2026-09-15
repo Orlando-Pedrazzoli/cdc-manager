@@ -42,8 +42,43 @@ export const checkoutSchema = z.object({
       .refine(isValidNif, 'NIF inválido (dígito de controlo)')
       .nullable(),
   ),
+  // Fase 5C: valor pago AGORA em cêntimos ('' ou ausente = total)
+  paidNowEuros: z.preprocess(
+    v => {
+      if (typeof v !== 'string' && typeof v !== 'number') return null;
+      const s = String(v).trim().replace(/\s/g, '').replace(',', '.');
+      if (s === '') return null;
+      const n = Number(s);
+      return Number.isFinite(n) ? Math.round(n * 100) : NaN;
+    },
+    z.number({ error: 'Valor inválido' }).int().min(0).nullable().default(null),
+  ),
 });
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
+
+// --- Registar pagamento numa fatura com saldo (Fase 5C) -------------------------
+export const registerPaymentSchema = z.object({
+  invoiceId: z.string().regex(OBJECT_ID, 'Fatura inválida'),
+  amountEuros: z.preprocess(
+    v => {
+      const s = String(v ?? '')
+        .trim()
+        .replace(/\s/g, '')
+        .replace(',', '.');
+      const n = Number(s);
+      return Number.isFinite(n) ? Math.round(n * 100) : NaN;
+    },
+    z.number({ error: 'Valor inválido' }).int().min(1, 'Indique o valor'),
+  ),
+  paymentMethod: z.enum(PAYMENT_METHODS, {
+    error: 'Selecione o meio de pagamento',
+  }),
+  note: z.preprocess(
+    v => (typeof v === 'string' && v.trim() === '' ? null : v),
+    z.string().trim().max(200).nullable().default(null),
+  ),
+});
+export type RegisterPaymentInput = z.infer<typeof registerPaymentSchema>;
 
 // --- Anular fatura (Fase 1, E2) -----------------------------------------------
 // voidProcedures = resposta ao "Quer criar uma linha de balanço? Sim/Não":

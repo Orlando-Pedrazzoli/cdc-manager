@@ -88,6 +88,15 @@ export function CheckoutModal({
         .reduce((s, a) => s + a.priceCents, 0),
     [acts, selected],
   );
+  const [paidNow, setPaidNow] = useState('');
+  const partialInfo = useMemo(() => {
+    const s = paidNow.trim().replace(',', '.');
+    if (s === '') return null;
+    const n = Number(s);
+    if (!Number.isFinite(n) || n < 0) return null;
+    const cents = Math.round(n * 100);
+    return cents < totalCents ? { paid: cents, due: totalCents - cents } : null;
+  }, [paidNow, totalCents]);
 
   return (
     <>
@@ -203,6 +212,20 @@ export function CheckoutModal({
               inputMode='numeric'
               maxLength={9}
             />
+            {/* Fase 5C (P16): pagamento em 2x — vazio = paga tudo agora */}
+            <Input
+              name='paidNowEuros'
+              label='Pago agora (€)'
+              inputMode='decimal'
+              value={paidNow}
+              onChange={e => setPaidNow(e.target.value)}
+              placeholder={(totalCents / 100).toFixed(2).replace('.', ',')}
+              help={
+                partialInfo
+                  ? `Fica em dívida ${formatCents(partialInfo.due)} — regista-se depois na fatura`
+                  : 'Vazio = valor total. Menos que o total = pagamento parcial'
+              }
+            />
           </div>
 
           <div
@@ -244,7 +267,9 @@ export function CheckoutModal({
             <Button type='submit' disabled={pending || selected.size === 0}>
               {pending
                 ? 'A registar…'
-                : `Registar cobrança (${formatCents(totalCents)})`}
+                : partialInfo
+                  ? `Registar ${formatCents(partialInfo.paid)} (fica ${formatCents(partialInfo.due)})`
+                  : `Registar cobrança (${formatCents(totalCents)})`}
             </Button>
           </div>
         </form>

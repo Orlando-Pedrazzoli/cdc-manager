@@ -35,6 +35,7 @@ import {
   Armchair,
   Truck,
   ListChecks,
+  UsersRound,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 
@@ -89,6 +90,12 @@ const NAV: { section: string; items: NavItem[] }[] = [
         href: '/admin/modelos',
         label: 'Modelos de documentos',
         icon: FileText,
+      },
+      // Fase 6A (E16) — RH; a página bloqueia não-admin
+      {
+        href: '/admin/colaboradores',
+        label: 'Colaboradores',
+        icon: UsersRound,
       },
       { href: '/admin/relatorios', label: 'Relatórios', icon: BarChart3 },
       { href: '/admin/listagens', label: 'Listagens', icon: ListChecks },

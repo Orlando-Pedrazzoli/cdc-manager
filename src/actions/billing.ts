@@ -30,7 +30,11 @@ import mongoose from 'mongoose';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
-import { checkoutSchema, voidInvoiceSchema } from '@/lib/validations/billing';
+import {
+  checkoutSchema,
+  voidInvoiceSchema,
+  registerPaymentSchema,
+} from '@/lib/validations/billing';
 import { needsAdjustmentOnVoid } from '@/lib/commission-accounting';
 import { createVoidAdjustment } from '@/actions/procedures';
 import { cancelRecallForProcedure } from '@/lib/recalls';
@@ -56,6 +60,7 @@ export async function checkoutAction(
       procedureIds: formData.get('procedureIds'),
       paymentMethod: formData.get('paymentMethod'),
       nif: formData.get('nif'),
+      paidNowEuros: formData.get('paidNowEuros'),
     });
     if (!parsed.success) {
       return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
@@ -98,6 +103,14 @@ export async function checkoutAction(
     const totalCents = procedures.reduce((s, p) => s + p.priceCents, 0);
     const now = new Date();
 
+    // Fase 5C: pagamento parcial ("em 2x") — o que fica por pagar regista-se
+    // depois na fatura (Registar pagamento). 0 = nada pago agora (pendente).
+    const paidNow = data.paidNowEuros == null ? totalCents : data.paidNowEuros;
+    if (paidNow > totalCents) {
+      return { error: 'O valor pago não pode exceder o total.' };
+    }
+    const isPartial = paidNow < totalCents;
+
     // E12: seguradora + nº de cartão da ficha → cabeçalho do documento
     const patientForInvoice = await Patient.findById(data.patientId)
       .select('insurance')
@@ -116,7 +129,7 @@ export async function checkoutAction(
             {
               clinicId: data.clinicId,
               patientId: data.patientId,
-              status: 'awaiting-emission',
+              status: isPartial ? 'pending' : 'awaiting-emission',
               lines: procedures.map(p => ({
                 procedureId: p._id,
                 description:
@@ -128,7 +141,22 @@ export async function checkoutAction(
               })),
               totalCents,
               paymentMethod: data.paymentMethod,
-              paidAt: now,
+              paidAt: paidNow > 0 ? now : null,
+              payments:
+                paidNow > 0
+                  ? [
+                      {
+                        amountCents: paidNow,
+                        method: data.paymentMethod,
+                        paidAt: now,
+                        receivedByUserId: session.user.id,
+                        note: isPartial
+                          ? 'Pagamento parcial na cobrança'
+                          : null,
+                      },
+                    ]
+                  : [],
+              paidCents: paidNow,
               nifSnapshot: data.nif,
               insuranceSnapshot,
               issuedByUserId: session.user.id,
@@ -296,6 +324,90 @@ export async function voidInvoiceAction(
       voidedProcedures: data.voidProcedures ? procedures.length : 0,
       adjustments,
     };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Erro inesperado.' };
+  }
+}
+
+// -----------------------------------------------------------------------------
+// REGISTAR PAGAMENTO numa fatura com saldo (Fase 5C) — cada pagamento é um
+// recibo. Quando o saldo chega a 0, a fatura passa de 'pending' a
+// 'awaiting-emission' (ou mantém 'issued' se já emitida no Moloni).
+// -----------------------------------------------------------------------------
+export type RegisterPaymentState =
+  | { error: string }
+  | { success: true; dueCents: number }
+  | undefined;
+
+export async function registerPaymentAction(
+  _prev: RegisterPaymentState,
+  formData: FormData,
+): Promise<RegisterPaymentState> {
+  try {
+    const parsed = registerPaymentSchema.safeParse({
+      invoiceId: formData.get('invoiceId'),
+      amountEuros: formData.get('amountEuros'),
+      paymentMethod: formData.get('paymentMethod'),
+      note: formData.get('note'),
+    });
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
+    }
+    const data = parsed.data;
+    const session = await auth();
+    if (
+      !session?.user?.id ||
+      !['admin', 'receptionist'].includes(session.user.role ?? '')
+    ) {
+      return { error: 'Sem permissões.' };
+    }
+    await dbConnect();
+    const invoice = await Invoice.findById(data.invoiceId);
+    if (!invoice) return { error: 'Documento não encontrado.' };
+    if (invoice.status === 'voided') return { error: 'Documento anulado.' };
+    const paid = invoice.paidCents ?? invoice.totalCents;
+    const due = invoice.totalCents - paid;
+    if (due <= 0) return { error: 'Este documento já está totalmente pago.' };
+    if (data.amountEuros > due) {
+      return {
+        error: `O valor excede o saldo em dívida (${(due / 100).toFixed(2)} €).`,
+      };
+    }
+    const now = new Date();
+    invoice.payments = [
+      ...(invoice.payments ?? []),
+      {
+        amountCents: data.amountEuros,
+        method: data.paymentMethod,
+        paidAt: now,
+        receivedByUserId: new mongoose.Types.ObjectId(session.user.id),
+        note: data.note,
+      },
+    ] as typeof invoice.payments;
+    const newPaid = paid + data.amountEuros;
+    invoice.set('paidCents', newPaid);
+    if (!invoice.paidAt) invoice.set('paidAt', now);
+    if (newPaid >= invoice.totalCents && invoice.status === 'pending') {
+      invoice.set(
+        'status',
+        invoice.moloniDocumentId ? 'issued' : 'awaiting-emission',
+      );
+    }
+    await invoice.save();
+    await logAudit({
+      userId: session.user.id,
+      action: 'update',
+      entityType: 'Invoice',
+      entityId: String(invoice._id),
+      patientId: String(invoice.patientId),
+      clinicId: String(invoice.clinicId),
+      summary: `Pagamento registado: ${(data.amountEuros / 100).toFixed(2)} € (${data.paymentMethod}) — saldo ${((invoice.totalCents - newPaid) / 100).toFixed(2)} €`,
+    });
+    revalidatePath(`/admin/faturacao/${data.invoiceId}`);
+    revalidatePath('/admin/faturacao');
+    revalidatePath(`/admin/pacientes/${String(invoice.patientId)}`);
+    revalidatePath('/admin/listagens/saldos');
+    return { success: true, dueCents: invoice.totalCents - newPaid };
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erro inesperado.' };
   }
