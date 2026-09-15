@@ -173,6 +173,23 @@ export const createDoctorSchema = z.object({
   specialties: specialtiesField,
   clinicSchedules: clinicSchedulesField,
   commissionRate: commissionField.default(null),
+  // E18: objetivo mensal de produção em euros ("" = sem objetivo)
+  monthlyGoalCents: z.preprocess(
+    v => {
+      if (typeof v !== 'string' && typeof v !== 'number') return v;
+      const s = String(v).trim().replace(/\s/g, '').replace(',', '.');
+      if (s === '') return null;
+      const n = Number(s);
+      return Number.isFinite(n) ? Math.round(n * 100) : NaN;
+    },
+    z
+      .number({ error: 'Objetivo inválido' })
+      .int()
+      .min(0, 'Objetivo inválido')
+      .max(100_000_000, 'Objetivo demasiado alto')
+      .nullable()
+      .default(null),
+  ),
   color: z
     .string()
     .regex(/^#[0-9A-Fa-f]{6}$/, 'Cor inválida')

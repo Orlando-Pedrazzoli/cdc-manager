@@ -21,6 +21,7 @@ import {
   type CatalogProduct,
   type CatalogTreatment,
 } from '@/components/configuracoes/CatalogTable';
+import { PriceUpdateButton } from '@/components/configuracoes/PriceUpdateModal';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Tratamentos' };
@@ -112,21 +113,52 @@ export default async function TratamentosPage() {
         gap: '18px',
       }}
     >
-      <div>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: '20px',
-            fontWeight: 700,
-            color: '#1C2233',
-          }}
-        >
-          Tratamentos
-        </h1>
-        <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6A7186' }}>
-          Catálogo de atos das clínicas: preços, durações, categorias e regras
-          clínicas (dente obrigatório, consentimento RX).
-        </p>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 12,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: '20px',
+              fontWeight: 700,
+              color: '#1C2233',
+            }}
+          >
+            Tratamentos
+          </h1>
+          <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6A7186' }}>
+            Catálogo de atos das clínicas: preços, durações, categorias e regras
+            clínicas (dente obrigatório, consentimento RX).
+          </p>
+        </div>
+        {/* E8: aumentos de tabela por % ou € — geral, categoria ou linhas */}
+        <PriceUpdateButton
+          categories={Array.from(
+            new Set(
+              treatments
+                .map(t => t.category)
+                .filter(
+                  (c): c is string => typeof c === 'string' && c.trim() !== '',
+                ),
+            ),
+          ).sort()}
+          lines={treatments
+            .filter(t => t.active)
+            .map(t => ({
+              id: t.id,
+              name: t.name,
+              category: t.category ?? null,
+              code: t.dentoralCode ?? null,
+              priceCents: t.priceCents,
+            }))}
+        />
       </div>
 
       <CatalogTable treatments={treatments} products={products} />

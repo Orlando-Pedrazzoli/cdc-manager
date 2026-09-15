@@ -153,6 +153,10 @@ export default async function DoctorPage({
       doctor.commissionRate != null
         ? String(Math.round(doctor.commissionRate * 100))
         : '',
+    monthlyGoalEuros:
+      doctor.monthlyGoalCents != null
+        ? (doctor.monthlyGoalCents / 100).toFixed(2).replace('.', ',')
+        : '',
     color: doctor.color ?? '#2743A6',
     clinicSchedules: doctor.clinicSchedules.map(cs => ({
       clinicId: String(cs.clinicId),

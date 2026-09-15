@@ -188,6 +188,24 @@ const TreatmentTypeSchema = new Schema(
       max: 60,
       default: null,
     },
+    // E8 (Fase 4): histórico das últimas 20 alterações de preço em massa
+    // (aumentos de tabela). Alterações manuais linha a linha ficam no AuditLog.
+    priceHistory: {
+      type: [
+        new Schema(
+          {
+            at: { type: Date, required: true },
+            fromCents: { type: Number, required: true },
+            toCents: { type: Number, required: true },
+            rule: { type: String, trim: true, default: null },
+            reason: { type: String, trim: true, default: null },
+            userId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     // --- Metadados ------------------------------------------------------------
     source: {
       type: String,

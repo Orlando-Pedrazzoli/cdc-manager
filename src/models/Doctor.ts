@@ -209,6 +209,9 @@ const DoctorSchema = new Schema(
       type: [CommissionCategoryOverrideSchema],
       default: [],
     },
+    // E18 (Isabel): "no login de cada médico aparecer o dashboard
+    // personalizado onde vê apenas o seu objetivo do mês e a sua faturação"
+    monthlyGoalCents: { type: Number, min: 0, default: null },
     // Cor do médico nas agendas (hex) — identificação visual imediata
     color: {
       type: String,

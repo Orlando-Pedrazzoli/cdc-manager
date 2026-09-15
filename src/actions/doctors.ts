@@ -310,6 +310,7 @@ export async function createDoctorAction(
     specialties: data.specialties,
     clinicSchedules: data.clinicSchedules,
     commissionRate: data.commissionRate,
+    monthlyGoalCents: data.monthlyGoalCents,
     color: data.color,
     active: true,
   });
@@ -396,6 +397,7 @@ export async function updateDoctorAction(
     specialties: data.specialties,
     clinicSchedules: data.clinicSchedules,
     commissionRate: data.commissionRate,
+    monthlyGoalCents: data.monthlyGoalCents,
     color: data.color,
   };
   for (const [k, v] of Object.entries(map)) {

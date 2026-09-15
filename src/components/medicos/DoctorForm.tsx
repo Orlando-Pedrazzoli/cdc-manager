@@ -49,6 +49,7 @@ export interface DoctorFormInitial {
   licenseNumber: string;
   specialties: string[];
   commissionPercent: string; // '' = default da clínica
+  monthlyGoalEuros: string; // '' = sem objetivo (E18)
   color: string;
   clinicSchedules: {
     clinicId: string;
@@ -222,6 +223,15 @@ export function DoctorForm({
               defaultValue={initial?.commissionPercent ?? ''}
               placeholder='vazio = default da clínica (40)'
               help='Fração que o PROFISSIONAL recebe. Overrides por ato na ficha do profissional.'
+            />
+            <Input
+              id='monthlyGoalCents'
+              name='monthlyGoalCents'
+              label='Objetivo mensal de produção (€)'
+              inputMode='decimal'
+              defaultValue={initial?.monthlyGoalEuros ?? ''}
+              placeholder='ex.: 15000'
+              help='Aparece no dashboard do médico como barra de progresso (objetivo vs faturado). Vazio = sem objetivo.'
             />
             <div>
               <label

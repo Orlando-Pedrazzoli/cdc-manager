@@ -39,6 +39,7 @@ import Patient from '@/models/Patient';
 import Procedure from '@/models/Procedure';
 import CommissionAdjustment from '@/models/CommissionAdjustment';
 import ClinicalRecord from '@/models/ClinicalRecord';
+import Doctor from '@/models/Doctor';
 import { anamnesisStatus } from '@/lib/anamnesis';
 import {
   adjustmentsMatch,
@@ -384,6 +385,24 @@ export default async function DoctorDashboardPage() {
 
   // --- O meu mês -------------------------------------------------------------
   const monthCents = monthAgg[0]?.cents ?? 0;
+  // E18: objetivo mensal definido pela administração na ficha do médico
+  const doctorDoc = await Doctor.findById(doctorId)
+    .select('monthlyGoalCents')
+    .lean();
+  const goalCents = doctorDoc?.monthlyGoalCents ?? null;
+  const goalPct =
+    goalCents && goalCents > 0
+      ? Math.min(100, Math.round((monthCents / goalCents) * 100))
+      : null;
+  // Ritmo esperado: dia do mês / dias do mês
+  const monthDays = new Date(
+    Number(today.slice(0, 4)),
+    Number(today.slice(5, 7)),
+    0,
+  ).getDate();
+  const expectedPct = Math.round(
+    (Number(today.slice(8, 10)) / monthDays) * 100,
+  );
   const monthAdjComm = monthAdjAgg[0]?.comm ?? 0;
   const monthAdjN = monthAdjAgg[0]?.n ?? 0;
   const monthComm = (monthAgg[0]?.comm ?? 0) + monthAdjComm;
@@ -702,6 +721,83 @@ export default async function DoctorDashboardPage() {
             {deltaUp ? '▲' : '▼'} vs {formatCents(prevCents)} no mesmo período
             do mês passado
           </p>
+          {goalCents != null && goalCents > 0 && goalPct != null && (
+            <div style={{ marginTop: 10 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontSize: '12px',
+                  color: '#6A7186',
+                  marginBottom: 4,
+                }}
+              >
+                <span>
+                  Objetivo do mês: <strong>{formatCents(goalCents)}</strong>
+                </span>
+                <span
+                  style={{
+                    fontWeight: 700,
+                    color:
+                      goalPct >= 100
+                        ? '#0F7B4D'
+                        : goalPct >= expectedPct
+                          ? '#2743A6'
+                          : '#B26A00',
+                  }}
+                >
+                  {goalPct}%
+                </span>
+              </div>
+              <div
+                style={{
+                  position: 'relative',
+                  height: 10,
+                  borderRadius: 999,
+                  backgroundColor: '#EEF1F8',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: `${goalPct}%`,
+                    height: '100%',
+                    borderRadius: 999,
+                    backgroundColor:
+                      goalPct >= 100
+                        ? '#0F7B4D'
+                        : goalPct >= expectedPct
+                          ? '#2743A6'
+                          : '#E0A100',
+                  }}
+                />
+                {/* marca do ritmo esperado (dia do mês) */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    bottom: 0,
+                    left: `${expectedPct}%`,
+                    width: 2,
+                    backgroundColor: '#1B2A6B',
+                    opacity: 0.5,
+                  }}
+                  title={`Ritmo esperado hoje: ${expectedPct}%`}
+                />
+              </div>
+              <p
+                style={{
+                  margin: '4px 0 0',
+                  fontSize: '11px',
+                  color: '#9AA1B4',
+                }}
+              >
+                {goalPct >= 100
+                  ? 'Objetivo atingido'
+                  : `Faltam ${formatCents(goalCents - monthCents)} · ritmo esperado hoje ${expectedPct}%`}
+              </p>
+            </div>
+          )}
           {sparkMax > 0 && (
             <svg
               viewBox={`0 0 ${spark.length * 5} 30`}
