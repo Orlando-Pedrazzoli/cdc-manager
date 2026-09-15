@@ -45,7 +45,14 @@ async function callLLM(
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: SYSTEM }] },
             contents: [{ role: 'user', parts: [{ text: user }] }],
-            generationConfig: { maxOutputTokens: maxTokens, temperature: 0.2 },
+            generationConfig: {
+              // Modelos Gemini 2.5+/3.x "pensam" por defeito e o raciocínio
+              // gasta tokens de saída — para tradução é desperdício e pode
+              // devolver texto vazio. Sem raciocínio + margem folgada.
+              maxOutputTokens: Math.max(maxTokens, 8192),
+              temperature: 0.2,
+              thinkingConfig: { thinkingBudget: 0 },
+            },
           }),
         },
       );
@@ -58,14 +65,27 @@ async function callLLM(
         return null;
       }
       const j = (await res.json()) as {
-        candidates?: { content?: { parts?: { text?: string }[] } }[];
+        candidates?: {
+          content?: { parts?: { text?: string }[] };
+          finishReason?: string;
+        }[];
+        promptFeedback?: { blockReason?: string };
       };
-      return (
-        (j.candidates?.[0]?.content?.parts ?? [])
-          .map(x => x.text ?? '')
-          .join('')
-          .trim() || null
-      );
+      const text = (j.candidates?.[0]?.content?.parts ?? [])
+        .map(x => x.text ?? '')
+        .join('')
+        .trim();
+      if (!text) {
+        console.error(
+          '[translate] gemini resposta vazia:',
+          JSON.stringify({
+            finishReason: j.candidates?.[0]?.finishReason,
+            blockReason: j.promptFeedback?.blockReason,
+          }),
+        );
+        return null;
+      }
+      return text;
     }
     if (p === 'groq') {
       const model = process.env.TRANSLATE_MODEL ?? 'llama-3.3-70b-versatile';
