@@ -36,6 +36,7 @@ import {
 import ClinicalDocument from '@/models/Document';
 import { signedPreviewUrl } from '@/lib/cloudinary';
 import { PatientLabCases } from '@/components/proteses/PatientLabCases';
+import { IssueDocumentToolbar } from '@/components/documentos/IssueDocumentToolbar';
 import { DoctorAnamnesisPanel } from '@/components/clinico/DoctorAnamnesisPanel';
 import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
 import { anamnesisStatus, type QuestionnaireData } from '@/lib/anamnesis';
@@ -362,7 +363,13 @@ export default async function DoctorPatientPage({
             padding: '20px',
           }}
         >
-          <DocumentsTab patientId={id} documents={documents} />
+          <DocumentsTab
+            patientId={id}
+            documents={documents}
+            toolbar={
+              <IssueDocumentToolbar patientId={id} role={'doctor'} size='sm' />
+            }
+          />
         </div>
       ) : activeTab === 'laboratorios' ? (
         <div

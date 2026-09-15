@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import mongoose from 'mongoose';
 import { ArrowLeft } from 'lucide-react';
+import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
@@ -37,6 +38,7 @@ import {
 import ClinicalDocument from '@/models/Document';
 import { signedPreviewUrl } from '@/lib/cloudinary';
 import { PatientLabCases } from '@/components/proteses/PatientLabCases';
+import { IssueDocumentToolbar } from '@/components/documentos/IssueDocumentToolbar';
 import ClinicalRecord from '@/models/ClinicalRecord';
 import { AnamnesisQuestionnaire } from '@/components/clinico/AnamnesisQuestionnaire';
 import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
@@ -68,6 +70,8 @@ export default async function PatientPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const { id } = await params;
+  const session = await auth();
+  const staffRole = session?.user?.role === 'admin' ? 'admin' : 'receptionist';
   const { tab: rawTab } = await searchParams;
   if (!/^[0-9a-fA-F]{24}$/.test(id)) notFound();
 
@@ -315,7 +319,13 @@ export default async function PatientPage({
             padding: '20px',
           }}
         >
-          <DocumentsTab patientId={id} documents={documents} />
+          <DocumentsTab
+            patientId={id}
+            documents={documents}
+            toolbar={
+              <IssueDocumentToolbar patientId={id} role={staffRole} size='sm' />
+            }
+          />
         </div>
       ) : tab === 'laboratorios' ? (
         <div

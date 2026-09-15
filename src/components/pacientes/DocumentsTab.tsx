@@ -358,9 +358,12 @@ function VoidModal({
 export function DocumentsTab({
   patientId,
   documents,
+  toolbar,
 }: {
   patientId: string;
   documents: DocumentItem[];
+  /** Fase 5A: botão "Emitir documento" (server component) ao lado de Carregar */
+  toolbar?: React.ReactNode;
 }) {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [voiding, setVoiding] = useState<DocumentItem | null>(null);
@@ -395,10 +398,13 @@ export function DocumentsTab({
             ? 'Sem documentos nesta ficha.'
             : `${documents.length} documento${documents.length === 1 ? '' : 's'}`}
         </p>
-        <Button size='sm' onClick={() => setUploadOpen(true)}>
-          <UploadCloud size={15} />
-          Carregar
-        </Button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {toolbar}
+          <Button size='sm' onClick={() => setUploadOpen(true)}>
+            <UploadCloud size={15} />
+            Carregar
+          </Button>
+        </div>
       </div>
 
       {documents.length > 0 && (

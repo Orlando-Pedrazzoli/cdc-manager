@@ -21,6 +21,7 @@ import {
   type PubmedSearchResult,
 } from '@/lib/pubmed';
 import { AbstractButton } from '@/components/novidades/AbstractButton';
+import { translateTitles, translationEnabled } from '@/lib/translate';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Novidades científicas' };
@@ -33,6 +34,7 @@ export default async function NovidadesPage({
     periodo?: string;
     tipo?: string;
     q?: string;
+    lang?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -47,13 +49,20 @@ export default async function NovidadesPage({
     : '30';
   const kindKey = PUBMED_KINDS.some(k => k.key === sp.tipo) ? sp.tipo! : 'all';
   const q = (sp.q ?? '').slice(0, 200);
+  const canTranslate = translationEnabled();
+  const lang: 'pt' | 'en' = canTranslate && sp.lang !== 'en' ? 'pt' : 'en';
   const days = PUBMED_PERIODS.find(p => p.key === periodKey)!.days;
   const term = buildQuery({ topicKey, q, kindKey });
 
   let result: PubmedSearchResult | null = null;
   let error: string | null = null;
+  let titlesPt: string[] | null = null;
   try {
     result = await searchPubmed({ term, days, max: 25 });
+    // Títulos em PT numa só chamada (cache 7 dias) — o original fica por baixo
+    if (lang === 'pt' && result.articles.length > 0) {
+      titlesPt = await translateTitles(result.articles.map(a => a.title));
+    }
   } catch (e) {
     error = e instanceof Error ? e.message : 'PubMed indisponível.';
   }
@@ -151,11 +160,23 @@ export default async function NovidadesPage({
               {k.label}
             </Link>
           ))}
+          {canTranslate && (
+            <>
+              <span style={{ marginLeft: 'auto' }} />
+              <Link href={href({ lang: 'pt' })} style={chip(lang === 'pt')}>
+                🇵🇹 Português
+              </Link>
+              <Link href={href({ lang: 'en' })} style={chip(lang === 'en')}>
+                🇬🇧 Original
+              </Link>
+            </>
+          )}
         </div>
         <form method='get' style={{ display: 'flex', gap: 8 }}>
           <input type='hidden' name='tema' value={topicKey} />
           <input type='hidden' name='periodo' value={periodKey} />
           <input type='hidden' name='tipo' value={kindKey} />
+          <input type='hidden' name='lang' value={lang} />
           <div style={{ position: 'relative', flex: 1 }}>
             <Search
               size={15}
@@ -226,7 +247,7 @@ export default async function NovidadesPage({
               tipo.
             </div>
           )}
-          {result.articles.map(a => (
+          {result.articles.map((a, i) => (
             <article key={a.pmid} style={card}>
               <h2
                 style={{
@@ -243,9 +264,21 @@ export default async function NovidadesPage({
                   rel='noopener noreferrer'
                   style={{ color: 'inherit', textDecoration: 'none' }}
                 >
-                  {a.title}
+                  {titlesPt?.[i] ?? a.title}
                 </a>
               </h2>
+              {titlesPt?.[i] && (
+                <p
+                  style={{
+                    margin: '3px 0 0',
+                    fontSize: '12px',
+                    color: '#9AA1B4',
+                    fontStyle: 'italic',
+                  }}
+                >
+                  {a.title}
+                </p>
+              )}
               <p
                 style={{
                   margin: '6px 0 0',
@@ -295,7 +328,7 @@ export default async function NovidadesPage({
                   flexWrap: 'wrap',
                 }}
               >
-                <AbstractButton pmid={a.pmid} />
+                <AbstractButton pmid={a.pmid} canTranslate={canTranslate} />
                 <a
                   href={a.url}
                   target='_blank'
@@ -336,8 +369,9 @@ export default async function NovidadesPage({
         </>
       )}
       <p style={{ margin: 0, fontSize: '12px', color: '#9AA1B4' }}>
-        Conteúdo científico em inglês, tal como publicado. Nada fica registado
-        no CDC Manager.
+        {canTranslate
+          ? 'Títulos e resumos traduzidos automaticamente por IA — o original está sempre disponível. Nada fica registado no CDC Manager.'
+          : 'Conteúdo científico em inglês, tal como publicado. Nada fica registado no CDC Manager.'}
       </p>
     </div>
   );

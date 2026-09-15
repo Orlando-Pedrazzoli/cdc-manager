@@ -84,6 +84,11 @@ const NAV: { section: string; items: NavItem[] }[] = [
       },
       { href: '/admin/stock', label: 'Stock', icon: Package },
       { href: '/admin/fornecedores', label: 'Fornecedores', icon: Truck },
+      {
+        href: '/admin/modelos',
+        label: 'Modelos de documentos',
+        icon: FileText,
+      },
       { href: '/admin/relatorios', label: 'Relatórios', icon: BarChart3 },
     ],
   },

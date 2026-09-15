@@ -129,6 +129,8 @@ export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
   label?: string;
   error?: string;
   help?: string;
+  /** React 19: ref como prop normal (editor de modelos insere placeholders) */
+  ref?: React.Ref<HTMLTextAreaElement>;
 }
 
 export function Textarea({
@@ -138,11 +140,13 @@ export function Textarea({
   id,
   style,
   rows = 3,
+  ref,
   ...rest
 }: TextareaProps) {
   return (
     <FieldShell label={label} htmlFor={id} error={error} help={help}>
       <textarea
+        ref={ref}
         id={id}
         rows={rows}
         className='cdc-field'

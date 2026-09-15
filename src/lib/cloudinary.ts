@@ -272,3 +272,24 @@ export async function uploadAuthenticatedDataUrl(
   });
   return { format: res.format ?? null, bytes: res.bytes ?? 0 };
 }
+
+/**
+ * Upload SERVER-SIDE de um PDF gerado (Fase 5A — documentos clínicos).
+ * `resource_type: 'image'` como os PDFs carregados pelo browser (preview e
+ * download já sabem lidar com PDFs neste tipo). Asset `authenticated`.
+ */
+export async function uploadAuthenticatedPdf(
+  publicId: string,
+  pdf: Buffer,
+): Promise<{ format: string | null; bytes: number }> {
+  const c = cld();
+  const dataUrl = `data:application/pdf;base64,${pdf.toString('base64')}`;
+  const res = await c.uploader.upload(dataUrl, {
+    public_id: publicId,
+    type: 'authenticated',
+    resource_type: 'image',
+    format: 'pdf',
+    overwrite: false,
+  });
+  return { format: res.format ?? 'pdf', bytes: res.bytes ?? pdf.length };
+}
