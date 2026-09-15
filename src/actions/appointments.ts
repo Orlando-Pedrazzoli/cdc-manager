@@ -434,6 +434,12 @@ const rescheduleSchema = z.object({
   ),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  // Fase 4B (P3): encaixe fora do horário do médico — decisão da receção.
+  // Continua a impedir sobreposição com outra marcação.
+  force: z.preprocess(
+    v => v === 'on' || v === 'true',
+    z.boolean().default(false),
+  ),
 });
 
 export async function rescheduleAppointmentAction(
@@ -491,13 +497,16 @@ export async function rescheduleAppointmentAction(
   if (startAt.getTime() <= Date.now()) {
     return { error: 'A nova marcação tem de ser no futuro.' };
   }
-  if (doctor) {
+  if (doctor && !data.force) {
     const ranges = workingRangesForDate(doctor, clinic, data.date);
     const fits = ranges.some(
       r => startMin >= r.start && startMin + totalMin <= r.end,
     );
     if (!fits) {
-      return { error: 'Fora do horário do médico nesta clínica.' };
+      return {
+        error:
+          'Fora do horário do médico nesta clínica. Marque "Encaixar fora do horário" para forçar.',
+      };
     }
   }
 

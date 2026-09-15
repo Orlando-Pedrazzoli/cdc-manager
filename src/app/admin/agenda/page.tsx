@@ -30,7 +30,10 @@ import {
 import { dbConnect } from '@/lib/mongodb';
 import { getActiveClinics } from '@/models/Clinic';
 import Doctor from '@/models/Doctor';
-import Appointment, { type AppointmentStatus } from '@/models/Appointment';
+import Appointment, {
+  BLOCKING_STATUS,
+  type AppointmentStatus,
+} from '@/models/Appointment';
 import TreatmentType from '@/models/TreatmentType';
 import Patient from '@/models/Patient';
 import User from '@/models/User';
@@ -55,6 +58,11 @@ import {
 } from '@/components/agenda/AgendaGrid';
 import { AgendaToolbar } from '@/components/agenda/AgendaToolbar';
 import { WalkInButton } from '@/components/agenda/WalkInModal';
+import { ExtendDayButton } from '@/components/agenda/ExtendDayModal';
+import {
+  OccupancyCalendar,
+  type DayOccupancy,
+} from '@/components/agenda/OccupancyCalendar';
 import { CHANNEL_LABEL } from '@/components/agenda/AgendaGrid';
 import { DateJump } from '@/components/agenda/DateJump';
 
@@ -137,6 +145,7 @@ export default async function AgendaPage({
     medico?: string;
     view?: string;
     estado?: string;
+    cal?: string; // YYYY-MM do calendário de ocupação (P4)
   }>;
 }) {
   const sp = await searchParams;
@@ -227,6 +236,58 @@ export default async function AgendaPage({
     if (e && v === 'lista') url += `&estado=${e}`;
     return url;
   };
+
+  // ---------------------------------------------------------------------------
+  // CALENDÁRIO DE OCUPAÇÃO (P4) — mês visível: minutos marcados / minutos de
+  // horário (médicos da clínica, ou só o filtrado). Marcações que bloqueiam
+  // slot (BLOCKING_STATUS) contam; canceladas/faltas não.
+  // ---------------------------------------------------------------------------
+  const calMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.cal ?? '')
+    ? (sp.cal as string)
+    : date.slice(0, 7);
+  const [cy, cm] = calMonth.split('-').map(Number);
+  const calDays = new Date(Date.UTC(cy, cm, 0)).getUTCDate();
+  const calStart = lisbonToUtc(`${calMonth}-01`, 0);
+  const calEndStr = `${cm === 12 ? cy + 1 : cy}-${String(cm === 12 ? 1 : cm + 1).padStart(2, '0')}-01`;
+  const calEnd = lisbonToUtc(calEndStr, 0);
+  const calDoctors = medicoParam
+    ? allDoctors.filter(d => String(d._id) === medicoParam)
+    : allDoctors;
+  const calAppts = await Appointment.find({
+    clinicId: clinic._id,
+    status: { $in: BLOCKING_STATUS },
+    startAt: { $gte: calStart, $lt: calEnd },
+    ...(medicoParam ? { doctorId: medicoParam } : {}),
+  })
+    .select('startAt endAt')
+    .lean();
+  const bookedByDay = new Map<string, { min: number; n: number }>();
+  for (const a of calAppts) {
+    const k = utcToLisbonMin(a.startAt).date;
+    const cur = bookedByDay.get(k) ?? { min: 0, n: 0 };
+    cur.min += Math.max(0, (a.endAt.getTime() - a.startAt.getTime()) / 60_000);
+    cur.n += 1;
+    bookedByDay.set(k, cur);
+  }
+  const occupancy: DayOccupancy[] = [];
+  for (let i = 1; i <= calDays; i++) {
+    const d = `${calMonth}-${String(i).padStart(2, '0')}`;
+    const available = calDoctors.reduce(
+      (sum, doc) =>
+        sum +
+        workingRangesForDate(doc, clinic, d).reduce(
+          (s2, r) => s2 + (r.end - r.start),
+          0,
+        ),
+      0,
+    );
+    const b = bookedByDay.get(d) ?? { min: 0, n: 0 };
+    occupancy.push({
+      date: d,
+      ratio: available > 0 ? Math.min(1, b.min / available) : null,
+      booked: b.n,
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // PAINEL "POR CONFIRMAR (24h)" — pendentes que começam nas próximas 24h
@@ -391,8 +452,28 @@ export default async function AgendaPage({
         return t ? lisbonStamp(t) : null;
       })(),
       labDue: labDueByPatientDay.get(`${String(a.patientId)}|${s.date}`) ?? [],
+      clinicId: String(a.clinicId),
+      date: s.date,
     };
   });
+
+  // P3: clínicas + médicos ativos de cada uma, para remarcar (outro médico,
+  // mesmo dia ou outro; outra clínica)
+  const allActiveDoctors = await Doctor.find({ active: true })
+    .select('name clinicSchedules')
+    .sort({ name: 1 })
+    .lean();
+  const rescheduleClinics = clinics.map(c => ({
+    id: String(c._id),
+    name: c.name,
+    doctors: allActiveDoctors
+      .filter(d =>
+        (d.clinicSchedules ?? []).some(
+          cs => String(cs.clinicId) === String(c._id),
+        ),
+      )
+      .map(d => ({ id: String(d._id), name: d.name })),
+  }));
 
   // Lista: agrupar por dia de Lisboa
   const listByDay = new Map<string, typeof appts>();
@@ -571,6 +652,23 @@ export default async function AgendaPage({
               <History size={16} style={{ marginRight: 6 }} />
               Histórico
             </Link>
+
+            {/* Estender horário de um médico neste dia (P3) */}
+            {view === 'dia' && allDoctors.length > 0 && (
+              <ExtendDayButton
+                clinicId={clinicId}
+                date={date}
+                dateLabel={dateLabel}
+                doctors={allDoctors.map(d => {
+                  const r = workingRangesForDate(d, clinic, date);
+                  return {
+                    id: String(d._id),
+                    name: d.name,
+                    until: r.length ? hhmm(r[r.length - 1].end) : null,
+                  };
+                })}
+              />
+            )}
 
             {/* Urgência sem marcação (P5) — só faz sentido no dia de hoje */}
             {date === todayLisbon() && (
@@ -759,12 +857,33 @@ export default async function AgendaPage({
 
       {/* Corpo da vista */}
       {view === 'dia' ? (
-        <AgendaGrid
-          gridStart={gridStart}
-          gridEnd={gridEnd}
-          doctors={visibleColumns}
-          appointments={gridAppointments}
-        />
+        <div
+          style={{
+            display: 'flex',
+            gap: '14px',
+            alignItems: 'flex-start',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ flex: '1 1 640px', minWidth: 0 }}>
+            <AgendaGrid
+              gridStart={gridStart}
+              gridEnd={gridEnd}
+              doctors={visibleColumns}
+              appointments={gridAppointments}
+              rescheduleClinics={rescheduleClinics}
+            />
+          </div>
+          {/* P4: calendário com cores de ocupação */}
+          <OccupancyCalendar
+            month={calMonth}
+            days={occupancy}
+            selectedDate={date}
+            todayStr={todayStr}
+            makeDayHref={d => buildHref({ date: d })}
+            makeMonthHref={m => `${buildHref({})}&cal=${m}`}
+          />
+        </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {appts.length === 0 && (

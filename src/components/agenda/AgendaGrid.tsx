@@ -26,6 +26,10 @@ import { transitionAppointmentAction } from '@/actions/appointments';
 import type { AppointmentStatus } from '@/models/Appointment';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import {
+  RescheduleForm,
+  type RescheduleClinic,
+} from '@/components/agenda/RescheduleForm';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 
@@ -141,6 +145,9 @@ export interface AgendaAppointment {
   rescheduledToLabel: string | null;
   /** P2: trabalho de laboratório com retorno previsto NESTE dia */
   labDue: { work: string; lab: string; status: string }[];
+  /** P3: para o formulário de remarcação */
+  clinicId: string;
+  date: string; // YYYY-MM-DD
 }
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -166,15 +173,19 @@ export function AgendaGrid({
   gridEnd,
   doctors,
   appointments,
+  rescheduleClinics = [],
 }: {
   gridStart: number; // minutos (abertura da clínica)
   gridEnd: number; // minutos (fecho)
   doctors: AgendaDoctorColumn[];
   appointments: AgendaAppointment[];
+  /** P3: clínicas + médicos para o formulário de remarcação */
+  rescheduleClinics?: RescheduleClinic[];
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<AgendaAppointment | null>(null);
   const [cancelMode, setCancelMode] = useState(false);
+  const [rescheduleMode, setRescheduleMode] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -208,6 +219,7 @@ export function AgendaGrid({
       toast.success('Marcação atualizada.');
       setSelected(null);
       setCancelMode(false);
+      setRescheduleMode(false);
       setCancelReason('');
       router.refresh();
     }
@@ -494,6 +506,7 @@ export function AgendaGrid({
         onClose={() => {
           setSelected(null);
           setCancelMode(false);
+          setRescheduleMode(false);
           setCancelReason('');
         }}
         title='Marcação'
@@ -589,7 +602,21 @@ export function AgendaGrid({
               )}
             </div>
 
-            {!cancelMode ? (
+            {rescheduleMode ? (
+              <RescheduleForm
+                appointmentId={selected.id}
+                currentClinicId={selected.clinicId}
+                currentDoctorId={selected.doctorId}
+                currentDate={selected.date}
+                currentStart={selected.start}
+                clinics={rescheduleClinics}
+                onDone={() => {
+                  setRescheduleMode(false);
+                  setSelected(null);
+                }}
+                onCancel={() => setRescheduleMode(false)}
+              />
+            ) : !cancelMode ? (
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {(ACTIONS_BY_STATUS[selected.status] ?? []).map(a => (
                   <Button
@@ -602,6 +629,17 @@ export function AgendaGrid({
                     {a.label}
                   </Button>
                 ))}
+                {CANCELLABLE.includes(selected.status) &&
+                  rescheduleClinics.length > 0 && (
+                    <Button
+                      size='sm'
+                      variant='outline'
+                      disabled={busy}
+                      onClick={() => setRescheduleMode(true)}
+                    >
+                      Remarcar
+                    </Button>
+                  )}
                 {CANCELLABLE.includes(selected.status) && (
                   <Button
                     size='sm'

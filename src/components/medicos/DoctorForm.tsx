@@ -337,163 +337,234 @@ export function DoctorForm({
                 </div>
 
                 {cs.enabled && (
-                  <div
-                    style={{
-                      marginTop: '14px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px',
-                    }}
-                  >
-                    {WEEKDAYS_DISPLAY.map(w => {
-                      const ranges = cs.days[w.value];
-                      return (
-                        <div
-                          key={w.value}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: '12px',
-                          }}
-                        >
-                          <span
-                            style={{
-                              width: 76,
-                              paddingTop: 8,
-                              fontSize: '13px',
-                              fontWeight: 600,
-                              color: ranges.length ? '#1B2A6B' : '#9AA1B4',
-                              flexShrink: 0,
-                            }}
-                          >
-                            {w.label}
-                          </span>
-                          <div
-                            style={{
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '6px',
-                              flex: 1,
-                            }}
-                          >
-                            {ranges.length === 0 && (
-                              <span
-                                style={{
-                                  fontSize: '13px',
-                                  color: '#9AA1B4',
-                                  paddingTop: 8,
-                                }}
-                              >
-                                Folga — clique em + Período para definir o
-                                horário
-                              </span>
-                            )}
-                            {ranges.map((r, i) => (
-                              <div
-                                key={i}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '8px',
-                                }}
-                              >
-                                <input
-                                  type='time'
-                                  value={r.start}
-                                  onChange={e => {
-                                    const next = [...ranges];
-                                    next[i] = { ...r, start: e.target.value };
-                                    setDay(c.id, w.value, next);
-                                  }}
-                                  style={{
-                                    border: '1px solid #D8DEEF',
-                                    borderRadius: '8px',
-                                    padding: '6px 8px',
-                                    fontSize: '13px',
-                                    color: '#1B2A6B',
-                                  }}
-                                />
-                                <span style={{ color: '#9AA1B4' }}>–</span>
-                                <input
-                                  type='time'
-                                  value={r.end}
-                                  onChange={e => {
-                                    const next = [...ranges];
-                                    next[i] = { ...r, end: e.target.value };
-                                    setDay(c.id, w.value, next);
-                                  }}
-                                  style={{
-                                    border: '1px solid #D8DEEF',
-                                    borderRadius: '8px',
-                                    padding: '6px 8px',
-                                    fontSize: '13px',
-                                    color: '#1B2A6B',
-                                  }}
-                                />
-                                <button
-                                  type='button'
-                                  aria-label='Remover período'
-                                  onClick={() =>
-                                    setDay(
-                                      c.id,
-                                      w.value,
-                                      ranges.filter((_, j) => j !== i),
-                                    )
-                                  }
-                                  style={{
-                                    display: 'inline-flex',
-                                    padding: 6,
-                                    border: 'none',
-                                    background: 'transparent',
-                                    color: '#B3261E',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  <Trash2 size={15} />
-                                </button>
-                              </div>
-                            ))}
-                            <button
-                              type='button'
-                              onClick={() =>
-                                setDay(c.id, w.value, [
-                                  ...ranges,
-                                  { start: '', end: '' },
-                                ])
-                              }
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 4,
-                                alignSelf: 'flex-start',
-                                border: 'none',
-                                background: 'transparent',
-                                color: '#2743A6',
-                                fontSize: '13px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                padding: '2px 0',
-                              }}
-                            >
-                              <Plus size={14} />
-                              Período
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <p
+                  <>
+                    {/* Atalhos (Fase 4B): o horário típico repete-se de 2.ª a
+                      6.ª e tem almoço — dois cliques em vez de 10 campos */}
+                    <div
                       style={{
-                        margin: '4px 0 0',
-                        fontSize: '12px',
-                        color: '#9AA1B4',
+                        marginTop: '12px',
+                        display: 'flex',
+                        gap: '8px',
+                        flexWrap: 'wrap',
                       }}
                     >
-                      Cada período é um bloco de trabalho (das X às Y). Para
-                      pausa de almoço, adicione dois períodos: 10:00–13:00 e
-                      14:00–20:00 → almoço 13h–14h.
-                    </p>
-                  </div>
+                      <button
+                        type='button'
+                        onClick={() => {
+                          const src = cs.days[1] ?? [];
+                          if (src.length === 0) {
+                            toast.error('Defina primeiro a segunda-feira.');
+                            return;
+                          }
+                          for (const d of [2, 3, 4, 5]) {
+                            setDay(
+                              c.id,
+                              d,
+                              src.map(r => ({ ...r })),
+                            );
+                          }
+                          toast.success('Segunda copiada para terça a sexta.');
+                        }}
+                        style={shortcutBtn}
+                      >
+                        Copiar segunda → 3.ª a 6.ª
+                      </button>
+                      <button
+                        type='button'
+                        onClick={() => {
+                          // Divide cada dia com UM período em dois (almoço 13–14)
+                          let changed = 0;
+                          for (const w of WEEKDAYS_DISPLAY) {
+                            const r = cs.days[w.value] ?? [];
+                            if (r.length !== 1 || !r[0].start || !r[0].end)
+                              continue;
+                            if (r[0].start >= '13:00' || r[0].end <= '14:00')
+                              continue;
+                            setDay(c.id, w.value, [
+                              { start: r[0].start, end: '13:00' },
+                              { start: '14:00', end: r[0].end },
+                            ]);
+                            changed++;
+                          }
+                          toast.success(
+                            changed
+                              ? `Almoço 13h–14h aplicado a ${changed} dia(s).`
+                              : 'Nenhum dia com um só período que abranja 13h–14h.',
+                          );
+                        }}
+                        style={shortcutBtn}
+                      >
+                        Adicionar almoço 13h–14h
+                      </button>
+                      <button
+                        type='button'
+                        onClick={() => {
+                          for (const w of WEEKDAYS_DISPLAY)
+                            setDay(c.id, w.value, []);
+                        }}
+                        style={{ ...shortcutBtn, color: '#B3261E' }}
+                      >
+                        Limpar semana
+                      </button>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: '10px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                      }}
+                    >
+                      {WEEKDAYS_DISPLAY.map(w => {
+                        const ranges = cs.days[w.value];
+                        return (
+                          <div
+                            key={w.value}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: '12px',
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: 76,
+                                paddingTop: 8,
+                                fontSize: '13px',
+                                fontWeight: 600,
+                                color: ranges.length ? '#1B2A6B' : '#9AA1B4',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {w.label}
+                            </span>
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '6px',
+                                flex: 1,
+                              }}
+                            >
+                              {ranges.length === 0 && (
+                                <span
+                                  style={{
+                                    fontSize: '13px',
+                                    color: '#9AA1B4',
+                                    paddingTop: 8,
+                                  }}
+                                >
+                                  Folga — clique em + Período para definir o
+                                  horário
+                                </span>
+                              )}
+                              {ranges.map((r, i) => (
+                                <div
+                                  key={i}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                  }}
+                                >
+                                  <input
+                                    type='time'
+                                    value={r.start}
+                                    onChange={e => {
+                                      const next = [...ranges];
+                                      next[i] = { ...r, start: e.target.value };
+                                      setDay(c.id, w.value, next);
+                                    }}
+                                    style={{
+                                      border: '1px solid #D8DEEF',
+                                      borderRadius: '8px',
+                                      padding: '6px 8px',
+                                      fontSize: '13px',
+                                      color: '#1B2A6B',
+                                    }}
+                                  />
+                                  <span style={{ color: '#9AA1B4' }}>–</span>
+                                  <input
+                                    type='time'
+                                    value={r.end}
+                                    onChange={e => {
+                                      const next = [...ranges];
+                                      next[i] = { ...r, end: e.target.value };
+                                      setDay(c.id, w.value, next);
+                                    }}
+                                    style={{
+                                      border: '1px solid #D8DEEF',
+                                      borderRadius: '8px',
+                                      padding: '6px 8px',
+                                      fontSize: '13px',
+                                      color: '#1B2A6B',
+                                    }}
+                                  />
+                                  <button
+                                    type='button'
+                                    aria-label='Remover período'
+                                    onClick={() =>
+                                      setDay(
+                                        c.id,
+                                        w.value,
+                                        ranges.filter((_, j) => j !== i),
+                                      )
+                                    }
+                                    style={{
+                                      display: 'inline-flex',
+                                      padding: 6,
+                                      border: 'none',
+                                      background: 'transparent',
+                                      color: '#B3261E',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                </div>
+                              ))}
+                              <button
+                                type='button'
+                                onClick={() =>
+                                  setDay(c.id, w.value, [
+                                    ...ranges,
+                                    { start: '', end: '' },
+                                  ])
+                                }
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  alignSelf: 'flex-start',
+                                  border: 'none',
+                                  background: 'transparent',
+                                  color: '#2743A6',
+                                  fontSize: '13px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  padding: '2px 0',
+                                }}
+                              >
+                                <Plus size={14} />
+                                Período
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <p
+                        style={{
+                          margin: '4px 0 0',
+                          fontSize: '12px',
+                          color: '#9AA1B4',
+                        }}
+                      >
+                        Cada período é um bloco de trabalho (das X às Y). Para
+                        pausa de almoço, adicione dois períodos: 10:00–13:00 e
+                        14:00–20:00 → almoço 13h–14h.
+                      </p>
+                    </div>
+                  </>
                 )}
               </div>
             );
@@ -613,3 +684,14 @@ export function DoctorForm({
     </>
   );
 }
+
+const shortcutBtn: React.CSSProperties = {
+  border: '1px solid #D8DEEF',
+  borderRadius: '8px',
+  padding: '6px 10px',
+  fontSize: '12px',
+  fontWeight: 600,
+  color: '#2743A6',
+  backgroundColor: '#FFFFFF',
+  cursor: 'pointer',
+};

@@ -29,7 +29,7 @@ import TreatmentType from '@/models/TreatmentType';
 import { createActivationCode } from '@/lib/activation';
 import { sendActivationEmail } from '@/lib/resend';
 import { logAudit } from '@/lib/audit';
-import { workingRangesForDate, hhmmToMin } from '@/lib/availability';
+import { workingRangesForDate, hhmmToMin, minToHhmm } from '@/lib/availability';
 import {
   createDoctorSchema,
   updateDoctorSchema,
@@ -685,6 +685,95 @@ export async function setCommissionOverridesAction(
 
   revalidatePath(`/admin/medicos/${doctorId}`);
   return { success: true, doctorId };
+}
+
+// -----------------------------------------------------------------------------
+// ESTENDER HORÁRIO DE UM DIA (Fase 4B, P3 — "termos a opção de estender
+// horários de marcações"). Cria/atualiza uma exceção 'custom' do médico
+// nesta clínica e data com o horário do dia prolongado até `until`
+// (ex.: 18:00 → 20:00). Se o dia não tinha horário, abre das `from` às
+// `until`. Admin e receção (é operação de balcão).
+// -----------------------------------------------------------------------------
+export async function extendDoctorDayAction(input: {
+  doctorId: string;
+  clinicId: string;
+  date: string; // YYYY-MM-DD
+  until: string; // HH:mm
+  from?: string; // HH:mm — só quando o dia estava sem horário
+}): Promise<{ error?: string; ranges?: { start: string; end: string }[] }> {
+  const session = await auth();
+  const role = session?.user?.role;
+  if (!session?.user?.id || (role !== 'admin' && role !== 'receptionist')) {
+    return { error: 'Sem permissões.' };
+  }
+  if (!isObjectId(input.doctorId) || !isObjectId(input.clinicId)) {
+    return { error: 'Dados inválidos.' };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date))
+    return { error: 'Data inválida.' };
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(input.until)) {
+    return { error: 'Hora inválida.' };
+  }
+  await dbConnect();
+  const [doctor, clinic] = await Promise.all([
+    Doctor.findById(input.doctorId),
+    Clinic.findById(input.clinicId),
+  ]);
+  if (!doctor || !clinic) return { error: 'Médico ou clínica inválidos.' };
+
+  const untilMin = hhmmToMin(input.until);
+  const current = workingRangesForDate(doctor, clinic, input.date);
+  let ranges: { start: string; end: string }[];
+  if (current.length === 0) {
+    const from =
+      input.from && /^([01]\d|2[0-3]):[0-5]\d$/.test(input.from)
+        ? input.from
+        : '09:00';
+    if (hhmmToMin(from) >= untilMin)
+      return { error: 'Hora de fim tem de ser depois do início.' };
+    ranges = [{ start: from, end: input.until }];
+  } else {
+    const last = current[current.length - 1];
+    if (untilMin <= last.end) {
+      return { error: `O horário já vai até às ${minToHhmm(last.end)}.` };
+    }
+    ranges = current.map((r, i) => ({
+      start: minToHhmm(r.start),
+      end: i === current.length - 1 ? input.until : minToHhmm(r.end),
+    }));
+  }
+
+  // Substitui exceção existente desta data/clínica (se houver) e grava
+  await Doctor.updateOne(
+    { _id: input.doctorId },
+    { $pull: { exceptions: { date: input.date, clinicId: clinic._id } } },
+  );
+  await Doctor.updateOne(
+    { _id: input.doctorId },
+    {
+      $push: {
+        exceptions: {
+          date: input.date,
+          clinicId: clinic._id,
+          type: 'custom',
+          ranges,
+          reason: `Horário estendido até às ${input.until} (agenda)`,
+        },
+      },
+    },
+  );
+  await logAudit({
+    userId: session.user.id,
+    action: 'update',
+    entityType: 'Doctor',
+    entityId: input.doctorId,
+    clinicId: input.clinicId,
+    summary: `Horário de ${input.date} estendido até às ${input.until} em ${clinic.name}`,
+    changedFields: ['exceptions'],
+  });
+  revalidatePath('/admin/agenda');
+  revalidatePath(`/admin/medicos/${input.doctorId}`);
+  return { ranges };
 }
 
 // -----------------------------------------------------------------------------
