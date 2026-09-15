@@ -39,7 +39,22 @@ const PlanItemSchema = new Schema(
       required: true,
     },
     nameSnapshot: { type: String, required: true, trim: true },
+    // Fase 4C (P13 — "orçamento com opção de edição de preço mediante a
+    // avaliação do médico"): PVP de tabela no momento, PVP que o médico
+    // aplicou (editável), desconto por item (% ou €). `priceCents` continua
+    // a ser o VALOR ao paciente (PVP aplicado − desconto), como no Procedure.
+    catalogPriceCents: { type: Number, min: 0, default: null }, // tabela
+    listPriceCents: { type: Number, min: 0, default: null }, // PVP aplicado
+    priceEdited: { type: Boolean, default: false }, // PVP ≠ tabela
+    discountMode: {
+      type: String,
+      enum: ['percent', 'amount', null],
+      default: null,
+    },
+    discountPct: { type: Number, min: 0, max: 100, default: null },
+    discountCents: { type: Number, min: 0, default: 0 },
     priceCents: { type: Number, required: true, min: 0 },
+    note: { type: String, trim: true, maxlength: 300, default: null },
     toothNumbers: {
       type: [{ type: String, match: [FDI_REGEX, 'Dente inválido (FDI)'] }],
       default: [],

@@ -45,6 +45,7 @@ import {
   emptyTooth,
   isToothEmpty,
   type ToothEntry,
+  type ToothProcedure,
 } from '@/components/clinico/ToothDetail';
 import { Button } from '@/components/ui/Button';
 import { OdontogramaArcada } from '@/components/clinico/OdontogramaArcada';
@@ -241,12 +242,18 @@ export function Odontograma({
   initialTeeth,
   versionLabel,
   readOnly,
+  proceduresByTooth = {},
+  planBaseHref = null,
 }: {
   patientId: string;
   initialTeeth: ToothEntry[];
   /** ex.: "Versão 3 · 03/08/2026 16:20 · Dr. João Teste" ou null (sem versões) */
   versionLabel: string | null;
   readOnly: boolean;
+  /** Fase 4C: atos por dente (planeados/executados) */
+  proceduresByTooth?: Record<string, ToothProcedure[]>;
+  /** Fase 4C: base do link "Planear tratamento" (recebe &dentes=NN) */
+  planBaseHref?: string | null;
 }) {
   const router = useRouter();
   const [teeth, setTeeth] = useState<Map<string, ToothEntry>>(
@@ -299,6 +306,13 @@ export function Odontograma({
         entries={[...teeth.values()]}
         selected={selected}
         onSelect={setSelected}
+        plannedTeeth={
+          new Set(
+            Object.entries(proceduresByTooth)
+              .filter(([, ps]) => ps.some(p => p.status === 'planned'))
+              .map(([n]) => n),
+          )
+        }
       />
       <div
         style={{
@@ -427,6 +441,12 @@ export function Odontograma({
               tooth={selectedTooth}
               onChange={updateTooth}
               readOnly={readOnly}
+              procedures={proceduresByTooth[selectedTooth.number] ?? []}
+              planHref={
+                planBaseHref
+                  ? `${planBaseHref}&dentes=${selectedTooth.number}`
+                  : null
+              }
             />
           ) : (
             <div

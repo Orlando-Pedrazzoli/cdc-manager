@@ -10,7 +10,8 @@
 
 'use client';
 
-import { Eraser } from 'lucide-react';
+import Link from 'next/link';
+import { Eraser, ClipboardPlus } from 'lucide-react';
 import {
   TOOTH_STATUS,
   TOOTH_STATUS_LABEL,
@@ -41,14 +42,29 @@ export function isToothEmpty(t: ToothEntry): boolean {
   return t.status === 'present' && t.faces.length === 0 && !t.note;
 }
 
+/** Fase 4C (P13): atos ligados ao dente — planeados e executados */
+export interface ToothProcedure {
+  id: string;
+  name: string;
+  status: 'planned' | 'completed' | 'invoiced' | 'void';
+  dateLabel: string | null;
+  priceCents: number;
+}
+
 export function ToothDetail({
   tooth,
   onChange,
   readOnly,
+  procedures = [],
+  planHref,
 }: {
   tooth: ToothEntry;
   onChange: (next: ToothEntry) => void;
   readOnly: boolean;
+  /** Histórico do dente (Procedure.toothNumbers ∋ este dente) */
+  procedures?: ToothProcedure[];
+  /** Link "Planear tratamento neste dente" (só na área do médico) */
+  planHref?: string | null;
 }) {
   const conditionOf = (face: ToothFace): FaceCondition | '' =>
     tooth.faces.find(f => f.face === face)?.condition ?? '';
@@ -166,6 +182,117 @@ export function ToothDetail({
         placeholder='ex.: sensibilidade ao frio'
         onChange={e => onChange({ ...tooth, note: e.target.value || null })}
       />
+
+      {/* Fase 4C: tratamentos deste dente + orçamento a partir daqui */}
+      <div
+        style={{
+          borderTop: '1px solid #EEF1F8',
+          paddingTop: 10,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+          }}
+        >
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#1B2A6B' }}>
+            Tratamentos no dente {tooth.number}
+          </span>
+          {planHref && (
+            <Link
+              href={planHref}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: '12px',
+                fontWeight: 700,
+                color: '#FFFFFF',
+                backgroundColor: '#2743A6',
+                borderRadius: '8px',
+                padding: '6px 10px',
+                textDecoration: 'none',
+              }}
+            >
+              <ClipboardPlus size={13} />
+              Planear tratamento
+            </Link>
+          )}
+        </div>
+        {procedures.length === 0 ? (
+          <p style={{ margin: 0, fontSize: '12px', color: '#9AA1B4' }}>
+            Sem atos registados neste dente.
+          </p>
+        ) : (
+          <ul
+            style={{
+              margin: 0,
+              padding: 0,
+              listStyle: 'none',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            {procedures.map(p => (
+              <li
+                key={p.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  fontSize: '12px',
+                  color: p.status === 'void' ? '#9AA1B4' : '#1C2233',
+                  textDecoration: p.status === 'void' ? 'line-through' : 'none',
+                }}
+              >
+                <span>
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: 7,
+                      height: 7,
+                      borderRadius: '50%',
+                      marginRight: 6,
+                      backgroundColor:
+                        p.status === 'planned'
+                          ? '#E0A100'
+                          : p.status === 'void'
+                            ? '#C7CEE0'
+                            : '#0F7B4D',
+                    }}
+                  />
+                  {p.name}
+                  <span style={{ color: '#9AA1B4' }}>
+                    {' '}
+                    ·{' '}
+                    {p.status === 'planned'
+                      ? 'planeado'
+                      : (p.dateLabel ?? 'executado')}
+                  </span>
+                </span>
+                <span
+                  style={{
+                    fontVariantNumeric: 'tabular-nums',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {(p.priceCents / 100).toLocaleString('pt-PT', {
+                    style: 'currency',
+                    currency: 'EUR',
+                  })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

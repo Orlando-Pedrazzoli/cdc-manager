@@ -3,8 +3,11 @@
 // CDC Manager — Clínico: planos de tratamento (Client Components)
 // -----------------------------------------------------------------------------
 //   PlanEditor  — compor um plano novo: título, clínica, linhas de atos
-//                 (ato → preço de tabela editável, dentes FDI, fase) e
-//                 desconto; itens viajam em hidden JSON
+//                 (ato com lupa → PVP de tabela EDITÁVEL pelo médico com
+//                 aviso "tabela: X", desconto por item % ou €, dentes FDI,
+//                 fase) e desconto global; itens viajam em hidden JSON.
+//                 Fase 4C (P13): pode nascer pré-preenchido a partir do
+//                 odontograma (`initialTeeth`).
 //   PlanActions — botões do ciclo de vida conforme o estado + execução
 //                 faseada por item (fase a fase, como no consultório)
 // =============================================================================
@@ -26,10 +29,13 @@ import {
 import { formatCents } from '@/lib/commissions';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
+import { TreatmentPicker } from '@/components/clinico/TreatmentPicker';
 
 export interface TreatmentOption {
   id: string;
   name: string;
+  category?: string | null;
+  code?: string | null;
   priceCents: number;
 }
 
@@ -45,30 +51,38 @@ interface ItemRow {
   key: number;
   treatmentTypeId: string;
   priceEuros: string;
+  discountMode: '' | 'percent' | 'amount';
+  discountValue: string;
+  note: string;
   toothNumbers: string;
   phase: string;
 }
+const emptyRow = (key: number, teeth = ''): ItemRow => ({
+  key,
+  treatmentTypeId: '',
+  priceEuros: '',
+  discountMode: '',
+  discountValue: '',
+  note: '',
+  toothNumbers: teeth,
+  phase: '1',
+});
 
 export function PlanEditor({
   patientId,
   treatments,
   clinics,
+  initialTeeth = '',
 }: {
   patientId: string;
   treatments: TreatmentOption[];
   clinics: ClinicOption[];
+  /** Vindo do odontograma: "26" ou "26, 27" — pré-preenche a 1.ª linha */
+  initialTeeth?: string;
 }) {
   const router = useRouter();
   const nextKey = useRef(1);
-  const [rows, setRows] = useState<ItemRow[]>([
-    {
-      key: 0,
-      treatmentTypeId: '',
-      priceEuros: '',
-      toothNumbers: '',
-      phase: '1',
-    },
-  ]);
+  const [rows, setRows] = useState<ItemRow[]>([emptyRow(0, initialTeeth)]);
   const [discount, setDiscount] = useState('');
 
   const [state, action, pending] = useActionState<PlanActionState, FormData>(
@@ -104,8 +118,23 @@ export function PlanEditor({
     const n = Number(s.trim().replace(/\s/g, '').replace(',', '.'));
     return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : 0;
   };
+  // Valor ao paciente por linha: PVP aplicado − desconto (espelho do servidor)
+  const lineNet = (r: ItemRow): number => {
+    const list = parseEuros(r.priceEuros);
+    let d = 0;
+    if (r.discountMode === 'percent') {
+      const pct = Number(r.discountValue.replace(',', '.'));
+      if (Number.isFinite(pct) && pct >= 0 && pct <= 100) {
+        d = Math.min(list, Math.round((list * pct) / 100));
+      }
+    } else if (r.discountMode === 'amount') {
+      d = Math.min(list, parseEuros(r.discountValue));
+    }
+    return list - d;
+  };
   const totalCents = useMemo(
-    () => rows.reduce((s, r) => s + parseEuros(r.priceEuros), 0),
+    () => rows.reduce((s, r) => s + lineNet(r), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [rows],
   );
   const discountCents = parseEuros(discount);
@@ -116,6 +145,10 @@ export function PlanEditor({
       .map(r => ({
         treatmentTypeId: r.treatmentTypeId,
         priceEuros: r.priceEuros,
+        discountMode: r.discountMode || null,
+        discountPct: r.discountMode === 'percent' ? r.discountValue : '',
+        discountEuros: r.discountMode === 'amount' ? r.discountValue : '',
+        note: r.note,
         toothNumbers: r.toothNumbers,
         phase: r.phase || '1',
       })),
@@ -183,80 +216,147 @@ export function PlanEditor({
         >
           Atos propostos
         </p>
-        {rows.map(r => (
-          <div
-            key={r.key}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '3fr 1fr 1fr 70px 34px',
-              gap: '8px',
-              alignItems: 'end',
-            }}
-          >
-            <Select
-              value={r.treatmentTypeId}
-              required
-              onChange={e => onTreatmentChange(r.key, e.target.value)}
-            >
-              <option value='' disabled>
-                — Selecionar ato —
-              </option>
-              {treatments.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.name} · {formatCents(t.priceCents)}
-                </option>
-              ))}
-            </Select>
-            <Input
-              value={r.priceEuros}
-              inputMode='decimal'
-              required
-              placeholder='Preço €'
-              onChange={e => setRow(r.key, { priceEuros: e.target.value })}
-            />
-            <Input
-              value={r.toothNumbers}
-              placeholder='Dentes (FDI)'
-              onChange={e => setRow(r.key, { toothNumbers: e.target.value })}
-            />
-            <Input
-              value={r.phase}
-              inputMode='numeric'
-              placeholder='Fase'
-              onChange={e => setRow(r.key, { phase: e.target.value })}
-            />
-            <button
-              type='button'
-              aria-label='Remover linha'
-              disabled={rows.length === 1}
-              onClick={() => setRows(prev => prev.filter(x => x.key !== r.key))}
+        {rows.map(r => {
+          const t = treatments.find(x => x.id === r.treatmentTypeId);
+          const edited =
+            t != null &&
+            r.priceEuros.trim() !== '' &&
+            parseEuros(r.priceEuros) !== t.priceCents;
+          const net = lineNet(r);
+          return (
+            <div
+              key={r.key}
               style={{
-                border: 'none',
-                background: 'transparent',
-                color: rows.length === 1 ? '#C7CEE0' : '#B3261E',
-                cursor: rows.length === 1 ? 'default' : 'pointer',
-                paddingBottom: '10px',
+                display: 'grid',
+                gridTemplateColumns: '3fr 1fr 1.3fr 1fr 64px 34px',
+                gap: '8px',
+                alignItems: 'end',
+                padding: '10px',
+                border: '1px solid #EEF1F8',
+                borderRadius: '10px',
+                backgroundColor: '#F8F9FD',
               }}
             >
-              <Trash2 size={16} />
-            </button>
-          </div>
-        ))}
+              <TreatmentPicker
+                name={`_pick_${r.key}`}
+                label='Ato *'
+                required={false}
+                options={treatments.map(x => ({
+                  id: x.id,
+                  name: x.name,
+                  category: x.category ?? null,
+                  code: x.code ?? null,
+                  priceCents: x.priceCents,
+                }))}
+                value={r.treatmentTypeId}
+                onChange={id => onTreatmentChange(r.key, id)}
+              />
+              <Input
+                label='PVP (€) *'
+                value={r.priceEuros}
+                inputMode='decimal'
+                required
+                placeholder='0,00'
+                onChange={e => setRow(r.key, { priceEuros: e.target.value })}
+                help={
+                  edited && t
+                    ? `Tabela: ${formatCents(t.priceCents)}`
+                    : 'Editável'
+                }
+                style={
+                  edited
+                    ? { borderColor: '#B26A00', backgroundColor: '#FFF9EC' }
+                    : undefined
+                }
+              />
+              <div>
+                <label style={miniLbl}>Desconto</label>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <select
+                    value={r.discountMode}
+                    onChange={e =>
+                      setRow(r.key, {
+                        discountMode: e.target.value as ItemRow['discountMode'],
+                        discountValue: '',
+                      })
+                    }
+                    style={miniSelect}
+                  >
+                    <option value=''>—</option>
+                    <option value='percent'>%</option>
+                    <option value='amount'>€</option>
+                  </select>
+                  <input
+                    className='cdc-field'
+                    value={r.discountValue}
+                    disabled={!r.discountMode}
+                    inputMode='decimal'
+                    placeholder={r.discountMode === 'percent' ? '10' : '20'}
+                    onChange={e =>
+                      setRow(r.key, { discountValue: e.target.value })
+                    }
+                    style={{ ...miniInput, opacity: r.discountMode ? 1 : 0.5 }}
+                  />
+                </div>
+                <p
+                  style={{
+                    margin: '3px 0 0',
+                    fontSize: '11px',
+                    color:
+                      net < parseEuros(r.priceEuros) ? '#0F7B4D' : '#9AA1B4',
+                  }}
+                >
+                  {r.treatmentTypeId ? `Paciente: ${formatCents(net)}` : ' '}
+                </p>
+              </div>
+              <Input
+                label='Dentes (FDI)'
+                value={r.toothNumbers}
+                placeholder='ex.: 26'
+                onChange={e => setRow(r.key, { toothNumbers: e.target.value })}
+              />
+              <Input
+                label='Fase'
+                value={r.phase}
+                inputMode='numeric'
+                onChange={e => setRow(r.key, { phase: e.target.value })}
+              />
+              <button
+                type='button'
+                aria-label='Remover linha'
+                disabled={rows.length === 1}
+                onClick={() =>
+                  setRows(prev => prev.filter(x => x.key !== r.key))
+                }
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: rows.length === 1 ? '#C7CEE0' : '#B3261E',
+                  cursor: rows.length === 1 ? 'default' : 'pointer',
+                  paddingBottom: '10px',
+                }}
+              >
+                <Trash2 size={16} />
+              </button>
+              <div style={{ gridColumn: '1 / span 6' }}>
+                <input
+                  className='cdc-field'
+                  value={r.note}
+                  maxLength={300}
+                  placeholder='Observação desta linha (opcional) — ex.: preço especial por ser retratamento'
+                  onChange={e => setRow(r.key, { note: e.target.value })}
+                  style={{ ...miniInput, width: '100%' }}
+                />
+              </div>
+            </div>
+          );
+        })}
         <div>
           <Button
             type='button'
             variant='secondary'
             onClick={() =>
-              setRows(prev => [
-                ...prev,
-                {
-                  key: nextKey.current++,
-                  treatmentTypeId: '',
-                  priceEuros: '',
-                  toothNumbers: '',
-                  phase: '1',
-                },
-              ])
+              setRows(prev => [...prev, emptyRow(nextKey.current++)])
             }
           >
             <Plus size={14} style={{ marginRight: 5 }} />
@@ -429,3 +529,31 @@ export function ExecuteItemButton({ procedureId }: { procedureId: string }) {
     />
   );
 }
+
+const miniLbl: React.CSSProperties = {
+  display: 'block',
+  fontSize: '13px',
+  fontWeight: 600,
+  color: '#1B2A6B',
+  marginBottom: 6,
+};
+const miniSelect: React.CSSProperties = {
+  border: '1.5px solid #B9C3E0',
+  borderRadius: '8px',
+  padding: '9px 6px',
+  fontSize: '13px',
+  color: '#1B2A6B',
+  backgroundColor: '#FBFCFF',
+  width: 56,
+};
+const miniInput: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  boxSizing: 'border-box',
+  border: '1.5px solid #B9C3E0',
+  borderRadius: '8px',
+  padding: '9px 10px',
+  fontSize: '14px',
+  color: '#1B2A6B',
+  backgroundColor: '#FBFCFF',
+};

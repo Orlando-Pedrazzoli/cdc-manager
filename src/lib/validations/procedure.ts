@@ -250,12 +250,26 @@ export type SaveOdontogramInput = z.infer<typeof saveOdontogramSchema>;
 // --- Planos de tratamento ----------------------------------------------------
 // Itens chegam como JSON (hidden input): o PREÇO é congelado aqui — o
 // orçamento entregue ao paciente é um compromisso, não muda com a tabela.
-const planItemSchema = z.object({
-  treatmentTypeId: z.string().regex(OBJECT_ID),
-  priceEuros: eurosToCentsField, // cêntimos após o preprocess
-  toothNumbers: toothNumbersField,
-  phase: z.coerce.number().int().min(1).max(20).default(1),
-});
+const planItemSchema = z
+  .object({
+    treatmentTypeId: z.string().regex(OBJECT_ID),
+    priceEuros: eurosToCentsField, // PVP aplicado, em cêntimos após o preprocess
+    // Fase 4C: desconto por item (% ou €), exclusivos
+    discountMode: z.enum(['percent', 'amount']).nullable().default(null),
+    discountPct: optionalPercentField.default(null),
+    discountEuros: optionalEurosToCentsField.default(null),
+    note: optionalText(300),
+    toothNumbers: toothNumbersField,
+    phase: z.coerce.number().int().min(1).max(20).default(1),
+  })
+  .superRefine((d, ctx) => {
+    if (d.discountMode === 'percent' && d.discountPct == null) {
+      ctx.addIssue({ code: 'custom', message: 'Indique a % de desconto' });
+    }
+    if (d.discountMode === 'amount' && d.discountEuros == null) {
+      ctx.addIssue({ code: 'custom', message: 'Indique o valor do desconto' });
+    }
+  });
 
 export const createPlanSchema = z.object({
   patientId: z.string().regex(OBJECT_ID),

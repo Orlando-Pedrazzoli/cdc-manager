@@ -124,10 +124,13 @@ export function OdontogramaArcada({
   entries,
   selected,
   onSelect,
+  plannedTeeth = new Set<string>(),
 }: {
   entries: ToothEntry[];
   selected: string | null;
   onSelect: (toothNumber: string) => void;
+  /** Fase 4C: dentes com tratamento PLANEADO (ponto âmbar) */
+  plannedTeeth?: Set<string>;
 }) {
   const byNumber = new Map(entries.map(t => [t.number, t]));
   const empty = (n: string): ToothEntry => ({
@@ -145,6 +148,7 @@ export function OdontogramaArcada({
     const mark = STATUS_MARK[t.status];
     const isMissing = t.status === 'missing';
     const isSelected = selected === fdi;
+    const isPlanned = plannedTeeth.has(fdi);
 
     return (
       <g
@@ -173,6 +177,19 @@ export function OdontogramaArcada({
               strokeWidth={1.2}
               strokeLinecap='round'
             />
+          )}
+          {isPlanned && (
+            <circle
+              cx={0}
+              cy={-22}
+              r={4.5}
+              fill='#E0A100'
+              stroke='#FFFFFF'
+              strokeWidth={1.5}
+              transform={`rotate(${-rot})`}
+            >
+              <title>Tratamento planeado</title>
+            </circle>
           )}
           {mark && (
             <text

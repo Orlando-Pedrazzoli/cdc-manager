@@ -24,7 +24,12 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
-import { resolveCommission, computeLineFinancials } from '@/lib/commissions';
+import {
+  resolveCommission,
+  computeLineFinancials,
+  discountCentsOf,
+  type DiscountInput,
+} from '@/lib/commissions';
 import { spawnRecallForProcedure } from '@/lib/recalls';
 import {
   createPlanSchema,
@@ -85,19 +90,38 @@ export async function createPlanAction(
     const treatments = await TreatmentType.find({
       _id: { $in: data.items.map(i => i.treatmentTypeId) },
     })
-      .select('name')
+      .select('name priceCents')
       .lean();
-    const nameOf = new Map(treatments.map(t => [String(t._id), t.name]));
+    const catalog = new Map(treatments.map(t => [String(t._id), t]));
 
-    const items = data.items.map(i => ({
-      treatmentTypeId: i.treatmentTypeId,
-      nameSnapshot: nameOf.get(i.treatmentTypeId) ?? '(ato removido)',
-      priceCents: i.priceEuros,
-      toothNumbers: i.toothNumbers,
-      phase: i.phase,
-      procedureId: null,
-    }));
+    // Fase 4C: PVP aplicado (editável) − desconto por item = valor ao paciente
+    const items = data.items.map(i => {
+      const cat = catalog.get(i.treatmentTypeId);
+      const discount: DiscountInput =
+        i.discountMode === 'percent'
+          ? { mode: 'percent', value: i.discountPct as number }
+          : i.discountMode === 'amount'
+            ? { mode: 'amount', cents: i.discountEuros as number }
+            : null;
+      const discountCents = discountCentsOf(i.priceEuros, discount);
+      return {
+        treatmentTypeId: i.treatmentTypeId,
+        nameSnapshot: cat?.name ?? '(ato removido)',
+        catalogPriceCents: cat?.priceCents ?? null,
+        listPriceCents: i.priceEuros,
+        priceEdited: cat != null && cat.priceCents !== i.priceEuros,
+        discountMode: i.discountMode,
+        discountPct: i.discountMode === 'percent' ? i.discountPct : null,
+        discountCents,
+        priceCents: i.priceEuros - discountCents,
+        note: i.note,
+        toothNumbers: i.toothNumbers,
+        phase: i.phase,
+        procedureId: null,
+      };
+    });
     const totalCents = items.reduce((s, i) => s + i.priceCents, 0);
+    const editedCount = items.filter(i => i.priceEdited).length;
     if (data.discountEuros > totalCents) {
       return { error: 'O desconto não pode exceder o total do plano.' };
     }
@@ -121,7 +145,7 @@ export async function createPlanAction(
       entityId: String(plan._id),
       patientId: data.patientId,
       clinicId: data.clinicId,
-      summary: `Plano criado: ${data.title} (${items.length} ato${items.length === 1 ? '' : 's'}, ${(totalCents / 100).toFixed(2)} €)`,
+      summary: `Plano criado: ${data.title} (${items.length} ato${items.length === 1 ? '' : 's'}, ${(totalCents / 100).toFixed(2)} €${editedCount ? `, ${editedCount} preço(s) editado(s) pelo médico` : ''})`,
     });
 
     revalidatePath(`/doutor/pacientes/${data.patientId}/plano`);
@@ -220,9 +244,16 @@ export async function approvePlanAction(
         treatmentTypeId: String(item.treatmentTypeId),
         category: t?.category ?? null,
       });
+      // Fase 4C: o item já traz PVP aplicado + desconto → o Procedure
+      // 'planned' nasce com o mesmo financeiro (a execução re-resolve)
       const fin = computeLineFinancials({
-        listPriceCents: item.priceCents,
-        discount: null,
+        listPriceCents: item.listPriceCents ?? item.priceCents,
+        discount:
+          item.discountMode === 'percent' && item.discountPct != null
+            ? { mode: 'percent', value: item.discountPct }
+            : item.discountMode === 'amount'
+              ? { mode: 'amount', cents: item.discountCents ?? 0 }
+              : null,
         costCents: t?.costCents ?? 0,
         commission,
       });

@@ -17,8 +17,12 @@ import { dbConnect } from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
 import Odontogram from '@/models/Odontogram';
+import Procedure from '@/models/Procedure';
 import { Odontograma } from '@/components/clinico/Odontograma';
-import type { ToothEntry } from '@/components/clinico/ToothDetail';
+import type {
+  ToothEntry,
+  ToothProcedure,
+} from '@/components/clinico/ToothDetail';
 import type { ToothStatus, FaceCondition, ToothFace } from '@/lib/domain';
 
 export const dynamic = 'force-dynamic';
@@ -56,6 +60,37 @@ function NotFound() {
       </Link>
     </div>
   );
+}
+
+// Fase 4C (P13): atos por dente — planeados (ponto âmbar) e executados
+async function loadProceduresByTooth(patientId: string) {
+  const procs = await Procedure.find({
+    patientId,
+    status: { $in: ['planned', 'completed', 'invoiced', 'void'] },
+    'toothNumbers.0': { $exists: true },
+  })
+    .select('nameSnapshot status toothNumbers executedAt priceCents')
+    .sort({ executedAt: -1, createdAt: -1 })
+    .lean();
+  const fmt = new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'Europe/Lisbon',
+  });
+  const out: Record<string, ToothProcedure[]> = {};
+  for (const p of procs) {
+    for (const tooth of p.toothNumbers ?? []) {
+      (out[tooth] ??= []).push({
+        id: String(p._id),
+        name: p.nameSnapshot,
+        status: p.status as ToothProcedure['status'],
+        dateLabel: p.executedAt ? fmt.format(p.executedAt as Date) : null,
+        priceCents: p.priceCents,
+      });
+    }
+  }
+  return out;
 }
 
 export default async function AdminOdontogramPage({
@@ -99,6 +134,7 @@ export default async function AdminOdontogramPage({
     : [];
   const updaterName = new Map(updaters.map(d => [String(d._id), d.name]));
 
+  const proceduresByTooth = await loadProceduresByTooth(id);
   const initialTeeth: ToothEntry[] = (doc?.teeth ?? []).map(t => ({
     number: t.number,
     status: (t.status ?? 'present') as ToothStatus,
@@ -242,6 +278,8 @@ export default async function AdminOdontogramPage({
           initialTeeth={initialTeeth}
           versionLabel={versionLabel}
           readOnly
+          proceduresByTooth={proceduresByTooth}
+          planBaseHref={null}
         />
       )}
     </div>

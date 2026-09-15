@@ -85,11 +85,18 @@ export default async function PatientPlansPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ novo?: string }>;
+  searchParams: Promise<{ novo?: string; dentes?: string }>;
 }) {
   const { id } = await params;
-  const { novo } = await searchParams;
+  const { novo, dentes } = await searchParams;
   const creating = novo === '1';
+  // Fase 4C: vindo do odontograma ("?novo=1&dentes=26,27") — só FDI válidos
+  const initialTeeth = (dentes ?? '')
+    .split(/[,\s]+/)
+    .filter(t =>
+      /^(1[1-8]|2[1-8]|3[1-8]|4[1-8]|5[1-5]|6[1-5]|7[1-5]|8[1-5])$/.test(t),
+    )
+    .join(', ');
 
   const session = await auth();
   const doctorId = session?.user?.doctorId;
@@ -103,8 +110,8 @@ export default async function PatientPlansPage({
     Patient.findById(id).select('name processNumber').lean(),
     TreatmentPlan.find({ patientId: id }).sort({ createdAt: -1 }).lean(),
     TreatmentType.find({ active: true })
-      .select('name priceCents')
-      .sort({ name: 1 })
+      .select('name category dentoralCode priceCents')
+      .sort({ category: 1, name: 1 })
       .lean(),
     getActiveClinics(),
   ]);
@@ -198,9 +205,12 @@ export default async function PatientPlansPage({
           treatments={treatments.map(t => ({
             id: String(t._id),
             name: t.name,
+            category: t.category ?? null,
+            code: (t.dentoralCode as string | null) ?? null,
             priceCents: t.priceCents,
           }))}
           clinics={clinics.map(c => ({ id: String(c._id), name: c.name }))}
+          initialTeeth={initialTeeth}
         />
       ) : plans.length === 0 ? (
         <div
@@ -368,16 +378,52 @@ export default async function PatientPlansPage({
                           </p>
                         )}
                       </div>
-                      <span
-                        style={{
-                          fontSize: '14px',
-                          fontWeight: 700,
-                          color: '#1B2A6B',
-                          fontVariantNumeric: 'tabular-nums',
-                        }}
-                      >
-                        {formatCents(item.priceCents)}
-                      </span>
+                      <div style={{ textAlign: 'right' }}>
+                        <span
+                          style={{
+                            fontSize: '14px',
+                            fontWeight: 700,
+                            color: '#1B2A6B',
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        >
+                          {formatCents(item.priceCents)}
+                        </span>
+                        {/* Fase 4C: PVP editado / desconto por item */}
+                        {(item.priceEdited ||
+                          (item.discountCents ?? 0) > 0) && (
+                          <p
+                            style={{
+                              margin: '2px 0 0',
+                              fontSize: '11px',
+                              color: '#6A7186',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {item.priceEdited && item.catalogPriceCents != null
+                              ? `tabela ${formatCents(item.catalogPriceCents)} → ${formatCents(item.listPriceCents ?? item.priceCents)}`
+                              : ''}
+                            {item.priceEdited && (item.discountCents ?? 0) > 0
+                              ? ' · '
+                              : ''}
+                            {(item.discountCents ?? 0) > 0
+                              ? `desc. ${item.discountPct != null ? `${item.discountPct}%` : formatCents(item.discountCents ?? 0)}`
+                              : ''}
+                          </p>
+                        )}
+                        {item.note && (
+                          <p
+                            style={{
+                              margin: '2px 0 0',
+                              fontSize: '11px',
+                              color: '#9AA1B4',
+                              maxWidth: 260,
+                            }}
+                          >
+                            {item.note}
+                          </p>
+                        )}
+                      </div>
                       {executable &&
                         proc?.status === 'planned' &&
                         item.procedureId && (
