@@ -5,18 +5,20 @@
 // O paciente clica "Confirmar presença" no email (marcação ou lembrete 24h)
 // e cai aqui SEM login: /confirmar/[token]. Fora dos prefixos protegidos do
 // middleware (/admin, /doutor, /conta) — pública de propósito: a fricção
-// mata a taxa de confirmação (o padrão da indústria é one-tap confirm).
+// mata a taxa de confirmação.
 //
-// Regras:
-//   · pending + futura  → confirma (confirmedAt/Via='email') e agradece
-//   · já confirmed      → idempotente: "já estava confirmada" (reclicar o
-//                         link do email nunca dá erro)
+// ESTA PÁGINA SÓ LÊ. A escrita está em actions/confirm.ts (POST do botão):
+// scanners de links de email (Outlook Safe Links, Gmail) abrem o GET e
+// confirmavam consultas sozinhos. Continua a ser um clique para o paciente —
+// o botão do email traz à página, o botão da página confirma.
+//
+// Estados:
+//   · pending + futura  → mostra a consulta + botão "Confirmar presença"
+//   · ?c=1 e confirmed  → "Presença confirmada!" (acabou de clicar)
+//   · já confirmed      → "já estava confirmada" (reabrir o link nunca dá erro)
 //   · cancelled/no-show → informa e pede contacto à clínica
 //   · já passou         → informa que a consulta já decorreu
 //   · token inválido    → mensagem neutra (sem revelar nada do sistema)
-//
-// A transição AQUI é deliberadamente restrita a pending→confirmed via
-// updateOne condicional (filtro por status) — sem corrida com o balcão.
 // =============================================================================
 
 import { dbConnect } from '@/lib/mongodb';
@@ -25,10 +27,12 @@ import Patient from '@/models/Patient';
 import Clinic from '@/models/Clinic';
 import TreatmentType from '@/models/TreatmentType';
 import Doctor from '@/models/Doctor';
+import { confirmAttendanceByTokenAction } from '@/actions/confirm';
 
 export const dynamic = 'force-dynamic';
 
 type Outcome =
+  | 'pending'
   | 'confirmed-now'
   | 'already-confirmed'
   | 'cancelled'
@@ -37,10 +41,17 @@ type Outcome =
 
 export default async function ConfirmarPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ c?: string }>;
 }) {
   const { token } = await params;
+  const { c: confirmedFlag } = await searchParams;
+  const justConfirmed = confirmedFlag === '1';
+  // Instante único do pedido (Server Component: Date.now() no corpo do render
+  // é sinalizado pelo lint do React Compiler como impuro; aqui é deliberado)
+  const now = new Date();
 
   let outcome: Outcome = 'invalid';
   let details: {
@@ -95,23 +106,12 @@ export default async function ConfirmarPage({
 
       if (appt.status === 'cancelled' || appt.status === 'no-show') {
         outcome = 'cancelled';
-      } else if (appt.startAt.getTime() <= Date.now()) {
+      } else if (appt.startAt.getTime() <= now.getTime()) {
         outcome = 'past';
       } else if (appt.status === 'pending') {
-        // Condicional no filtro: se a receção confirmar em simultâneo,
-        // matchedCount=0 e caímos em "já confirmada" — nunca sobrescreve
-        const res = await Appointment.updateOne(
-          { _id: appt._id, status: 'pending' },
-          {
-            $set: {
-              status: 'confirmed',
-              confirmedAt: new Date(),
-              confirmedVia: 'email',
-            },
-          },
-        );
-        outcome =
-          res.modifiedCount === 1 ? 'confirmed-now' : 'already-confirmed';
+        outcome = 'pending'; // a escrita só acontece no POST do botão
+      } else if (appt.status === 'confirmed' && justConfirmed) {
+        outcome = 'confirmed-now';
       } else {
         // confirmed / checked-in / in-progress / completed
         outcome = 'already-confirmed';
@@ -121,6 +121,11 @@ export default async function ConfirmarPage({
 
   const copy: Record<Outcome, { emoji: string; title: string; body: string }> =
     {
+      pending: {
+        emoji: '📅',
+        title: 'Confirme a sua presença',
+        body: 'Carregue no botão para confirmar que vai à consulta.',
+      },
       'confirmed-now': {
         emoji: '✅',
         title: 'Presença confirmada!',
@@ -149,7 +154,10 @@ export default async function ConfirmarPage({
     };
   const c = copy[outcome];
   const showDetails =
-    details && (outcome === 'confirmed-now' || outcome === 'already-confirmed');
+    details &&
+    (outcome === 'pending' ||
+      outcome === 'confirmed-now' ||
+      outcome === 'already-confirmed');
 
   return (
     <main
@@ -220,6 +228,29 @@ export default async function ConfirmarPage({
             {details.doctorName && <span>Dr(a). {details.doctorName}</span>}
             <span style={{ color: '#6A7186' }}>{details.clinicName}</span>
           </div>
+        )}
+
+        {outcome === 'pending' && (
+          <form action={confirmAttendanceByTokenAction}>
+            <input type='hidden' name='token' value={token} />
+            <button
+              type='submit'
+              style={{
+                display: 'inline-block',
+                marginTop: 18,
+                padding: '12px 28px',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: '#2743A6',
+                color: '#FFFFFF',
+                fontSize: '15px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Confirmar presença
+            </button>
+          </form>
         )}
 
         {details?.clinicPhone &&

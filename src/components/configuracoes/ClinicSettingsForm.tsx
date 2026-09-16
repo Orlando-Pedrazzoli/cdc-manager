@@ -18,7 +18,7 @@
 
 'use client';
 
-import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
+import { useActionState, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Plus, Trash2 } from 'lucide-react';
@@ -86,21 +86,20 @@ const timeInputStyle = {
 // =============================================================================
 function ClinicDataForm({ clinic }: { clinic: ClinicSettings }) {
   const router = useRouter();
-  const [state, action, pending] = useActionState<
-    SettingsActionState,
-    FormData
-  >(updateClinicAction, undefined);
-  const handled = useRef<SettingsActionState>(undefined);
-
-  useEffect(() => {
-    if (!state || handled.current === state) return;
-    handled.current = state;
-    if ('error' in state) toast.error(state.error, { duration: 7000 });
-    if ('success' in state) {
-      toast.success('Dados da clínica gravados', { duration: 5000 });
-      router.refresh();
-    }
-  }, [state, router]);
+  // Efeitos do resultado no próprio callback da action (sem useEffect)
+  const [, action, pending] = useActionState<SettingsActionState, FormData>(
+    async (prev, formData) => {
+      const result = await updateClinicAction(prev, formData);
+      if (result && 'error' in result)
+        toast.error(result.error, { duration: 7000 });
+      if (result && 'success' in result) {
+        toast.success('Dados da clínica gravados', { duration: 5000 });
+        router.refresh();
+      }
+      return result;
+    },
+    undefined,
+  );
 
   return (
     <form action={action} style={cardStyle}>
@@ -306,43 +305,44 @@ function ClinicHoursForm({ clinic }: { clinic: ClinicSettings }) {
     [days],
   );
 
-  const [state, action, pending] = useActionState<
-    SettingsActionState,
-    FormData
-  >(updateClinicHoursAction, undefined);
-  const handled = useRef<SettingsActionState>(undefined);
   const [conflictInfo, setConflictInfo] = useState<{
     count: number;
     samples: string[];
   } | null>(null);
 
-  useEffect(() => {
-    if (!state || handled.current === state) return;
-    handled.current = state;
-    if ('error' in state) {
-      toast.error(state.error, { duration: 7000 });
-      return;
-    }
-    if ('success' in state) {
-      const conflicts = state.conflicts ?? 0;
-      if (conflicts > 0) {
-        setConflictInfo({
-          count: conflicts,
-          samples: state.conflictSamples ?? [],
-        });
-        toast(
-          `Horário gravado — ${conflicts} ${
-            conflicts === 1 ? 'marcação futura fica' : 'marcações futuras ficam'
-          } fora do novo horário`,
-          { icon: '⚠️', duration: 8000 },
-        );
-      } else {
-        setConflictInfo(null);
-        toast.success('Horário gravado', { duration: 5000 });
+  // Efeitos do resultado no próprio callback da action (sem useEffect)
+  const [, action, pending] = useActionState<SettingsActionState, FormData>(
+    async (prev, formData) => {
+      const result = await updateClinicHoursAction(prev, formData);
+      if (result && 'error' in result) {
+        toast.error(result.error, { duration: 7000 });
+        return result;
       }
-      router.refresh();
-    }
-  }, [state, router]);
+      if (result && 'success' in result) {
+        const conflicts = result.conflicts ?? 0;
+        if (conflicts > 0) {
+          setConflictInfo({
+            count: conflicts,
+            samples: result.conflictSamples ?? [],
+          });
+          toast(
+            `Horário gravado — ${conflicts} ${
+              conflicts === 1
+                ? 'marcação futura fica'
+                : 'marcações futuras ficam'
+            } fora do novo horário`,
+            { icon: '⚠️', duration: 8000 },
+          );
+        } else {
+          setConflictInfo(null);
+          toast.success('Horário gravado', { duration: 5000 });
+        }
+        router.refresh();
+      }
+      return result;
+    },
+    undefined,
+  );
 
   return (
     <form action={action} style={cardStyle}>

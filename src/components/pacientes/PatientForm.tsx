@@ -186,11 +186,6 @@ export function PatientForm({
       ? updatePatientAction.bind(null, patientId)
       : createPatientAction;
 
-  const [state, formAction, pending] = useActionState<
-    PatientFormState,
-    FormData
-  >(action, undefined);
-
   // Telefone internacional: indicativo + nº nacional (hidden compõe)
   const initialPhone = splitPhone(values.phone);
   const [dial, setDial] = useState<string>(initialPhone.dial);
@@ -273,25 +268,26 @@ export function PatientForm({
   // Modal do código manual (email do convite falhou)
   const [manualCode, setManualCode] = useState<string | null>(null);
   const [pendingNavId, setPendingNavId] = useState<string | null>(null);
-  const handledState = useRef<PatientFormState>(undefined);
+  // Efeitos do resultado (aviso, código manual, navegação) no próprio
+  // callback da action — sem useEffect a observar `state`
+  const [state, formAction, pending] = useActionState<
+    PatientFormState,
+    FormData
+  >(async (prev, formData) => {
+    const result = await action(prev, formData);
+    if (!result || 'error' in result) return result; // erro mostrado inline
 
-  useEffect(() => {
-    if (!state || state === handledState.current) return;
-    handledState.current = state;
+    if (result.warning) toast(result.warning, { icon: '⚠️', duration: 6000 });
 
-    if ('error' in state) return; // o erro é mostrado inline no formulário
-
-    if (state.warning) toast(state.warning, { icon: '⚠️', duration: 6000 });
-
-    if (state.manualCode) {
+    if (result.manualCode) {
       // Segurar a navegação até a receção copiar o código
-      setManualCode(state.manualCode);
-      setPendingNavId(state.patientId);
-      return;
+      setManualCode(result.manualCode);
+      setPendingNavId(result.patientId);
+      return result;
     }
 
     if (mode === 'create') {
-      toast.success(`Paciente criado (processo nº ${state.processNumber})`);
+      toast.success(`Paciente criado (processo nº ${result.processNumber})`);
       // Fechar o formulário: voltar à LISTA (pedido da direção pós-demo —
       // ficar no formulário deixava dúvida se tinha gravado)
       router.push('/admin/pacientes');
@@ -299,7 +295,8 @@ export function PatientForm({
       toast.success('Ficha atualizada.');
       router.refresh();
     }
-  }, [state, mode, router]);
+    return result;
+  }, undefined);
 
   const closeManualCode = () => {
     const navId = pendingNavId;

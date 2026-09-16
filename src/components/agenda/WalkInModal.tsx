@@ -11,21 +11,15 @@
 
 'use client';
 
-import {
-  useActionState,
-  useEffect,
-  useRef,
-  useState,
-  useTransition,
-} from 'react';
+import { useActionState, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Siren } from 'lucide-react';
 import {
   createWalkInAction,
-  findPatientsAction,
   type AppointmentFormState,
 } from '@/actions/appointments';
+import { usePatientSearch } from '@/components/agenda/usePatientSearch';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
@@ -59,55 +53,38 @@ export function WalkInModal({
 }: Props & { open: boolean; onClose: () => void }) {
   const router = useRouter();
 
-  // --- pesquisa de paciente (mesmo padrão do NewAppointmentModal) ---
-  const [patientQuery, setPatientQuery] = useState('');
-  const [patientResults, setPatientResults] = useState<
-    { id: string; label: string }[]
-  >([]);
-  const [patient, setPatient] = useState<{ id: string; label: string } | null>(
-    null,
-  );
-  const [, startSearch] = useTransition();
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (patient || patientQuery.trim().length < 2) {
-      setPatientResults([]);
-      return;
-    }
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      startSearch(async () => {
-        setPatientResults(await findPatientsAction(patientQuery));
-      });
-    }, 300);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, [patientQuery, patient]);
+  // --- pesquisa de paciente (hook partilhado com NewAppointmentModal) ---
+  const {
+    patientQuery,
+    setPatientQuery,
+    patient,
+    setPatient,
+    patientResults,
+    reset: resetPatient,
+  } = usePatientSearch();
 
   const [treatmentId, setTreatmentId] = useState('');
   const [doctorId, setDoctorId] = useState('');
 
-  const [state, formAction, pending] = useActionState<
+  // Efeitos do resultado (toast, fechar, refresh, reset) corridos no
+  // próprio callback da action — sem useEffect a observar `state`
+  const [, formAction, pending] = useActionState<
     AppointmentFormState,
     FormData
-  >(createWalkInAction, undefined);
-  const handled = useRef<AppointmentFormState>(undefined);
-  useEffect(() => {
-    if (!state || state === handled.current) return;
-    handled.current = state;
-    if ('error' in state) {
-      toast.error(state.error);
-      return;
+  >(async (prev, formData) => {
+    const result = await createWalkInAction(prev, formData);
+    if (result && 'error' in result) {
+      toast.error(result.error);
+      return result;
     }
     toast.success('Urgência registada — paciente em sala de espera.');
     router.refresh();
     onClose();
-    setPatient(null);
-    setPatientQuery('');
+    resetPatient();
     setTreatmentId('');
     setDoctorId('');
-  }, [state, router, onClose]);
+    return result;
+  }, undefined);
 
   return (
     <Modal

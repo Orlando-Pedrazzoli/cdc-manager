@@ -10,13 +10,14 @@
 //   2. NOTAS CLÍNICAS — notas desta consulta (append-only na ficha)
 //
 // Só apresenta forms quando canEdit (consulta in-progress); nos outros
-// estados é leitura. Padrão do projeto: useActionState + handled useRef
-// (evita toast duplo), cores/padding/radius INLINE.
+// estados é leitura. Padrão do projeto: os efeitos do resultado (toast,
+// reset) correm no próprio callback do useActionState — nunca num useEffect
+// a observar o estado (regra do React Compiler). Cores/padding/radius INLINE.
 // =============================================================================
 
 'use client';
 
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { useActionState, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Plus, Ban } from 'lucide-react';
 import {
@@ -82,11 +83,6 @@ export function ProcedureList({
   treatments: TreatmentOption[];
   canEdit: boolean;
 }) {
-  const [addState, addAction, adding] = useActionState<
-    ConsultationActionState,
-    FormData
-  >(addProcedureAction, undefined);
-  const addHandled = useRef<ConsultationActionState>(undefined);
   const formRef = useRef<HTMLFormElement>(null);
   const [price, setPrice] = useState('');
   const [cost, setCost] = useState('');
@@ -106,16 +102,18 @@ export function ProcedureList({
     setSelected(null);
   };
 
-  useEffect(() => {
-    if (!addState || addHandled.current === addState) return;
-    addHandled.current = addState;
-    if ('error' in addState) toast.error(addState.error);
-    if ('success' in addState) {
+  const [, addAction, adding] = useActionState<
+    ConsultationActionState,
+    FormData
+  >(async (prev, formData) => {
+    const result = await addProcedureAction(prev, formData);
+    if (result && 'error' in result) toast.error(result.error);
+    if (result && 'success' in result) {
       toast.success('Ato registado');
       resetForm();
     }
-    // Padrão do projeto: useActionState + handled useRef (evita toast duplo)
-  }, [addState]);
+    return result;
+  }, undefined);
 
   const onTreatmentChange = (id: string) => {
     const t = treatments.find(x => x.id === id) ?? null;
@@ -346,21 +344,18 @@ export function ProcedureList({
 function ProcedureRow({ p, canEdit }: { p: ProcedureItem; canEdit: boolean }) {
   const isVoid = p.status === 'void';
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [voidState, voidAction, voiding] = useActionState<
+  const [, voidAction, voiding] = useActionState<
     ConsultationActionState,
     FormData
-  >(voidProcedureAction, undefined);
-  const handled = useRef<ConsultationActionState>(undefined);
-
-  useEffect(() => {
-    if (!voidState || handled.current === voidState) return;
-    handled.current = voidState;
-    if ('error' in voidState) toast.error(voidState.error);
-    if ('success' in voidState) {
+  >(async (prev, formData) => {
+    const result = await voidProcedureAction(prev, formData);
+    if (result && 'error' in result) toast.error(result.error);
+    if (result && 'success' in result) {
       toast.success('Ato anulado');
       setConfirmOpen(false);
     }
-  }, [voidState]);
+    return result;
+  }, undefined);
 
   return (
     <div
@@ -528,22 +523,19 @@ export function ClinicalNotes({
   notes: NoteItem[];
   canEdit: boolean;
 }) {
-  const [state, action, pending] = useActionState<
-    ConsultationActionState,
-    FormData
-  >(addClinicalNoteAction, undefined);
-  const handled = useRef<ConsultationActionState>(undefined);
   const formRef = useRef<HTMLFormElement>(null);
-
-  useEffect(() => {
-    if (!state || handled.current === state) return;
-    handled.current = state;
-    if ('error' in state) toast.error(state.error);
-    if ('success' in state) {
-      toast.success('Nota registada na ficha');
-      formRef.current?.reset();
-    }
-  }, [state]);
+  const [, action, pending] = useActionState<ConsultationActionState, FormData>(
+    async (prev, formData) => {
+      const result = await addClinicalNoteAction(prev, formData);
+      if (result && 'error' in result) toast.error(result.error);
+      if (result && 'success' in result) {
+        toast.success('Nota registada na ficha');
+        formRef.current?.reset();
+      }
+      return result;
+    },
+    undefined,
+  );
 
   return (
     <div

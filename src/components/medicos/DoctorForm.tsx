@@ -16,7 +16,7 @@
 
 'use client';
 
-import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
+import { useActionState, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Copy, Plus, Trash2 } from 'lucide-react';
@@ -141,37 +141,36 @@ export function DoctorForm({
     mode === 'edit' && doctorId
       ? updateDoctorAction.bind(null, doctorId)
       : createDoctorAction;
+  const [manualCode, setManualCode] = useState<string | null>(null);
+
+  // Efeitos do resultado (avisos, código manual, navegação) no próprio
+  // callback da action — sem useEffect a observar `state`
   const [state, formAction, pending] = useActionState<
     DoctorFormState,
     FormData
-  >(action, undefined);
+  >(async (prev, formData) => {
+    const result = await action(prev, formData);
+    if (!result || 'error' in result) return result;
 
-  const [manualCode, setManualCode] = useState<string | null>(null);
-  const handled = useRef<DoctorFormState>(undefined);
-
-  useEffect(() => {
-    if (!state || state === handled.current) return;
-    handled.current = state;
-    if ('error' in state) return;
-
-    if (state.conflictCount && state.conflictCount > 0 && state.warning) {
-      toast(state.warning, { icon: '⚠️', duration: 8000 });
-    } else if (state.warning) {
-      toast(state.warning, { icon: '⚠️', duration: 6000 });
+    if (result.conflictCount && result.conflictCount > 0 && result.warning) {
+      toast(result.warning, { icon: '⚠️', duration: 8000 });
+    } else if (result.warning) {
+      toast(result.warning, { icon: '⚠️', duration: 6000 });
     }
 
-    if (state.manualCode) {
-      setManualCode(state.manualCode);
-      return;
+    if (result.manualCode) {
+      setManualCode(result.manualCode);
+      return result;
     }
     if (mode === 'create') {
       toast.success('Médico criado.');
-      router.push(`/admin/medicos/${state.doctorId}`);
+      router.push(`/admin/medicos/${result.doctorId}`);
     } else {
       toast.success('Médico atualizado.');
       router.refresh();
     }
-  }, [state, mode, router]);
+    return result;
+  }, undefined);
 
   const closeManualCode = () => {
     const navId = state && 'success' in state ? state.doctorId : null;

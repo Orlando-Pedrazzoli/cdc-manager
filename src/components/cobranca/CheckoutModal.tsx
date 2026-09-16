@@ -11,7 +11,7 @@
 
 'use client';
 
-import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
+import { useActionState, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { ReceiptEuro } from 'lucide-react';
@@ -54,24 +54,23 @@ export function CheckoutModal({
   );
   const [method, setMethod] = useState<PaymentMethod>('card');
 
-  const [state, action, pending] = useActionState<BillingActionState, FormData>(
-    checkoutAction,
+  // Efeitos do resultado no próprio callback da action (sem useEffect)
+  const [, action, pending] = useActionState<BillingActionState, FormData>(
+    async (prev, formData) => {
+      const result = await checkoutAction(prev, formData);
+      if (result && 'error' in result)
+        toast.error(result.error, { duration: 7000 });
+      if (result && 'success' in result) {
+        toast.success('Cobrança registada — documento fiscal aguarda Moloni', {
+          duration: 6000,
+        });
+        setOpen(false);
+        router.refresh();
+      }
+      return result;
+    },
     undefined,
   );
-  const handled = useRef<BillingActionState>(undefined);
-
-  useEffect(() => {
-    if (!state || handled.current === state) return;
-    handled.current = state;
-    if ('error' in state) toast.error(state.error, { duration: 7000 });
-    if ('success' in state) {
-      toast.success('Cobrança registada — documento fiscal aguarda Moloni', {
-        duration: 6000,
-      });
-      setOpen(false);
-      router.refresh();
-    }
-  }, [state, router]);
 
   const toggle = (id: string) =>
     setSelected(prev => {

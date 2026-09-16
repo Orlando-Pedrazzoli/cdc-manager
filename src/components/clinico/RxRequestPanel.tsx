@@ -7,13 +7,14 @@
 // (Pedido → Em captação → Concluído) — o médico sabe quando o paciente
 // está pronto a voltar. Na fase 2, as imagens associadas aparecem aqui.
 //
-// Padrão do projeto: useActionState + handled useRef; visual 100% inline.
+// Padrão do projeto: efeitos do resultado no callback do useActionState
+// (sem useEffect a observar o estado); visual 100% inline.
 // canEdit = consulta em curso (o pedido nasce na triagem).
 // =============================================================================
 
 'use client';
 
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { useActionState, useRef, useState } from 'react';
 import {
   createRxRequestAction,
   cancelRxRequestAction,
@@ -56,39 +57,35 @@ export function RxRequestPanel({
   items: RxItem[];
   canEdit: boolean;
 }) {
-  const [createState, createAction, creating] = useActionState<
-    RxActionState,
-    FormData
-  >(createRxRequestAction, undefined);
-  const [cancelState, cancelAction, cancelling] = useActionState<
-    RxActionState,
-    FormData
-  >(cancelRxRequestAction, undefined);
-
   const [modality, setModality] = useState<RxModality>('periapical');
   // B.6: o pedido só sai com consentimento assinado — passo intermédio
   const [consentOpen, setConsentOpen] = useState(false);
   const [signature, setSignature] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const handledRef = useRef<RxActionState>(undefined);
 
-  // Limpar o formulário após sucesso (padrão handled useRef do projeto)
-  useEffect(() => {
-    if (createState && createState !== handledRef.current) {
-      handledRef.current = createState;
-      if ('success' in createState) {
-        formRef.current?.reset();
-        setModality('periapical');
-        setConsentOpen(false);
-        setSignature(null);
-      }
-      if ('error' in createState) {
-        // Erro do servidor: voltar ao formulário para corrigir
-        setConsentOpen(false);
-        setSignature(null);
-      }
+  const [createState, createAction, creating] = useActionState<
+    RxActionState,
+    FormData
+  >(async (prev, formData) => {
+    const result = await createRxRequestAction(prev, formData);
+    if (result && 'success' in result) {
+      // Limpar o formulário após sucesso
+      formRef.current?.reset();
+      setModality('periapical');
+      setConsentOpen(false);
+      setSignature(null);
     }
-  }, [createState]);
+    if (result && 'error' in result) {
+      // Erro do servidor: voltar ao formulário para corrigir
+      setConsentOpen(false);
+      setSignature(null);
+    }
+    return result;
+  }, undefined);
+  const [cancelState, cancelAction, cancelling] = useActionState<
+    RxActionState,
+    FormData
+  >(cancelRxRequestAction, undefined);
 
   const needsTeeth = modality !== 'panoramica';
   const error =

@@ -36,7 +36,6 @@ export function QuickPatientSearch() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seqRef = useRef(0); // guarda de corridas
 
   // Ctrl/Cmd+K foca a pesquisa de qualquer sítio da área admin
@@ -64,19 +63,26 @@ export function QuickPatientSearch() {
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
 
-  // Pesquisa com debounce + descarte de respostas fora de ordem
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    const term = q.trim();
-    if (term.length < 2) {
+  // Mudança do texto: os resets síncronos vivem AQUI (handler), não no
+  // effect — o React Compiler rejeita setState síncrono dentro de useEffect.
+  const onQueryChange = (value: string) => {
+    setQ(value);
+    if (value.trim().length < 2) {
       setResults([]);
       setOpen(false);
       setActive(-1);
       setLoading(false);
-      return;
+    } else {
+      setLoading(true);
     }
-    setLoading(true);
-    debounceRef.current = setTimeout(async () => {
+  };
+
+  // Pesquisa com debounce + descarte de respostas fora de ordem. O effect
+  // só agenda o pedido; os setState correm no callback assíncrono.
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) return;
+    const timer = setTimeout(async () => {
       const seq = ++seqRef.current;
       try {
         const rows = await quickSearchPatientsAction(term);
@@ -94,9 +100,7 @@ export function QuickPatientSearch() {
         if (seq === seqRef.current) setLoading(false);
       }
     }, 250);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    return () => clearTimeout(timer);
   }, [q]);
 
   const goTo = (id: string) => {
@@ -147,7 +151,7 @@ export function QuickPatientSearch() {
         <input
           ref={inputRef}
           value={q}
-          onChange={e => setQ(e.target.value)}
+          onChange={e => onQueryChange(e.target.value)}
           onKeyDown={onInputKey}
           onFocus={() => {
             if (results.length > 0) setOpen(true);

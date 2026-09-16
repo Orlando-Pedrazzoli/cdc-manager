@@ -11,7 +11,7 @@
 
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { Link2, Plus, Trash2, UserRound } from 'lucide-react';
 import { findPatientsAction } from '@/actions/appointments';
 import { RELATIONSHIPS, RELATIONSHIP_LABEL } from '@/lib/domain';
@@ -110,23 +110,29 @@ function RelativeLine({
   onRemove: () => void;
 }) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<{ id: string; label: string }[]>([]);
+  // Resultado etiquetado pela pesquisa que o originou; a lista mostrada é
+  // DERIVADA no render (só se ainda corresponde ao texto atual e a linha não
+  // tem paciente ligado) — sem setState síncrono no effect.
+  const [fetched, setFetched] = useState<{
+    query: string;
+    items: { id: string; label: string }[];
+  } | null>(null);
   const [, start] = useTransition();
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const active = !row.patientId && query.trim().length >= 2;
   useEffect(() => {
-    if (row.patientId || query.trim().length < 2) {
-      setResults([]);
-      return;
-    }
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      start(async () => setResults(await findPatientsAction(query)));
+    if (!active) return;
+    const q = query;
+    const timer = setTimeout(() => {
+      start(async () => {
+        const items = await findPatientsAction(q);
+        setFetched({ query: q, items });
+      });
     }, 300);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, [query, row.patientId]);
+    return () => clearTimeout(timer);
+  }, [active, query]);
+
+  const results = active && fetched?.query === query ? fetched.items : [];
 
   return (
     <div
@@ -208,8 +214,7 @@ function RelativeLine({
                     const parts = p.label.split('·').map(x => x.trim());
                     const name = parts[1] ?? parts[0];
                     const phone = parts[2] ?? '';
-                    onChange({ patientId: p.id, name, phone });
-                    setResults([]);
+                    onChange({ patientId: p.id, name, phone }); // lista some (derivada)
                   }}
                   style={{
                     width: '100%',

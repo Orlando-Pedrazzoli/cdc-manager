@@ -42,8 +42,9 @@ export const checkoutSchema = z.object({
       .refine(isValidNif, 'NIF inválido (dígito de controlo)')
       .nullable(),
   ),
-  // Fase 5C: valor pago AGORA em cêntimos ('' ou ausente = total)
-  paidNowEuros: z.preprocess(
+  // Fase 5C: valor pago AGORA. Entra do formulário em EUROS ("120,50"),
+  // sai daqui em CÊNTIMOS inteiros; '' ou ausente = null = total.
+  paidNowCents: z.preprocess(
     v => {
       if (typeof v !== 'string' && typeof v !== 'number') return null;
       const s = String(v).trim().replace(/\s/g, '').replace(',', '.');

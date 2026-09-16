@@ -12,7 +12,7 @@
 
 'use client';
 
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { useActionState, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Ban } from 'lucide-react';
@@ -35,26 +35,26 @@ export function VoidInvoiceModal({
   const [voidProcedures, setVoidProcedures] = useState<'true' | 'false'>(
     'true',
   );
-  const [state, action, pending] = useActionState<VoidInvoiceState, FormData>(
-    voidInvoiceAction,
+  // Efeitos do resultado (toast, fechar, refresh) corridos no PRÓPRIO
+  // callback da action — não num useEffect a observar `state` (padrão que
+  // o React Compiler rejeita: setState síncrono dentro de effect).
+  const [, action, pending] = useActionState<VoidInvoiceState, FormData>(
+    async (prev, formData) => {
+      const result = await voidInvoiceAction(prev, formData);
+      if (result && 'error' in result) toast.error(result.error);
+      if (result && 'success' in result) {
+        toast.success(
+          result.voidedProcedures > 0
+            ? `Documento anulado — ${result.voidedProcedures} ato(s) anulado(s)${result.adjustments > 0 ? `, ${result.adjustments} estorno(s) de comissão` : ''}`
+            : 'Documento anulado — atos devolvidos à cobrança',
+        );
+        setOpen(false);
+        router.refresh();
+      }
+      return result;
+    },
     undefined,
   );
-  const handled = useRef<VoidInvoiceState>(undefined);
-
-  useEffect(() => {
-    if (!state || handled.current === state) return;
-    handled.current = state;
-    if ('error' in state) toast.error(state.error);
-    if ('success' in state) {
-      toast.success(
-        state.voidedProcedures > 0
-          ? `Documento anulado — ${state.voidedProcedures} ato(s) anulado(s)${state.adjustments > 0 ? `, ${state.adjustments} estorno(s) de comissão` : ''}`
-          : 'Documento anulado — atos devolvidos à cobrança',
-      );
-      setOpen(false);
-      router.refresh();
-    }
-  }, [state, router]);
 
   const optionStyle = (active: boolean): React.CSSProperties => ({
     display: 'flex',

@@ -9,7 +9,7 @@
 
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
@@ -24,6 +24,8 @@ export interface ModalProps {
   maxWidth?: number;
 }
 
+const subscribeNoop = () => () => {};
+
 export function Modal({
   open,
   onClose,
@@ -32,9 +34,15 @@ export function Modal({
   footer,
   maxWidth = 520,
 }: ModalProps) {
-  // Portal só depois de montado (SSR-safe)
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // Portal só depois de montado (SSR-safe). useSyncExternalStore com
+  // snapshot de servidor = false e de cliente = true: no SSR e na hidratação
+  // devolve false, no primeiro render pós-hidratação devolve true — o mesmo
+  // efeito do antigo useEffect(() => setMounted(true)) sem setState em effect.
+  const mounted = useSyncExternalStore(
+    subscribeNoop,
+    () => true,
+    () => false,
+  );
 
   // Escape fecha + scroll da página bloqueado enquanto aberto
   useEffect(() => {

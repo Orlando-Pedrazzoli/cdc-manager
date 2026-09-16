@@ -15,21 +15,15 @@
 
 'use client';
 
-import {
-  useActionState,
-  useEffect,
-  useRef,
-  useState,
-  useTransition,
-} from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Search } from 'lucide-react';
 import {
   createAppointmentAction,
-  findPatientsAction,
   type AppointmentFormState,
 } from '@/actions/appointments';
+import { usePatientSearch } from '@/components/agenda/usePatientSearch';
 import { getFreeSlotsAction } from '@/actions/agenda';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
@@ -57,56 +51,50 @@ export function NewAppointmentModal({
   // Estado próprio: abre com o dia da agenda, mas é livremente alterável.
   const [date, setDate] = useState(initialDate);
   const todayStr = new Date().toISOString().slice(0, 10);
-  useEffect(() => {
-    // Reabrir o modal noutro dia da agenda → ressincronizar a data
+  // Reabrir o modal noutro dia da agenda → ressincronizar a data. Padrão
+  // "ajustar estado durante o render" (react.dev) em vez de useEffect: o
+  // React repete o render de imediato, sem frame intermédio com a data velha.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) setDate(initialDate);
-  }, [open, initialDate]);
+  }
 
-  // --- Pesquisa de paciente --------------------------------------------------
-  const [patientQuery, setPatientQuery] = useState('');
-  const [patientResults, setPatientResults] = useState<
-    { id: string; label: string }[]
-  >([]);
-  const [patient, setPatient] = useState<{ id: string; label: string } | null>(
-    null,
-  );
-  const [, startSearch] = useTransition();
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (patient || patientQuery.trim().length < 2) {
-      setPatientResults([]);
-      return;
-    }
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => {
-      startSearch(async () => {
-        setPatientResults(await findPatientsAction(patientQuery));
-      });
-    }, 300);
-    return () => {
-      if (searchTimer.current) clearTimeout(searchTimer.current);
-    };
-  }, [patientQuery, patient]);
+  // --- Pesquisa de paciente (hook partilhado com WalkInModal) ---------------
+  const {
+    patientQuery,
+    setPatientQuery,
+    patient,
+    setPatient,
+    patientResults,
+    reset: resetPatient,
+  } = usePatientSearch();
 
   // --- Ato / médico / slots --------------------------------------------------
   const [treatmentId, setTreatmentId] = useState('');
   const [doctorId, setDoctorId] = useState('');
-  const [slots, setSlots] = useState<{ start: string }[]>([]);
-  const [slotsLoading, setSlotsLoading] = useState(false);
-  const [start, setStart] = useState('');
   const [channel, setChannel] = useState<'front-desk' | 'phone' | 'whatsapp'>(
     'front-desk',
   );
 
+  // Slots livres: o resultado guarda a CHAVE do pedido (médico|ato|dia).
+  // `slots`, `slotsLoading` e `start` são derivados no render a partir dessa
+  // chave — mudar de médico/ato/dia invalida-os de imediato sem setState em
+  // effect. O effect só dispara o pedido ao servidor.
+  const slotsKey =
+    doctorId && treatmentId && date ? `${doctorId}|${treatmentId}|${date}` : '';
+  const [slotsResult, setSlotsResult] = useState<{
+    key: string;
+    slots: { start: string }[];
+  } | null>(null);
+  const [startSel, setStartSel] = useState<{ key: string; start: string }>({
+    key: '',
+    start: '',
+  });
+
   useEffect(() => {
-    setStart('');
-    if (!doctorId || !treatmentId || !date) {
-      setSlots([]);
-      return;
-    }
+    if (!slotsKey) return;
     let cancelled = false;
-    setSlotsLoading(true);
     getFreeSlotsAction({
       clinicId,
       doctorId,
@@ -114,38 +102,42 @@ export function NewAppointmentModal({
       date,
     })
       .then(s => {
-        if (!cancelled) setSlots(s);
+        if (!cancelled) setSlotsResult({ key: slotsKey, slots: s });
       })
-      .finally(() => {
-        if (!cancelled) setSlotsLoading(false);
+      .catch(() => {
+        if (!cancelled) setSlotsResult({ key: slotsKey, slots: [] });
       });
     return () => {
       cancelled = true;
     };
-  }, [doctorId, treatmentId, clinicId, date]);
+  }, [slotsKey, clinicId, doctorId, treatmentId, date]);
+
+  const slots = slotsResult?.key === slotsKey ? slotsResult.slots : [];
+  const slotsLoading = !!slotsKey && slotsResult?.key !== slotsKey;
+  const start = startSel.key === slotsKey ? startSel.start : '';
+  const setStart = (value: string) =>
+    setStartSel({ key: slotsKey, start: value });
 
   // --- Submit ----------------------------------------------------------------
+  // Efeitos do resultado (toast, fechar, refresh, reset) corridos no
+  // próprio callback da action — sem useEffect a observar `state`
   const [state, formAction, pending] = useActionState<
     AppointmentFormState,
     FormData
-  >(createAppointmentAction, undefined);
-  const handled = useRef<AppointmentFormState>(undefined);
-
-  useEffect(() => {
-    if (!state || state === handled.current) return;
-    handled.current = state;
-    if ('error' in state) return;
+  >(async (prev, formData) => {
+    const result = await createAppointmentAction(prev, formData);
+    if (result && 'error' in result) return result;
     toast.success('Marcação criada.');
     router.refresh();
     onClose();
     // Reset para a próxima abertura
-    setPatient(null);
-    setPatientQuery('');
+    resetPatient();
     setTreatmentId('');
     setDoctorId('');
-    setStart('');
+    setStartSel({ key: '', start: '' });
     setChannel('front-desk');
-  }, [state, router, onClose]);
+    return result;
+  }, undefined);
 
   return (
     <Modal open={open} onClose={onClose} title='Nova marcação' maxWidth={560}>
@@ -191,8 +183,7 @@ export function NewAppointmentModal({
                   key={r.id}
                   type='button'
                   onClick={() => {
-                    setPatient(r);
-                    setPatientResults([]);
+                    setPatient(r); // a lista some sozinha (derivada de `patient`)
                   }}
                   style={{
                     display: 'block',

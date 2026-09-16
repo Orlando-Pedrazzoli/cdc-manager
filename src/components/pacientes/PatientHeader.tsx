@@ -11,7 +11,7 @@
 
 'use client';
 
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { useActionState, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
@@ -257,25 +257,23 @@ export function PatientHeader({ patient }: { patient: PatientHeaderData }) {
   const [inviteModal, setInviteModal] = useState(false);
   const [manualCode, setManualCode] = useState<string | null>(null);
   const inviteAction = sendPatientInviteAction.bind(null, patient.id);
+  // Efeitos do resultado no próprio callback da action (sem useEffect)
   const [inviteState, inviteFormAction, invitePending] = useActionState<
     InviteFormState,
     FormData
-  >(inviteAction, undefined);
-  const handledInvite = useRef<InviteFormState>(undefined);
-
-  useEffect(() => {
-    if (!inviteState || inviteState === handledInvite.current) return;
-    handledInvite.current = inviteState;
-    if ('error' in inviteState) return; // mostrado inline no modal
-    if (inviteState.manualCode) {
-      setManualCode(inviteState.manualCode);
-      if (inviteState.warning) toast(inviteState.warning, { icon: '⚠️' });
+  >(async (prev, formData) => {
+    const result = await inviteAction(prev, formData);
+    if (!result || 'error' in result) return result; // mostrado inline no modal
+    if (result.manualCode) {
+      setManualCode(result.manualCode);
+      if (result.warning) toast(result.warning, { icon: '⚠️' });
     } else {
       toast.success('Convite enviado por email.');
       setInviteModal(false);
       router.refresh();
     }
-  }, [inviteState, router]);
+    return result;
+  }, undefined);
 
   const closeManualCode = () => {
     setManualCode(null);

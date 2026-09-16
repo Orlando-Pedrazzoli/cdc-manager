@@ -243,7 +243,7 @@ export function IssueDocumentButton({
                   fontSize: '12.5px',
                 }}
               >
-                Campos sem valor na ficha (ficaram como "________"):{' '}
+                Campos sem valor na ficha (ficaram como &quot;________&quot;):{' '}
                 {prepared.missing.join(', ')}. Complete no texto.
               </p>
             )}

@@ -61,7 +61,7 @@ export async function checkoutAction(
       procedureIds: formData.get('procedureIds'),
       paymentMethod: formData.get('paymentMethod'),
       nif: formData.get('nif'),
-      paidNowEuros: formData.get('paidNowEuros'),
+      paidNowCents: formData.get('paidNowEuros'), // euros no form → cêntimos no schema
     });
     if (!parsed.success) {
       return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
@@ -106,7 +106,7 @@ export async function checkoutAction(
 
     // Fase 5C: pagamento parcial ("em 2x") — o que fica por pagar regista-se
     // depois na fatura (Registar pagamento). 0 = nada pago agora (pendente).
-    const paidNow = data.paidNowEuros == null ? totalCents : data.paidNowEuros;
+    const paidNow = data.paidNowCents ?? totalCents;
     if (paidNow > totalCents) {
       return { error: 'O valor pago não pode exceder o total.' };
     }

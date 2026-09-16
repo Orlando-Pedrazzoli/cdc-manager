@@ -14,14 +14,7 @@
 
 'use client';
 
-import {
-  startTransition,
-  useActionState,
-  useEffect,
-  useRef,
-  useState,
-  useTransition,
-} from 'react';
+import { startTransition, useActionState, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { PackagePlus, Search } from 'lucide-react';
@@ -29,11 +22,11 @@ import {
   createLabCaseAction,
   type LabCaseActionState,
 } from '@/actions/lab-cases';
-import { findPatientsAction } from '@/actions/appointments';
 import { LAB_WORK_TYPES, LAB_WORK_TYPE_LABEL } from '@/lib/domain';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
+import { usePatientSearch } from '@/components/agenda/usePatientSearch';
 
 export interface LabOption {
   id: string;
@@ -82,51 +75,32 @@ function NewLabCaseModal({
     }
   };
 
-  // Pesquisa de paciente (mesmo padrão do modal de marcações)
-  const [patientQuery, setPatientQuery] = useState('');
-  const [patientResults, setPatientResults] = useState<
-    { id: string; label: string }[]
-  >([]);
-  const [patient, setPatient] = useState<{ id: string; label: string } | null>(
-    lockedPatient ?? null,
-  );
-  const [, startSearch] = useTransition();
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Pesquisa de paciente (hook partilhado com os modais da agenda)
+  const {
+    patientQuery,
+    setPatientQuery,
+    patient,
+    setPatient,
+    patientResults,
+    reset: resetPatient,
+  } = usePatientSearch(lockedPatient ?? null);
 
-  useEffect(() => {
-    if (patient || patientQuery.trim().length < 2) {
-      setPatientResults([]);
-      return;
-    }
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => {
-      startSearch(async () => {
-        setPatientResults(await findPatientsAction(patientQuery));
-      });
-    }, 300);
-    return () => {
-      if (searchTimer.current) clearTimeout(searchTimer.current);
-    };
-  }, [patientQuery, patient]);
-
+  // Efeitos do resultado (toast, fechar, refresh, reset) no próprio
+  // callback da action — sem useEffect a observar `state`
   const [state, formAction, pending] = useActionState<
     LabCaseActionState,
     FormData
-  >(createLabCaseAction, undefined);
-  const handled = useRef<LabCaseActionState>(undefined);
-
-  useEffect(() => {
-    if (!state || state === handled.current) return;
-    handled.current = state;
-    if ('error' in state) return;
+  >(async (prev, formData) => {
+    const result = await createLabCaseAction(prev, formData);
+    if (!result || 'error' in result) return result;
     toast.success('Pedido ao laboratório registado.');
     router.refresh();
     onClose();
-    if (!lockedPatient) setPatient(null);
-    setPatientQuery('');
+    resetPatient(); // volta ao paciente bloqueado, se houver
     setLabId('');
     setDueDate('');
-  }, [state, router, onClose, lockedPatient]);
+    return result;
+  }, undefined);
 
   return (
     <Modal
@@ -184,8 +158,7 @@ function NewLabCaseModal({
                   key={r.id}
                   type='button'
                   onClick={() => {
-                    setPatient(r);
-                    setPatientResults([]);
+                    setPatient(r); // a lista some sozinha (derivada)
                   }}
                   style={{
                     display: 'block',

@@ -12,7 +12,7 @@
 
 'use client';
 
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { useActionState, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { CalendarOff, Trash2 } from 'lucide-react';
@@ -50,21 +50,20 @@ export function DoctorExceptions({
   const [type, setType] = useState<'unavailable' | 'custom'>('unavailable');
   const [range, setRange] = useState({ start: '', end: '' });
   const action = addDoctorExceptionAction.bind(null, doctorId);
+  // Efeitos do resultado no próprio callback da action (sem useEffect)
   const [state, formAction, pending] = useActionState<
     DoctorFormState,
     FormData
-  >(action, undefined);
-  const handled = useRef<DoctorFormState>(undefined);
-
-  useEffect(() => {
-    if (!state || state === handled.current) return;
-    handled.current = state;
-    if ('error' in state) return;
-    if (state.warning) toast(state.warning, { icon: '⚠️', duration: 8000 });
-    toast.success('Exceção adicionada.');
-    setRange({ start: '', end: '' });
-    router.refresh();
-  }, [state, router]);
+  >(async (prev, formData) => {
+    const result = await action(prev, formData);
+    if (result && 'success' in result) {
+      if (result.warning) toast(result.warning, { icon: '⚠️', duration: 8000 });
+      toast.success('Exceção adicionada.');
+      setRange({ start: '', end: '' });
+      router.refresh();
+    }
+    return result;
+  }, undefined);
 
   const remove = async (date: string, clinicId: string | null) => {
     const res = await removeDoctorExceptionAction(doctorId, date, clinicId);
