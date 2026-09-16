@@ -9,7 +9,7 @@ import DocumentTemplate from '@/models/DocumentTemplate';
 import Appointment from '@/models/Appointment';
 import TreatmentType from '@/models/TreatmentType';
 import { getActiveClinics } from '@/models/Clinic';
-import { ensureDefaultTemplates } from '@/actions/document-templates';
+import { ensureDefaultTemplates } from '@/lib/document-templates-seed';
 import { placeholdersIn } from '@/lib/document-merge';
 import { IssueDocumentButton } from '@/components/documentos/IssueDocumentButton';
 

@@ -21,7 +21,6 @@ interface MongooseCache {
 
 // Extende o objeto global do Node para tipar a cache sem usar `any`
 declare global {
-  // eslint-disable-next-line no-var
   var mongooseCache: MongooseCache | undefined;
 }
 

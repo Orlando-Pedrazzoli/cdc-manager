@@ -9,7 +9,7 @@ import { FileText } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import DocumentTemplate from '@/models/DocumentTemplate';
-import { ensureDefaultTemplates } from '@/actions/document-templates';
+import { ensureDefaultTemplates } from '@/lib/document-templates-seed';
 import {
   TEMPLATE_KIND_LABEL,
   type TemplateKind,

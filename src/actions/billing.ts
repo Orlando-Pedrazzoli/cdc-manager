@@ -36,10 +36,10 @@ import {
   registerPaymentSchema,
 } from '@/lib/validations/billing';
 import { needsAdjustmentOnVoid } from '@/lib/commission-accounting';
-import { createVoidAdjustment } from '@/actions/procedures';
+import { createVoidAdjustment } from '@/lib/commission-adjustments';
 import { cancelRecallForProcedure } from '@/lib/recalls';
 import { reverseStockForProcedure } from '@/lib/stock-consumption';
-import { emitCreditNoteForInvoice, tryEmitInvoice } from '@/actions/moloni';
+import { emitCreditNoteFor, tryEmitInvoice } from '@/lib/moloni-emission';
 import Invoice from '@/models/Invoice';
 import Procedure from '@/models/Procedure';
 import Patient from '@/models/Patient';
@@ -310,10 +310,7 @@ export async function voidInvoiceAction(
     // (best-effort — o registo interno já está anulado)
     let creditNote: string | null = null;
     if (invoice.moloniDocumentId) {
-      const cn = await emitCreditNoteForInvoice(
-        String(invoice._id),
-        data.reason,
-      );
+      const cn = await emitCreditNoteFor(String(invoice._id), data.reason);
       if (cn.error) console.error('[moloni] nota de crédito:', cn.error);
       creditNote = cn.number ?? null;
     }

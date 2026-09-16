@@ -15,7 +15,8 @@
 // =============================================================================
 
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { auth } from '@/lib/auth';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -124,9 +125,19 @@ export default async function DoctorPage({
   const { id } = await params;
   const { tab: rawTab, data } = await searchParams;
   if (!/^[0-9a-fA-F]{24}$/.test(id)) notFound();
+
+  // Comissões, overrides e objetivo mensal são condições contratuais entre
+  // a clínica e o médico: só a administração vê (a receção vê agenda,
+  // dados e horários). Decisão de setembro 2026.
+  const session = await auth();
+  if (!session?.user) return null;
+  const isAdmin = session.user.role === 'admin';
+  const visibleTabs = isAdmin ? TABS : TABS.filter(t => t.key !== 'comissoes');
+
   const tab: TabKey = (
-    TABS.some(t => t.key === rawTab) ? rawTab : 'agenda'
+    visibleTabs.some(t => t.key === rawTab) ? rawTab : 'agenda'
   ) as TabKey;
+  if (rawTab === 'comissoes' && !isAdmin) redirect(`/admin/medicos/${id}`);
 
   await dbConnect();
   const [doctor, clinicsDocs, account] = await Promise.all([
@@ -566,7 +577,7 @@ export default async function DoctorPage({
           borderBottom: '1px solid #EEF1F8',
         }}
       >
-        {TABS.map(t => {
+        {visibleTabs.map(t => {
           const active = t.key === tab;
           return (
             <Link
@@ -632,6 +643,7 @@ export default async function DoctorPage({
                 doctorId={id}
                 initial={initial}
                 clinics={clinics.map(c => ({ id: c.id, name: c.name }))}
+                showFinancials={isAdmin}
               />
               <DoctorStatusToggle
                 doctorId={id}
@@ -657,7 +669,7 @@ export default async function DoctorPage({
             />
           )}
 
-          {tab === 'comissoes' && (
+          {tab === 'comissoes' && isAdmin && (
             <CommissionEditor
               doctorId={id}
               basePercentLabel={

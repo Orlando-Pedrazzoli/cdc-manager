@@ -25,8 +25,6 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import type mongoose from 'mongoose';
-import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
@@ -36,6 +34,8 @@ import {
   type DiscountInput,
 } from '@/lib/commissions';
 import { needsAdjustmentOnVoid } from '@/lib/commission-accounting';
+import { requireDoctorWithPatient } from '@/lib/rbac';
+import { createVoidAdjustment } from '@/lib/commission-adjustments';
 import {
   consumeStockForAppointment,
   reverseStockForProcedure,
@@ -57,7 +57,6 @@ import Procedure from '@/models/Procedure';
 import ClinicalRecord from '@/models/ClinicalRecord';
 import Odontogram from '@/models/Odontogram';
 import Doctor from '@/models/Doctor';
-import CommissionAdjustment from '@/models/CommissionAdjustment';
 import TreatmentType from '@/models/TreatmentType';
 import { getClinicById } from '@/models/Clinic';
 
@@ -376,62 +375,6 @@ export async function voidProcedureAction(
 }
 
 // -----------------------------------------------------------------------------
-// ESTORNO DE COMISSÃO — partilhado com a anulação de faturas (billing.ts).
-// Idempotente pelo índice único em procedureId (E11000 = já lançado).
-// -----------------------------------------------------------------------------
-export async function createVoidAdjustment(params: {
-  proc: {
-    _id: mongoose.Types.ObjectId;
-    clinicId: mongoose.Types.ObjectId;
-    doctorId: mongoose.Types.ObjectId;
-    patientId: mongoose.Types.ObjectId;
-    nameSnapshot: string;
-    categorySnapshot?: string | null;
-    priceCents: number;
-    costCents?: number | null;
-    commissionBaseCents?: number | null;
-    commissionCents: number;
-    executedAt?: Date | null;
-  };
-  reason: 'invoice-void' | 'procedure-void';
-  invoiceId: string | null;
-  effectiveAt: Date;
-  userId: string;
-  note: string | null;
-}): Promise<void> {
-  const { proc } = params;
-  const cost = proc.costCents ?? 0;
-  const base = proc.commissionBaseCents ?? proc.priceCents;
-  try {
-    await CommissionAdjustment.create({
-      clinicId: proc.clinicId,
-      doctorId: proc.doctorId,
-      patientId: proc.patientId,
-      procedureId: proc._id,
-      invoiceId: params.invoiceId,
-      reason: params.reason,
-      descriptionSnapshot: proc.nameSnapshot,
-      categorySnapshot: proc.categorySnapshot ?? null,
-      priceCents: -proc.priceCents,
-      costCents: -cost,
-      commissionBaseCents: -base,
-      commissionCents: -proc.commissionCents,
-      effectiveAt: params.effectiveAt,
-      originalExecutedAt: proc.executedAt ?? null,
-      note: params.note,
-      createdByUserId: params.userId,
-    });
-  } catch (err) {
-    const isDup =
-      typeof err === 'object' &&
-      err !== null &&
-      'code' in err &&
-      (err as { code?: number }).code === 11000;
-    if (!isDup) throw err;
-  }
-}
-
-// -----------------------------------------------------------------------------
 // NOTA CLÍNICA — append-only na ficha (ClinicalRecord lazy 1:1)
 // -----------------------------------------------------------------------------
 export async function addClinicalNoteAction(
@@ -563,26 +506,6 @@ export async function completeConsultationAction(
   } catch (e) {
     return fail(e);
   }
-}
-
-// -----------------------------------------------------------------------------
-// RBAC de dados (ficha): o médico só acede a pacientes COM QUEM TEM CONSULTAS
-// -----------------------------------------------------------------------------
-export async function requireDoctorWithPatient(patientId: string) {
-  const session = await auth();
-  if (session?.user?.role !== 'doctor' || !session.user.doctorId) {
-    throw new Error('Sem permissões.');
-  }
-  if (!OBJECT_ID.test(patientId)) throw new Error('Paciente inválido.');
-  await dbConnect();
-
-  const hasRelation = await Appointment.exists({
-    doctorId: session.user.doctorId,
-    patientId,
-  });
-  if (!hasRelation) throw new Error('Paciente não encontrado.'); // não vazar
-
-  return { userId: session.user.id, doctorId: session.user.doctorId };
 }
 
 // -----------------------------------------------------------------------------

@@ -36,7 +36,7 @@ import {
   planIdSchema,
   executePlanItemSchema,
 } from '@/lib/validations/procedure';
-import { requireDoctorWithPatient } from '@/actions/procedures';
+import { requireDoctorWithPatient } from '@/lib/rbac';
 import TreatmentPlan from '@/models/TreatmentPlan';
 import TreatmentType from '@/models/TreatmentType';
 import Procedure from '@/models/Procedure';

@@ -11,6 +11,7 @@
 
 import Link from 'next/link';
 import { Pencil, UserPlus } from 'lucide-react';
+import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import Doctor, { type Specialty } from '@/models/Doctor';
 import Clinic from '@/models/Clinic';
@@ -51,6 +52,11 @@ export default async function DoctorsPage({
 }) {
   const { status } = await searchParams;
   const showInactive = status === 'all';
+
+  // Coluna de comissão só para administração (ver ficha do médico)
+  const session = await auth();
+  if (!session?.user) return null;
+  const isAdmin = session.user.role === 'admin';
 
   await dbConnect();
   const [doctors, clinics, doctorUsers] = await Promise.all([
@@ -124,9 +130,11 @@ export default async function DoctorsPage({
             <TH>Nome</TH>
             <TH>Especialidades</TH>
             <TH width={130}>Clínicas</TH>
-            <TH width={110} align='right'>
-              Comissão
-            </TH>
+            {isAdmin && (
+              <TH width={110} align='right'>
+                Comissão
+              </TH>
+            )}
             <TH width={120}>Conta</TH>
             <TH width={90}>Estado</TH>
             <TH width={80} align='right'>
@@ -137,7 +145,7 @@ export default async function DoctorsPage({
         <TBody>
           {doctors.length === 0 ? (
             <TableEmpty
-              colSpan={7}
+              colSpan={isAdmin ? 7 : 6}
               message='Ainda não existem profissionais registados.'
             />
           ) : (
@@ -200,21 +208,23 @@ export default async function DoctorsPage({
                     </span>
                   </TD>
                   <TD>{clinicLabels || '—'}</TD>
-                  <TD align='right'>
-                    <Link
-                      href={`/admin/medicos/${id}?tab=comissoes`}
-                      title='Abrir comissões e overrides'
-                      style={{
-                        color: '#2743A6',
-                        fontWeight: 600,
-                        textDecoration: 'none',
-                      }}
-                    >
-                      {d.commissionRate != null
-                        ? `${Math.round(d.commissionRate * 100)}%`
-                        : 'default'}
-                    </Link>
-                  </TD>
+                  {isAdmin && (
+                    <TD align='right'>
+                      <Link
+                        href={`/admin/medicos/${id}?tab=comissoes`}
+                        title='Abrir comissões e overrides'
+                        style={{
+                          color: '#2743A6',
+                          fontWeight: 600,
+                          textDecoration: 'none',
+                        }}
+                      >
+                        {d.commissionRate != null
+                          ? `${Math.round(d.commissionRate * 100)}%`
+                          : 'default'}
+                      </Link>
+                    </TD>
+                  )}
                   <TD>
                     {account === 'active' ? (
                       <Badge variant='success'>Ativa</Badge>

@@ -2,8 +2,8 @@
 // =============================================================================
 // CDC Manager — Server Actions: modelos de documentos + emissão (Fase 5A)
 // -----------------------------------------------------------------------------
-// · ensureDefaultTemplates — semeia os modelos default se a coleção estiver
-//   vazia (idempotente; chamado pela página /admin/modelos)
+// · ensureDefaultTemplates vive em src/lib/document-templates-seed.ts —
+//   não é action (é chamada por páginas de servidor, sem sessão validada)
 // · saveTemplateAction / toggleTemplateAction — admin edita/desativa
 // · prepareDocumentAction — devolve o texto do modelo já com placeholders
 //   substituídos para o médico rever/editar (não grava nada)
@@ -28,7 +28,6 @@ import Doctor from '@/models/Doctor';
 import Appointment from '@/models/Appointment';
 import { getActiveClinics } from '@/models/Clinic';
 import {
-  DEFAULT_TEMPLATES,
   TEMPLATE_KINDS,
   TEMPLATE_KIND_DOC_CATEGORY,
   type TemplateKind,
@@ -46,29 +45,6 @@ import {
 } from '@/lib/cloudinary';
 
 const OID = /^[0-9a-fA-F]{24}$/;
-
-export async function ensureDefaultTemplates(): Promise<void> {
-  await dbConnect();
-  const n = await DocumentTemplate.countDocuments();
-  if (n > 0) return;
-  await DocumentTemplate.insertMany(
-    DEFAULT_TEMPLATES.map(t => ({
-      key: t.key,
-      kind: t.kind,
-      title: t.title,
-      body: t.body,
-      allowStaff:
-        t.kind === 'presenca' ||
-        t.kind === 'acompanhante' ||
-        t.kind === 'autorizacao',
-      requiresSignature:
-        t.kind === 'consentimento' ||
-        t.kind === 'termo' ||
-        t.kind === 'autorizacao',
-      active: true,
-    })),
-  );
-}
 
 // --- Admin: editar modelos ------------------------------------------------------
 export type TemplateFormState =

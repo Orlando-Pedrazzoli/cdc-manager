@@ -76,11 +76,15 @@ export function DoctorForm({
   doctorId,
   initial,
   clinics,
+  showFinancials = true,
 }: {
   mode: 'create' | 'edit';
   doctorId?: string;
   initial?: DoctorFormInitial;
   clinics: { id: string; name: string }[];
+  /** Comissão base e objetivo mensal — só administração (as actions de
+   *  gravação já são admin-only; aqui evita-se mostrar os valores). */
+  showFinancials?: boolean;
 }) {
   const router = useRouter();
 
@@ -212,27 +216,31 @@ export function DoctorForm({
               defaultValue={initial?.licenseNumber ?? ''}
               help='Apenas dígitos. Necessária para receitas e consentimentos — profissionais sem cédula ficam sinalizados na listagem.'
             />
-            <Input
-              id='commissionRate'
-              name='commissionRate'
-              label='Comissão base do profissional (%)'
-              type='number'
-              min={0}
-              max={100}
-              step={1}
-              defaultValue={initial?.commissionPercent ?? ''}
-              placeholder='vazio = default da clínica (40)'
-              help='Fração que o PROFISSIONAL recebe. Overrides por ato na ficha do profissional.'
-            />
-            <Input
-              id='monthlyGoalCents'
-              name='monthlyGoalCents'
-              label='Objetivo mensal de produção (€)'
-              inputMode='decimal'
-              defaultValue={initial?.monthlyGoalEuros ?? ''}
-              placeholder='ex.: 15000'
-              help='Aparece no dashboard do médico como barra de progresso (objetivo vs faturado). Vazio = sem objetivo.'
-            />
+            {showFinancials && (
+              <>
+                <Input
+                  id='commissionRate'
+                  name='commissionRate'
+                  label='Comissão base do profissional (%)'
+                  type='number'
+                  min={0}
+                  max={100}
+                  step={1}
+                  defaultValue={initial?.commissionPercent ?? ''}
+                  placeholder='vazio = default da clínica (40)'
+                  help='Fração que o PROFISSIONAL recebe. Overrides por ato na ficha do profissional.'
+                />
+                <Input
+                  id='monthlyGoalCents'
+                  name='monthlyGoalCents'
+                  label='Objetivo mensal de produção (€)'
+                  inputMode='decimal'
+                  defaultValue={initial?.monthlyGoalEuros ?? ''}
+                  placeholder='ex.: 15000'
+                  help='Aparece no dashboard do médico como barra de progresso (objetivo vs faturado). Vazio = sem objetivo.'
+                />
+              </>
+            )}
             <div>
               <label
                 htmlFor='color'
