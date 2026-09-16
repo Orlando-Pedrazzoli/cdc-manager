@@ -14,22 +14,15 @@
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
 
-export const EMPLOYEE_CONTRACT_TYPES = [
-  'sem-termo',
-  'termo-certo',
-  'termo-incerto',
-  'prestacao-servicos',
-  'estagio',
-  'outro',
-] as const;
-export type EmployeeContractType = (typeof EMPLOYEE_CONTRACT_TYPES)[number];
-export const EMPLOYEE_CONTRACT_LABEL: Record<EmployeeContractType, string> = {
-  'sem-termo': 'Sem termo',
-  'termo-certo': 'Termo certo',
-  'termo-incerto': 'Termo incerto',
-  'prestacao-servicos': 'Prestação de serviços (recibos verdes)',
-  estagio: 'Estágio',
-  outro: 'Outro',
+import {
+  EMPLOYEE_CONTRACT_TYPES,
+  EMPLOYEE_CONTRACT_LABEL,
+  type EmployeeContractType,
+} from '@/lib/domain';
+export {
+  EMPLOYEE_CONTRACT_TYPES,
+  EMPLOYEE_CONTRACT_LABEL,
+  type EmployeeContractType,
 };
 
 const historyOpts = {

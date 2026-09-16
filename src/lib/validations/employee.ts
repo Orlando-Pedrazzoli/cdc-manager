@@ -1,7 +1,7 @@
 // 📄 src/lib/validations/employee.ts
 // CDC Manager — Validações: ficha de colaborador (E16)
 import { z } from 'zod';
-import { EMPLOYEE_CONTRACT_TYPES } from '@/models/Employee';
+import { EMPLOYEE_CONTRACT_TYPES } from '@/lib/domain';
 
 const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 const emptyToNull = (v: unknown) =>

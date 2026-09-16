@@ -347,7 +347,7 @@ export default async function ConsultationPage({
             {appt.note ? ` · ${appt.note}` : ''}
           </p>
           {/* Percurso na clínica: contexto imediato da triagem — primeira
-              consulta (só o breve cadastro da receção) vs paciente com
+              consulta (só o registo breve da receção) vs paciente com
               histórico (n consultas, última visita) */}
           {prevCompletedCount === 0 ? (
             <p

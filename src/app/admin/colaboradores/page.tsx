@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { UsersRound, Plus } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
-import Employee, {
+import Employee from '@/models/Employee';
+import {
   EMPLOYEE_CONTRACT_LABEL,
   type EmployeeContractType,
-} from '@/models/Employee';
+} from '@/lib/domain';
 import { formatCents } from '@/lib/commissions';
 import { Badge } from '@/components/ui/Badge';
 

@@ -542,3 +542,25 @@ export const LAB_CASE_STATUS_LABEL: Record<LabCaseStatus, string> = {
   delivered: 'Colocada no paciente',
   cancelled: 'Cancelada',
 };
+
+// =============================================================================
+// RH — vínculos contratuais (Fase 6A, E16). Canónicos aqui porque o
+// EmployeeForm é client: importar do model arrastaria o mongoose para o browser.
+// =============================================================================
+export const EMPLOYEE_CONTRACT_TYPES = [
+  'sem-termo',
+  'termo-certo',
+  'termo-incerto',
+  'prestacao-servicos',
+  'estagio',
+  'outro',
+] as const;
+export type EmployeeContractType = (typeof EMPLOYEE_CONTRACT_TYPES)[number];
+export const EMPLOYEE_CONTRACT_LABEL: Record<EmployeeContractType, string> = {
+  'sem-termo': 'Sem termo',
+  'termo-certo': 'Termo certo',
+  'termo-incerto': 'Termo incerto',
+  'prestacao-servicos': 'Prestação de serviços (recibos verdes)',
+  estagio: 'Estágio',
+  outro: 'Outro',
+};

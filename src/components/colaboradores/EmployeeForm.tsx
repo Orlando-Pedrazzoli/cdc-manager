@@ -10,10 +10,7 @@ import {
   updateEmployeeAction,
   type EmployeeFormState,
 } from '@/actions/employees';
-import {
-  EMPLOYEE_CONTRACT_TYPES,
-  EMPLOYEE_CONTRACT_LABEL,
-} from '@/models/Employee';
+import { EMPLOYEE_CONTRACT_TYPES, EMPLOYEE_CONTRACT_LABEL } from '@/lib/domain';
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Input, Select, Textarea } from '@/components/ui/Input';
 
