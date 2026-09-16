@@ -161,7 +161,21 @@ npx tsx --env-file=.env.local scripts/import-precos.ts
 
 ## Testes
 
-A lógica pura (conversões monetárias, aritmética de datas com clamp de fim de mês, validação de horários e sobreposições, máquinas de transição, geração de slugs) é coberta por testes executados antes de cada entrega. A verificação de tipos (`npx tsc --noEmit`) é mantida sem erros em todos os commits.
+A lógica pura do motor financeiro e dos módulos das fases 1–5 tem 40 testes automáticos em `scripts/tests/` (sem framework — `node:assert`, cada ficheiro sai com código ≠ 0 se algo falhar):
+
+| Ficheiro                        | Cobre                                                                               |
+| ------------------------------- | ----------------------------------------------------------------------------------- |
+| `commissions.test.ts`           | cadeia de resolução de comissões, desconto/custo por linha, arredondamento bancário |
+| `commission-accounting.test.ts` | regra de fecho de mês e estornos em UTC/Lisboa                                      |
+| `anamnesis.test.ts`             | parsing e validação da anamnese, alertas, estados de validade                       |
+| `price-update.test.ts`          | aumentos de tabela em % ou €, arredondamentos, descidas                             |
+| `document-merge.test.ts`        | placeholders dos modelos de documentos, datas PT                                    |
+
+```bash
+npm run test    # os 5 ficheiros
+npm run lint    # eslint, zero avisos tolerados
+npm run check   # tsc + lint + test — o que corre antes de cada entrega
+```
 
 ## Deployment
 
