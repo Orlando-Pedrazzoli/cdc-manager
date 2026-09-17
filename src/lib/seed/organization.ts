@@ -38,4 +38,14 @@ export async function seedOrganization(): Promise<void> {
     if (r.modifiedCount)
       console.log(`✔ Clínica ${slug}: nome curto e cor definidos`);
   }
+  // Clínica principal: Colombo (era o default hardcoded) — só se nenhuma o for
+  const hasDefault = await Clinic.exists({ isDefault: true });
+  if (!hasDefault) {
+    const r = await Clinic.updateOne(
+      { slug: 'colombo' },
+      { $set: { isDefault: true } },
+    );
+    if (r.modifiedCount)
+      console.log('✔ Clínica colombo marcada como principal');
+  }
 }

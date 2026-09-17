@@ -18,7 +18,7 @@ import {
   type OrganizationActionState,
 } from '@/actions/organization';
 import type { Brand } from '@/models/Organization';
-import { Input } from '@/components/ui/Input';
+import { Input, Textarea } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { LogoUploader } from './LogoUploader';
 
@@ -270,6 +270,29 @@ export function OrganizationForm({ brand }: { brand: Brand }) {
               defaultValue={brand.emailFooter ?? ''}
               placeholder={`${brand.name} · ${brand.address ?? 'morada'}`}
               maxLength={200}
+            />
+          </div>
+        </div>
+
+        <div style={card}>
+          <div
+            style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+          >
+            <h3 style={h3}>Consentimento RGPD</h3>
+            <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
+              Texto que o paciente lê e assina na ficha. Vazio = texto padrão
+              gerado com o nome comercial, denominação social e NIPC acima.
+              Preencha só se o vosso DPO/advogado tiver uma redação própria.
+              Assinaturas já recolhidas mantêm o texto que assinaram.
+            </p>
+            <Textarea
+              id='org-gdpr'
+              name='gdprConsentText'
+              label='Texto próprio (opcional)'
+              defaultValue={brand.gdprConsentText ?? ''}
+              rows={8}
+              maxLength={8000}
+              placeholder='Deixe vazio para usar o texto padrão'
             />
           </div>
         </div>

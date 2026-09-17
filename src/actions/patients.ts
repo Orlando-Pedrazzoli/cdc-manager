@@ -44,7 +44,8 @@ import { sendActivationEmail } from '@/lib/resend';
 import { logAudit } from '@/lib/audit';
 import mongoose from 'mongoose';
 import ClinicalDocument from '@/models/Document';
-import { GDPR_CONSENT_TEXT } from '@/lib/domain';
+import { gdprConsentText } from '@/lib/domain';
+import { getOrganization } from '@/models/Organization';
 import {
   patientDocumentPublicId,
   uploadAuthenticatedDataUrl,
@@ -813,7 +814,7 @@ export async function signGdprConsentAction(input: {
       visibleToPatient: true,
       uploadedByUserId: session.user.id,
       appointmentId: null,
-      note: GDPR_CONSENT_TEXT, // snapshot imutável do texto assinado
+      note: gdprConsentText(await getOrganization()), // snapshot imutável do texto assinado
     });
 
     const $set: Record<string, unknown> = {

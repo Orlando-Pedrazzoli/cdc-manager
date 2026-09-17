@@ -364,6 +364,7 @@ export async function updateClinicAction(
       legalName: formData.get('legalName'),
       shortName: formData.get('shortName'),
       color: formData.get('color'),
+      isDefault: formData.get('isDefault'),
       nipc: formData.get('nipc'),
       address: formData.get('address'),
       phone: formData.get('phone'),
@@ -392,6 +393,13 @@ export async function updateClinicAction(
     }
     clinic.set(fields);
     await clinic.save();
+    // Só uma clínica principal: marcar esta desliga as outras
+    if (fields.isDefault) {
+      await Clinic.updateMany(
+        { _id: { $ne: clinic._id }, isDefault: true },
+        { $set: { isDefault: false } },
+      );
+    }
 
     await logAudit({
       userId: adminId,

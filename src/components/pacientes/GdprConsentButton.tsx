@@ -16,7 +16,6 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { ShieldCheck } from 'lucide-react';
 import { signGdprConsentAction } from '@/actions/patients';
-import { GDPR_CONSENT_TEXT } from '@/lib/domain';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { SignaturePad } from '@/components/clinico/SignaturePad';
@@ -24,9 +23,12 @@ import { SignaturePad } from '@/components/clinico/SignaturePad';
 export function GdprConsentButton({
   patientId,
   signedAtLabel,
+  consentText,
 }: {
   patientId: string;
   signedAtLabel: string | null;
+  /** Texto a apresentar/assinar — gerado no servidor a partir da Organização */
+  consentText: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -93,7 +95,7 @@ export function GdprConsentButton({
               backgroundColor: '#F8F9FD',
             }}
           >
-            {GDPR_CONSENT_TEXT}
+            {consentText}
           </div>
           <div>
             <p

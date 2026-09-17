@@ -17,6 +17,7 @@ import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
 import Invoice from '@/models/Invoice';
 import { getActiveClinics } from '@/models/Clinic';
+import { clinicLabel, defaultClinic } from '@/lib/branding';
 import { lisbonToUtc, todayLisbon } from '@/lib/availability';
 import { formatCents } from '@/lib/commissions';
 import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/domain';
@@ -51,9 +52,7 @@ export default async function CobrancaPage({
   await dbConnect();
   const clinics = await getActiveClinics();
   const clinic =
-    clinics.find(c => c.slug === clinicParam) ??
-    clinics.find(c => c.slug === 'colombo') ??
-    clinics[0];
+    clinics.find(c => c.slug === clinicParam) ?? defaultClinic(clinics);
   if (!clinic) return null;
 
   const today = todayLisbon();
@@ -151,7 +150,7 @@ export default async function CobrancaPage({
                   color: active ? '#FFFFFF' : '#1B2A6B',
                 }}
               >
-                {c.slug.charAt(0).toUpperCase() + c.slug.slice(1)}
+                {clinicLabel(c)}
               </Link>
             );
           })}

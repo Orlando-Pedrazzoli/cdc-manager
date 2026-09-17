@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { dbConnect } from '@/lib/mongodb';
 import { getActiveClinics } from '@/models/Clinic';
+import { clinicLabel, defaultClinic } from '@/lib/branding';
 import Doctor from '@/models/Doctor';
 import Appointment, {
   BLOCKING_STATUS,
@@ -162,9 +163,7 @@ export default async function AgendaPage({
   await dbConnect();
   const clinics = await getActiveClinics();
   const clinic =
-    clinics.find(c => c.slug === sp.clinic) ??
-    clinics.find(c => c.slug === 'colombo') ??
-    clinics[0];
+    clinics.find(c => c.slug === sp.clinic) ?? defaultClinic(clinics);
   if (!clinic) {
     return <p>Nenhuma clínica configurada — correr o seed.</p>;
   }
@@ -563,7 +562,7 @@ export default async function AgendaPage({
                       backgroundColor: active ? '#2743A6' : '#FFFFFF',
                     }}
                   >
-                    {c.slug === 'colombo' ? 'Colombo' : 'Buraca'}
+                    {clinicLabel(c)}
                   </Link>
                 );
               })}

@@ -22,6 +22,7 @@ import Link from 'next/link';
 import Invoice, { INVOICE_STATUS, type InvoiceStatus } from '@/models/Invoice';
 import Patient from '@/models/Patient';
 import { getActiveClinics } from '@/models/Clinic';
+import { defaultClinic } from '@/lib/branding';
 import { lisbonToUtc } from '@/lib/availability';
 import { formatCents } from '@/lib/commissions';
 import { INVOICE_STATUS_LABEL } from '@/lib/labels';
@@ -114,9 +115,7 @@ export default async function FaturacaoPage({
   await dbConnect();
   const clinics = await getActiveClinics();
   const clinic =
-    clinics.find(c => c.slug === clinicParam) ??
-    clinics.find(c => c.slug === 'colombo') ??
-    clinics[0];
+    clinics.find(c => c.slug === clinicParam) ?? defaultClinic(clinics);
   if (!clinic) return null;
 
   // Documentos do mês na clínica (índice {clinicId, status, paidAt} cobre

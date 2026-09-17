@@ -13,6 +13,8 @@
 //   documentos → placeholder (Sprint 3/5: RX, consentimentos, faturas)
 // =============================================================================
 
+import { getOrganization } from '@/models/Organization';
+import { gdprConsentText } from '@/lib/domain';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import mongoose from 'mongoose';
@@ -83,6 +85,7 @@ export default async function PatientPage({
   ) as TabKey;
 
   await dbConnect();
+  const org = await getOrganization();
   const [patient, portalUser, clinicalRecord] = await Promise.all([
     Patient.findById(id).lean(),
     User.findOne({ patientId: id, role: 'patient' }).select('status').lean(),
@@ -134,6 +137,7 @@ export default async function PatientPage({
     gdprSignedLabel: patient.consents?.gdprSignedAt
       ? lisbonShort.format(patient.consents.gdprSignedAt)
       : null,
+    gdprConsentText: gdprConsentText(org),
     portalStatus:
       portalUser?.status === 'active'
         ? 'active'
@@ -378,9 +382,9 @@ export default async function PatientPage({
             <p
               style={{ margin: '0 0 12px', fontSize: '13px', color: '#6A7186' }}
             >
-              Ficha de anamnese do Centro Dentário Colombo. Pode ser preenchida
-              aqui pela receção (com o paciente), pelo paciente no portal, ou
-              pelo médico. Obrigatória e renovada anualmente.
+              Ficha de anamnese de {org.name}. Pode ser preenchida aqui pela
+              receção (com o paciente), pelo paciente no portal, ou pelo médico.
+              Obrigatória e renovada anualmente.
             </p>
             <AnamnesisQuestionnaire
               mode='staff'

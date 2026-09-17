@@ -74,6 +74,9 @@ const ClinicSchema = new Schema(
       required: [true, 'Nome da clínica é obrigatório'],
       trim: true,
     },
+    /** Clínica pré-selecionada em agenda/cobranças/sala de espera quando o
+        URL não diz qual. Só uma a true (a action desliga as outras). */
+    isDefault: { type: Boolean, default: false },
     /** Nome curto para pastilhas/pills ("Colombo") — default: slug capitalizado */
     shortName: { type: String, default: null, trim: true, maxlength: 24 },
     /** Cor da clínica (hex) — pastilhas, badges; sem valor usa paleta por ordem */

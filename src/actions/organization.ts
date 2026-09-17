@@ -46,6 +46,7 @@ export async function updateOrganizationAction(
       emailFromName: formData.get('emailFromName'),
       emailFromAddress: formData.get('emailFromAddress'),
       emailFooter: formData.get('emailFooter'),
+      gdprConsentText: formData.get('gdprConsentText'),
     });
     if (!parsed.success) {
       return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };

@@ -449,14 +449,30 @@ export const RELATIONSHIP_LABEL: Record<Relationship, string> = {
 
 /**
  * Texto do consentimento RGPD apresentado ao paciente (P10 — botão RGPD na
- * ficha). Snapshot congelado no Document 'consent' no momento da assinatura.
- * A Isabel pode ajustar o texto aqui; assinaturas antigas mantêm o texto
- * que assinaram.
+ * ficha). Snapshot congelado no Document 'consent' no momento da assinatura
+ * — assinaturas antigas mantêm o texto que assinaram.
+ *
+ * Gerado a partir da Organização (nome, denominação social, NIPC). Se
+ * Organization.gdprConsentText estiver preenchido, esse texto é usado
+ * VERBATIM (cliente com redação própria do seu DPO/advogado).
  */
-export const GDPR_CONSENT_TEXT = `CONSENTIMENTO PARA TRATAMENTO DE DADOS PESSOAIS E DE SAÚDE
-Centro Dentário Colombo — D. Amaral, Assistência Prev. Dentária, Lda. (NIPC 505 887 533)
+export function gdprConsentText(org: {
+  name: string;
+  legalName?: string | null;
+  nipc?: string | null;
+  gdprConsentText?: string | null;
+}): string {
+  if (org.gdprConsentText?.trim()) return org.gdprConsentText.trim();
+  const nipc = org.nipc
+    ? ` (NIPC ${org.nipc.replace(/(\d{3})(?=\d)/g, '$1 ')})`
+    : '';
+  const entity = org.legalName
+    ? `${org.name} — ${org.legalName}${nipc}`
+    : `${org.name}${nipc}`;
+  return `CONSENTIMENTO PARA TRATAMENTO DE DADOS PESSOAIS E DE SAÚDE
+${entity}
 
-Nos termos do Regulamento (UE) 2016/679 (RGPD) e da Lei n.º 58/2019, declaro que fui informado(a) de que os meus dados pessoais e de saúde são recolhidos e tratados pelo Centro Dentário Colombo com as seguintes finalidades:
+Nos termos do Regulamento (UE) 2016/679 (RGPD) e da Lei n.º 58/2019, declaro que fui informado(a) de que os meus dados pessoais e de saúde são recolhidos e tratados por ${org.name} com as seguintes finalidades:
 1. Prestação de cuidados de saúde oral, incluindo registo clínico, anamnese, odontograma, imagiologia, planos de tratamento e prescrições;
 2. Gestão administrativa e faturação, incluindo a comunicação de dados à Autoridade Tributária quando legalmente exigido;
 3. Contactos relativos a consultas (confirmações, lembretes e alterações), pelos canais que autorizar.
@@ -466,6 +482,7 @@ Os dados são conservados pelo prazo legalmente exigido para processos clínicos
 Tenho o direito de aceder, retificar, limitar ou opor-me ao tratamento dos meus dados, bem como o direito à portabilidade e a apresentar reclamação junto da CNPD, contactando a clínica pelos meios habituais.
 
 Declaro que li e compreendi esta informação e que consinto no tratamento dos meus dados para as finalidades indicadas.`;
+}
 
 // -----------------------------------------------------------------------------
 // Raio-X — pedidos do médico à sala de RX (módulo de imagiologia)

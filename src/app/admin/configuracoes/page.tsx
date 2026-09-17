@@ -32,6 +32,7 @@ import {
 import { MoloniPanel } from '@/components/configuracoes/MoloniPanel';
 import { OrganizationForm } from '@/components/configuracoes/OrganizationForm';
 import { getOrganization } from '@/models/Organization';
+import { defaultClinic } from '@/lib/branding';
 import { isMoloniConfigured, isMoloniEmissionReady } from '@/lib/moloni';
 import User from '@/models/User';
 
@@ -136,6 +137,7 @@ export default async function ConfiguracoesPage({
       legalName: d.legalName ?? null,
       shortName: d.shortName ?? null,
       color: d.color ?? null,
+      isDefault: !!d.isDefault,
       nipc: d.nipc ?? null,
       address: d.address ?? null,
       phone: d.phone ?? null,
@@ -158,8 +160,7 @@ export default async function ConfiguracoesPage({
     }));
     activeClinicSlug =
       clinicPanels.find(c => c.slug === clinicParam)?.slug ??
-      clinicPanels.find(c => c.slug === 'colombo')?.slug ??
-      clinicPanels[0]?.slug ??
+      defaultClinic(clinicPanels)?.slug ??
       '';
   }
 

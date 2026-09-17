@@ -45,6 +45,7 @@ export interface ClinicSettings {
   legalName: string | null;
   shortName: string | null;
   color: string | null;
+  isDefault: boolean;
   nipc: string | null;
   address: string | null;
   phone: string | null;
@@ -282,6 +283,13 @@ function ClinicDataForm({ clinic }: { clinic: ClinicSettings }) {
           name='bookableOnline'
           label='Aceita marcações online (formulário público)'
           defaultChecked={clinic.bookableOnline}
+        />
+        <Checkbox
+          id={`${clinic.slug}-default`}
+          name='isDefault'
+          label='Clínica principal (pré-selecionada na agenda, cobranças e sala de espera)'
+          defaultChecked={clinic.isDefault}
+          help='Só uma clínica pode ser a principal; marcar esta desmarca as outras'
         />
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

@@ -55,6 +55,8 @@ export interface PatientHeaderData {
   lastConsultLabel: string | null;
   /** P10: data da assinatura RGPD ("14/09/2026") ou null */
   gdprSignedLabel: string | null;
+  /** Texto RGPD (Organização) para o botão de consentimento */
+  gdprConsentText: string;
 }
 
 function ageFrom(iso: string | null): number | null {
@@ -414,6 +416,7 @@ export function PatientHeader({ patient }: { patient: PatientHeaderData }) {
           <GdprConsentButton
             patientId={patient.id}
             signedAtLabel={patient.gdprSignedLabel}
+            consentText={patient.gdprConsentText}
           />
         )}
         {patient.portalStatus !== 'active' && patient.status === 'active' && (

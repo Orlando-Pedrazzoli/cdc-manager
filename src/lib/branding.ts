@@ -15,7 +15,18 @@ export type ClinicLike = {
   name?: string | null;
   shortName?: string | null;
   color?: string | null;
+  isDefault?: boolean | null;
 };
+
+/**
+ * Clínica pré-selecionada: a marcada como principal (Clinic.isDefault),
+ * senão a primeira da lista ordenada. Substitui os `slug === 'colombo'`.
+ */
+export function defaultClinic<T extends ClinicLike>(
+  clinics: T[],
+): T | undefined {
+  return clinics.find(c => c.isDefault) ?? clinics[0];
+}
 
 /** Paleta de fallback para clínicas sem cor definida (índice estável) */
 const FALLBACK_COLORS = ['#1B2A6B', '#5B2E91', '#0F7B4D', '#8A5A00', '#B3261E'];

@@ -49,6 +49,9 @@ const OrganizationSchema = new Schema(
     },
     /** Linha de rodapé dos emails (morada curta) */
     emailFooter: { type: String, default: null, trim: true, maxlength: 200 },
+    /** Texto RGPD próprio (verbatim). Vazio → gerado por lib/domain
+        gdprConsentText() a partir de name/legalName/nipc */
+    gdprConsentText: { type: String, default: null, maxlength: 8000 },
   },
   { timestamps: true },
 );
@@ -79,6 +82,7 @@ export type Brand = {
   emailFromName: string | null;
   emailFromAddress: string | null;
   emailFooter: string | null;
+  gdprConsentText: string | null;
 };
 
 /** Os valores que estavam hardcoded — servem de rede até o seed correr */
@@ -97,6 +101,7 @@ export const DEFAULT_BRAND: Brand = {
   emailFromName: null,
   emailFromAddress: null,
   emailFooter: 'Centro Dentário Colombo · Centro Comercial Colombo, Lisboa',
+  gdprConsentText: null,
 };
 
 function toBrand(o: OrganizationDoc): Brand {
@@ -115,6 +120,7 @@ function toBrand(o: OrganizationDoc): Brand {
     emailFromName: o.emailFromName ?? null,
     emailFromAddress: o.emailFromAddress ?? null,
     emailFooter: o.emailFooter ?? null,
+    gdprConsentText: o.gdprConsentText ?? null,
   };
 }
 

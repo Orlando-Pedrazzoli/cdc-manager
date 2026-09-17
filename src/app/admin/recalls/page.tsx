@@ -20,6 +20,7 @@ import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
 import TreatmentType from '@/models/TreatmentType';
 import { getActiveClinics } from '@/models/Clinic';
+import { defaultClinic } from '@/lib/branding';
 import { RECALL_STATUS_LABEL } from '@/lib/labels';
 import { RecallActions } from '@/components/recalls/RecallActions';
 import { Badge, type BadgeVariant } from '@/components/ui/Badge';
@@ -248,9 +249,7 @@ export default async function RecallsPage({
 
   const clinics = await getActiveClinics();
   const clinic =
-    clinics.find(c => c.slug === clinicParam) ??
-    clinics.find(c => c.slug === 'colombo') ??
-    clinics[0];
+    clinics.find(c => c.slug === clinicParam) ?? defaultClinic(clinics);
   if (!clinic) return null;
 
   // 2. Fila da clínica (índice {clinicId, status, dueAt})

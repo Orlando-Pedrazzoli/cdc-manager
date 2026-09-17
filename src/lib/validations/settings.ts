@@ -255,6 +255,8 @@ export const updateClinicSchema = z.object({
     emptyToNull,
     z.string().trim().max(160, 'Denominação demasiado longa').nullable(),
   ),
+  // Clínica principal (pré-selecionada nas páginas com seletor de clínica)
+  isDefault: checkboxField,
   // Identidade visual da clínica (pastilhas): nome curto + cor
   shortName: z.preprocess(
     emptyToNull,
@@ -397,5 +399,6 @@ export const updateOrganizationSchema = z.object({
     z.email('Email do remetente inválido').toLowerCase().nullable(),
   ),
   emailFooter: optionalText(200, 'Rodapé demasiado longo'),
+  gdprConsentText: optionalText(8000, 'Texto RGPD demasiado longo'),
 });
 export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>;
