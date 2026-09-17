@@ -60,7 +60,7 @@ export default async function ConfiguracoesPage({
     ? (tab as (typeof TABS)[number]['key'])
     : 'clinicas';
 
-  const session = await auth();
+  const [session, org] = await Promise.all([auth(), getOrganization()]);
   if (!session?.user) return null;
 
   // Admin-only: a receção vê uma mensagem, não um erro
@@ -226,7 +226,9 @@ export default async function ConfiguracoesPage({
       </div>
 
       {activeTab === 'organizacao' ? (
-        <OrganizationForm brand={await getOrganization()} />
+        // key no logoUrl: depois de um upload o form remonta e a
+        // pré-visualização apanha o URL novo (o estado local não se re-inicia)
+        <OrganizationForm key={org.logoUrl ?? 'no-logo'} brand={org} />
       ) : activeTab === 'utilizadores' ? (
         <UsersPanel users={teamUsers} currentUserId={session.user.id ?? ''} />
       ) : activeTab === 'conta' ? (

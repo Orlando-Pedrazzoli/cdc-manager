@@ -20,6 +20,7 @@ import {
 import type { Brand } from '@/models/Organization';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { LogoUploader } from './LogoUploader';
 
 const card = {
   backgroundColor: '#FFFFFF',
@@ -64,10 +65,7 @@ export function OrganizationForm({ brand }: { brand: Brand }) {
   );
 
   return (
-    <form
-      action={action}
-      style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
-    >
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {/* Pré-visualização: como fica o topo da navegação */}
       <div
         style={{
@@ -116,157 +114,172 @@ export function OrganizationForm({ brand }: { brand: Brand }) {
         </span>
       </div>
 
-      <div style={card}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <h3 style={h3}>Identidade</h3>
-          <div style={row}>
-            <Input
-              id='org-name'
-              name='name'
-              label='Nome comercial'
-              defaultValue={brand.name}
-              required
-              maxLength={120}
-              help='Cabeçalho dos emails e documentos'
-            />
-            <Input
-              id='org-app'
-              name='appName'
-              label='Nome da aplicação'
-              defaultValue={brand.appName}
-              required
-              maxLength={60}
-              onChange={e =>
-                setPreview(p => ({ ...p, appName: e.target.value }))
-              }
-              help='O que os utilizadores veem na navegação e no separador'
-            />
-          </div>
-          <div style={row}>
-            <Input
-              id='org-logo'
-              name='logoUrl'
-              label='Logo (URL ou caminho em /public)'
-              defaultValue={brand.logoUrl ?? ''}
-              placeholder='/logo.png ou https://…'
-              maxLength={400}
-              onChange={e =>
-                setPreview(p => ({ ...p, logoUrl: e.target.value }))
-              }
-              help='Quadrado, fundo transparente, mín. 128×128'
-            />
-            <div style={{ maxWidth: 160 }}>
+      {/* Upload do logo — form próprio (ficheiro), fora do form de texto */}
+      <LogoUploader logoUrl={brand.logoUrl} primaryColor={brand.primaryColor} />
+
+      {/* Campos de texto — form separado do upload (forms não se aninham) */}
+      <form
+        action={action}
+        style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
+      >
+        <div style={card}>
+          <div
+            style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+          >
+            <h3 style={h3}>Identidade</h3>
+            <div style={row}>
               <Input
-                id='org-color'
-                name='primaryColor'
-                type='color'
-                label='Cor de marca'
-                defaultValue={brand.primaryColor}
+                id='org-name'
+                name='name'
+                label='Nome comercial'
+                defaultValue={brand.name}
+                required
+                maxLength={120}
+                help='Cabeçalho dos emails e documentos'
+              />
+              <Input
+                id='org-app'
+                name='appName'
+                label='Nome da aplicação'
+                defaultValue={brand.appName}
+                required
+                maxLength={60}
                 onChange={e =>
-                  setPreview(p => ({ ...p, primaryColor: e.target.value }))
+                  setPreview(p => ({ ...p, appName: e.target.value }))
                 }
-                style={{ height: 40, padding: 4 }}
+                help='O que os utilizadores veem na navegação e no separador'
+              />
+            </div>
+            <div style={row}>
+              <Input
+                id='org-logo'
+                name='logoUrl'
+                label='Logo por URL (alternativa ao upload)'
+                defaultValue={brand.logoUrl ?? ''}
+                placeholder='/logo.png ou https://…'
+                maxLength={400}
+                onChange={e =>
+                  setPreview(p => ({ ...p, logoUrl: e.target.value }))
+                }
+                help='Preenchido automaticamente pelo upload; edite só para usar um URL próprio'
+              />
+              <div style={{ maxWidth: 160 }}>
+                <Input
+                  id='org-color'
+                  name='primaryColor'
+                  type='color'
+                  label='Cor de marca'
+                  defaultValue={brand.primaryColor}
+                  onChange={e =>
+                    setPreview(p => ({ ...p, primaryColor: e.target.value }))
+                  }
+                  style={{ height: 40, padding: 4 }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={card}>
+          <div
+            style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+          >
+            <h3 style={h3}>Dados legais e contactos</h3>
+            <div style={row}>
+              <Input
+                id='org-legal'
+                name='legalName'
+                label='Denominação social'
+                defaultValue={brand.legalName ?? ''}
+                maxLength={160}
+              />
+              <Input
+                id='org-nipc'
+                name='nipc'
+                label='NIPC'
+                defaultValue={brand.nipc ?? ''}
+                inputMode='numeric'
+                maxLength={9}
+                help='Validado com dígito de controlo'
+              />
+            </div>
+            <Input
+              id='org-address'
+              name='address'
+              label='Morada'
+              defaultValue={brand.address ?? ''}
+              maxLength={240}
+            />
+            <div style={row}>
+              <Input
+                id='org-phone'
+                name='phone'
+                label='Telefone'
+                defaultValue={brand.phone ?? ''}
+                maxLength={40}
+              />
+              <Input
+                id='org-email'
+                name='email'
+                type='email'
+                label='Email de contacto'
+                defaultValue={brand.email ?? ''}
+                maxLength={120}
+              />
+              <Input
+                id='org-web'
+                name='website'
+                label='Website'
+                defaultValue={brand.website ?? ''}
+                placeholder='https://…'
+                maxLength={160}
               />
             </div>
           </div>
         </div>
-      </div>
 
-      <div style={card}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <h3 style={h3}>Dados legais e contactos</h3>
-          <div style={row}>
+        <div style={card}>
+          <div
+            style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+          >
+            <h3 style={h3}>Emails automáticos</h3>
+            <div style={row}>
+              <Input
+                id='org-from-name'
+                name='emailFromName'
+                label='Nome do remetente'
+                defaultValue={brand.emailFromName ?? ''}
+                placeholder={brand.name}
+                maxLength={80}
+              />
+              <Input
+                id='org-from-addr'
+                name='emailFromAddress'
+                type='email'
+                label='Endereço do remetente'
+                defaultValue={brand.emailFromAddress ?? ''}
+                placeholder='noreply@…'
+                maxLength={120}
+                help='O domínio tem de estar verificado no Resend; vazio = EMAIL_FROM do servidor'
+              />
+            </div>
             <Input
-              id='org-legal'
-              name='legalName'
-              label='Denominação social'
-              defaultValue={brand.legalName ?? ''}
-              maxLength={160}
-            />
-            <Input
-              id='org-nipc'
-              name='nipc'
-              label='NIPC'
-              defaultValue={brand.nipc ?? ''}
-              inputMode='numeric'
-              maxLength={9}
-              help='Validado com dígito de controlo'
-            />
-          </div>
-          <Input
-            id='org-address'
-            name='address'
-            label='Morada'
-            defaultValue={brand.address ?? ''}
-            maxLength={240}
-          />
-          <div style={row}>
-            <Input
-              id='org-phone'
-              name='phone'
-              label='Telefone'
-              defaultValue={brand.phone ?? ''}
-              maxLength={40}
-            />
-            <Input
-              id='org-email'
-              name='email'
-              type='email'
-              label='Email de contacto'
-              defaultValue={brand.email ?? ''}
-              maxLength={120}
-            />
-            <Input
-              id='org-web'
-              name='website'
-              label='Website'
-              defaultValue={brand.website ?? ''}
-              placeholder='https://…'
-              maxLength={160}
+              id='org-footer'
+              name='emailFooter'
+              label='Rodapé dos emails'
+              defaultValue={brand.emailFooter ?? ''}
+              placeholder={`${brand.name} · ${brand.address ?? 'morada'}`}
+              maxLength={200}
             />
           </div>
         </div>
-      </div>
 
-      <div style={card}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <h3 style={h3}>Emails automáticos</h3>
-          <div style={row}>
-            <Input
-              id='org-from-name'
-              name='emailFromName'
-              label='Nome do remetente'
-              defaultValue={brand.emailFromName ?? ''}
-              placeholder={brand.name}
-              maxLength={80}
-            />
-            <Input
-              id='org-from-addr'
-              name='emailFromAddress'
-              type='email'
-              label='Endereço do remetente'
-              defaultValue={brand.emailFromAddress ?? ''}
-              placeholder='noreply@…'
-              maxLength={120}
-              help='O domínio tem de estar verificado no Resend; vazio = EMAIL_FROM do servidor'
-            />
-          </div>
-          <Input
-            id='org-footer'
-            name='emailFooter'
-            label='Rodapé dos emails'
-            defaultValue={brand.emailFooter ?? ''}
-            placeholder={`${brand.name} · ${brand.address ?? 'morada'}`}
-            maxLength={200}
-          />
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Button type='submit' disabled={pending}>
+            {pending ? 'A gravar…' : 'Gravar organização'}
+          </Button>
         </div>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Button type='submit' disabled={pending}>
-          {pending ? 'A gravar…' : 'Gravar organização'}
-        </Button>
-      </div>
-    </form>
+      </form>
+    </div>
   );
 }

@@ -293,3 +293,51 @@ export async function uploadAuthenticatedPdf(
   });
   return { format: res.format ?? 'pdf', bytes: res.bytes ?? pdf.length };
 }
+
+// -----------------------------------------------------------------------------
+// 4. Logo da organização — o ÚNICO asset PÚBLICO deste ficheiro
+// -----------------------------------------------------------------------------
+// Não é dado de saúde: é branding, e tem de ser servido sem assinatura em
+// sítios sem sessão (página de login, emails, <img> nas sidebars). Por isso
+// `type: 'upload'` (público), public_id fixo (substituir = overwrite) e
+// `invalidate` para o CDN largar a versão antiga. A transformação na
+// receção limita a 512×512 — o ficheiro guardado fica pequeno e a URL
+// devolvida é VERSIONADA (…/v1712345678/…), o que serve de cache-bust.
+// -----------------------------------------------------------------------------
+
+export function organizationLogoPublicId(): string {
+  return `${ROOT_FOLDER()}/organizacao/logo`;
+}
+
+export async function uploadPublicLogo(
+  buffer: Buffer,
+  mime: string,
+): Promise<{ url: string; format: string | null; bytes: number }> {
+  const c = cld();
+  const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`;
+  const res = await c.uploader.upload(dataUrl, {
+    public_id: organizationLogoPublicId(),
+    type: 'upload',
+    resource_type: 'image',
+    overwrite: true,
+    invalidate: true,
+    // SVG fica intacto (vetorial); raster é limitado a 512px
+    ...(mime === 'image/svg+xml'
+      ? {}
+      : { transformation: [{ width: 512, height: 512, crop: 'limit' }] }),
+  });
+  return {
+    url: res.secure_url,
+    format: res.format ?? null,
+    bytes: res.bytes ?? buffer.length,
+  };
+}
+
+export async function destroyPublicLogo(): Promise<void> {
+  const c = cld();
+  await c.uploader.destroy(organizationLogoPublicId(), {
+    type: 'upload',
+    resource_type: 'image',
+    invalidate: true,
+  });
+}
