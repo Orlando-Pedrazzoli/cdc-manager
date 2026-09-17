@@ -1,12 +1,14 @@
-// 📄 src/components/layout/AdminShell.tsx
+// 📄 src/components/layout/AppShell.tsx
 // =============================================================================
-// CDC Manager — Layout: Shell responsivo da área Admin/Receção
+// CDC Manager — Layout: Shell responsivo (áreas Admin/Receção e Médico)
 // -----------------------------------------------------------------------------
 // Client Component mínimo: o único estado é o drawer aberto/fechado no
 // mobile. Recebe do layout (server) os nós já renderizados — barra superior
 // e rodapé do drawer (utilizador + Sair) — para que server actions e sessão
-// fiquem no servidor. A AdminSidebar (também client) é importada aqui porque
-// precisa do onNavigate para fechar o drawer.
+// fiquem no servidor. `area` escolhe a sidebar (Admin ou Doctor); as duas
+// são client e recebem onNavigate para fechar o drawer.
+// `topbarOnMobile=false` esconde a barra superior abaixo de 1024px quando
+// ela só tem utilizador/Sair (a área do médico) — esses vivem no drawer.
 //
 // ≥ 1024px: sidebar fixa à esquerda (.cdc-sidebar-desktop) + topbar.
 // <  1024px: barra fixa no topo com hambúrguer; a MESMA sidebar renderiza
@@ -18,12 +20,17 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
 import { Menu, X } from 'lucide-react';
 import { AdminSidebar } from './AdminSidebar';
+import { DoctorSidebar } from './DoctorSidebar';
+import { BrandMark, type BrandMarkProps } from './BrandMark';
 
 type Props = {
+  area: 'admin' | 'doutor';
+  /** false → a barra superior desaparece no mobile (só tinha utilizador) */
+  topbarOnMobile?: boolean;
+  /** Marca da organização (Organization) — logo, nome da app, cor */
+  brand: BrandMarkProps;
   /** Conteúdo da topbar (pesquisa + utilizador + Sair) */
   topbar: ReactNode;
   /** Rodapé do drawer no mobile (utilizador + Sair) */
@@ -31,10 +38,19 @@ type Props = {
   children: ReactNode;
 };
 
-export function AdminShell({ topbar, drawerFooter, children }: Props) {
+export function AppShell({
+  area,
+  brand,
+  topbar,
+  topbarOnMobile = true,
+  drawerFooter,
+  children,
+}: Props) {
   const [open, setOpen] = useState(false);
+  const home = area === 'admin' ? '/admin/dashboard' : '/doutor/dashboard';
+  const Sidebar = area === 'admin' ? AdminSidebar : DoctorSidebar;
 
-  // Navegar fecha o drawer: a AdminSidebar chama onNavigate no clique do link
+  // Navegar fecha o drawer: a sidebar chama onNavigate no clique do link
   // (sem efeito sobre o pathname — evita setState em effect).
   // Escape fecha · scroll do body bloqueado enquanto aberto
   useEffect(() => {
@@ -61,7 +77,7 @@ export function AdminShell({ topbar, drawerFooter, children }: Props) {
     >
       {/* Sidebar desktop */}
       <div className='cdc-sidebar-desktop'>
-        <AdminSidebar />
+        <Sidebar brand={brand} />
       </div>
 
       {/* Drawer mobile (mesma sidebar + rodapé com utilizador) */}
@@ -70,7 +86,7 @@ export function AdminShell({ topbar, drawerFooter, children }: Props) {
         className='cdc-drawer'
         aria-label='Navegação'
         aria-hidden={!open}
-        style={{ flexDirection: 'column', backgroundColor: '#1B2A6B' }}
+        style={{ flexDirection: 'column', backgroundColor: brand.primaryColor }}
       >
         <div
           style={{
@@ -99,7 +115,7 @@ export function AdminShell({ topbar, drawerFooter, children }: Props) {
             <X size={18} />
           </button>
         </div>
-        <AdminSidebar onNavigate={close} />
+        <Sidebar brand={brand} onNavigate={close} />
         <div
           style={{
             borderTop: '1px solid rgba(255,255,255,0.12)',
@@ -126,7 +142,7 @@ export function AdminShell({ topbar, drawerFooter, children }: Props) {
             gap: '12px',
             height: 54,
             padding: '0 12px',
-            backgroundColor: '#1B2A6B',
+            backgroundColor: brand.primaryColor,
           }}
         >
           <button
@@ -149,40 +165,11 @@ export function AdminShell({ topbar, drawerFooter, children }: Props) {
           >
             <Menu size={20} />
           </button>
-          <Link
-            href='/admin/dashboard'
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              textDecoration: 'none',
-            }}
-          >
-            <span
-              style={{
-                display: 'inline-flex',
-                backgroundColor: '#FFFFFF',
-                borderRadius: '7px',
-                padding: '3px',
-              }}
-            >
-              <Image
-                src='/logo-cdc.png'
-                alt='CDC'
-                width={22}
-                height={22}
-                style={{ display: 'block' }}
-              />
-            </span>
-            <span
-              style={{ color: '#FFFFFF', fontSize: '15px', fontWeight: 700 }}
-            >
-              CDC Manager
-            </span>
-          </Link>
+          <BrandMark brand={brand} href={home} size={22} />
         </div>
 
         <header
+          className={topbarOnMobile ? undefined : 'cdc-hide-mobile'}
           style={{
             display: 'flex',
             alignItems: 'center',

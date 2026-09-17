@@ -2,7 +2,7 @@
 // =============================================================================
 // CDC Manager — Layout da área Admin/Receção
 // -----------------------------------------------------------------------------
-// Server Component: lê a sessão e entrega ao AdminShell (client) os nós já
+// Server Component: lê a sessão e entrega ao AppShell (client) os nós já
 // renderizados — barra superior (pesquisa + utilizador + Sair) e rodapé do
 // drawer mobile. O shell trata do responsivo (sidebar fixa ≥1024px, drawer
 // abaixo). O RBAC de rota (/admin só para admin/receptionist) é imposto no
@@ -12,8 +12,9 @@
 import type { ReactNode } from 'react';
 import { auth } from '@/lib/auth';
 import { logoutAction } from '@/actions/auth';
-import { AdminShell } from '@/components/layout/AdminShell';
+import { AppShell } from '@/components/layout/AppShell';
 import { QuickPatientSearch } from '@/components/layout/QuickPatientSearch';
+import { getOrganization } from '@/models/Organization';
 
 const ROLE_LABEL: Record<string, string> = {
   admin: 'Administração',
@@ -25,7 +26,12 @@ export default async function AdminLayout({
 }: {
   children: ReactNode;
 }) {
-  const session = await auth();
+  const [session, org] = await Promise.all([auth(), getOrganization()]);
+  const brand = {
+    appName: org.appName,
+    logoUrl: org.logoUrl,
+    primaryColor: org.primaryColor,
+  };
   const name = session?.user?.name ?? '';
   const roleLabel = ROLE_LABEL[session?.user?.role ?? ''] ?? '';
   const initials = name
@@ -138,8 +144,13 @@ export default async function AdminLayout({
   );
 
   return (
-    <AdminShell topbar={topbar} drawerFooter={drawerFooter}>
+    <AppShell
+      area='admin'
+      brand={brand}
+      topbar={topbar}
+      drawerFooter={drawerFooter}
+    >
       {children}
-    </AdminShell>
+    </AppShell>
   );
 }

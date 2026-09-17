@@ -17,6 +17,7 @@ import Appointment, { type AppointmentStatus } from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import TreatmentType from '@/models/TreatmentType';
 import { getActiveClinics } from '@/models/Clinic';
+import { clinicBadgeMap } from '@/lib/branding';
 import { lisbonToUtc, todayLisbon, minToHhmm } from '@/lib/availability';
 
 export const dynamic = 'force-dynamic';
@@ -38,10 +39,6 @@ const STATUS_STYLE: Record<string, { bg: string; fg: string }> = {
   completed: { bg: '#EAECF3', fg: '#3D4257' },
   cancelled: { bg: '#F6E4E3', fg: '#B3261E' },
   'no-show': { bg: '#F6E4E3', fg: '#B3261E' },
-};
-const CLINIC_STYLE: Record<string, { bg: string; fg: string }> = {
-  colombo: { bg: '#E4EBFF', fg: '#1B2A6B' },
-  buraca: { bg: '#EFE6FA', fg: '#5B2E91' },
 };
 
 function utcToLisbonMin(d: Date): number {
@@ -96,6 +93,7 @@ export default async function DoctorAgendaPage({
   const clinicById = new Map(
     clinics.map(c => [String(c._id), { slug: c.slug, name: c.name }]),
   );
+  const badgeBySlug = clinicBadgeMap(clinics);
   const [patients, treatments] = await Promise.all([
     Patient.find({
       _id: { $in: [...new Set(appointments.map(a => String(a.patientId)))] },
@@ -217,15 +215,13 @@ export default async function DoctorAgendaPage({
               STATUS_STYLE[a.status as AppointmentStatus] ??
               STATUS_STYLE.completed;
             const clinic = clinicById.get(String(a.clinicId));
-            const cl = CLINIC_STYLE[clinic?.slug ?? ''] ?? {
+            const cl = badgeBySlug[clinic?.slug ?? ''] ?? {
               bg: '#EAECF3',
               fg: '#3D4257',
+              label: clinic?.name ?? '—',
             };
             const p = patientById.get(String(a.patientId));
             const rowStyle: React.CSSProperties = {
-              display: 'flex',
-              alignItems: 'center',
-              gap: '16px',
               padding: '12px 20px',
               borderBottom: '1px solid #F4F6FB',
               opacity: muted ? 0.55 : 1,
@@ -239,13 +235,14 @@ export default async function DoctorAgendaPage({
                     fontSize: '14px',
                     fontWeight: 700,
                     color: '#1B2A6B',
-                    minWidth: '92px',
+                    width: 92,
+                    flexShrink: 0,
                   }}
                 >
                   {minToHhmm(utcToLisbonMin(a.startAt))}–
                   {minToHhmm(utcToLisbonMin(a.endAt))}
                 </span>
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div className='cdc-line-main'>
                   <p
                     style={{
                       margin: 0,
@@ -283,46 +280,45 @@ export default async function DoctorAgendaPage({
                     {a.note ? ` · ${a.note}` : ''}
                   </p>
                 </div>
-                <span
-                  style={{
-                    borderRadius: '999px',
-                    padding: '2px 10px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    backgroundColor: cl.bg,
-                    color: cl.fg,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {clinic?.slug === 'colombo'
-                    ? 'Colombo'
-                    : clinic?.slug === 'buraca'
-                      ? 'Buraca'
-                      : (clinic?.name ?? '—')}
-                </span>
-                <span
-                  style={{
-                    borderRadius: '999px',
-                    padding: '2px 10px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    backgroundColor: st.bg,
-                    color: st.fg,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {STATUS_LABEL[a.status as AppointmentStatus] ?? a.status}
-                </span>
+                <div className='cdc-line-meta'>
+                  <span
+                    style={{
+                      borderRadius: '999px',
+                      padding: '2px 10px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      backgroundColor: cl.bg,
+                      color: cl.fg,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {cl.label}
+                  </span>
+                  <span
+                    style={{
+                      borderRadius: '999px',
+                      padding: '2px 10px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      backgroundColor: st.bg,
+                      color: st.fg,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {STATUS_LABEL[a.status as AppointmentStatus] ?? a.status}
+                  </span>
+                </div>
               </>
             );
             return muted ? (
-              <div key={String(a._id)} style={rowStyle}>
+              <div key={String(a._id)} className='cdc-line' style={rowStyle}>
                 {content}
               </div>
             ) : (
               <Link
                 key={String(a._id)}
                 href={`/doutor/consulta/${String(a._id)}`}
+                className='cdc-line'
                 style={rowStyle}
               >
                 {content}

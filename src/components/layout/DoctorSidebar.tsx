@@ -14,8 +14,8 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
+import { BrandMark, type BrandMarkProps } from './BrandMark';
 import {
   BookOpenText,
   CalendarDays,
@@ -52,8 +52,14 @@ const NAV: { section: string; items: NavItem[] }[] = [
   },
 ];
 
-export function DoctorSidebar() {
-  const pathname = usePathname();
+export function DoctorSidebar({
+  brand,
+  onNavigate,
+}: {
+  brand: BrandMarkProps;
+  onNavigate?: () => void;
+}) {
+  const pathname = usePathname() ?? '';
 
   return (
     <aside
@@ -62,59 +68,19 @@ export function DoctorSidebar() {
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
-        backgroundColor: '#1B2A6B',
-        minHeight: '100vh',
-        position: 'sticky',
-        top: 0,
-        alignSelf: 'flex-start',
-        maxHeight: '100vh',
+        backgroundColor: brand.primaryColor,
+        height: '100%',
         overflowY: 'auto',
       }}
     >
       {/* Logo */}
-      <Link
-        href='/doutor/dashboard'
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          padding: '18px 20px',
-          textDecoration: 'none',
-        }}
-      >
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#FFFFFF',
-            borderRadius: '8px',
-            padding: '4px',
-          }}
-        >
-          <Image
-            src='/logo-cdc.png'
-            alt='CDC'
-            width={28}
-            height={28}
-            style={{ display: 'block' }}
-          />
-        </span>
-        <span
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            lineHeight: 1.2,
-          }}
-        >
-          <span style={{ color: '#FFFFFF', fontSize: '15px', fontWeight: 700 }}>
-            CDC Manager
-          </span>
-          <span style={{ color: '#8FA0DC', fontSize: '11px', fontWeight: 600 }}>
-            Área Clínica
-          </span>
-        </span>
-      </Link>
+      <div style={{ padding: '18px 20px' }}>
+        <BrandMark
+          brand={brand}
+          href='/doutor/dashboard'
+          subtitle='Área Clínica'
+        />
+      </div>
 
       {/* Navegação */}
       <nav
@@ -189,6 +155,8 @@ export function DoctorSidebar() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={onNavigate}
+                    aria-current={active ? 'page' : undefined}
                     style={{
                       display: 'flex',
                       alignItems: 'center',

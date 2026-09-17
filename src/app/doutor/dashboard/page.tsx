@@ -27,6 +27,9 @@
 //      de cobrança disparam no CONCLUIR — consulta esquecida = stock e
 //      cobrança errados. Alerta âmbar acionável.
 //   6. <AutoRefresh/> — a página vive aberta entre consultas.
+//   7. Mobile (set. 2026): destaque em primeiro, KPIs na faixa HojeStrip,
+//      linhas .cdc-line (pastilhas descem para 2.ª linha no telemóvel) —
+//      o médico consulta isto no telemóvel entre consultas.
 // =============================================================================
 
 import Link from 'next/link';
@@ -47,6 +50,7 @@ import {
 } from '@/lib/commission-accounting';
 import TreatmentType from '@/models/TreatmentType';
 import { getActiveClinics } from '@/models/Clinic';
+import { clinicBadgeMap } from '@/lib/branding';
 import {
   lisbonToUtc,
   todayLisbon,
@@ -54,6 +58,8 @@ import {
   dateRange,
 } from '@/lib/availability';
 import { formatCents } from '@/lib/commissions';
+
+import { HojeStrip } from '@/components/dashboard/HojeStrip';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,11 +82,6 @@ const STATUS_STYLE: Record<string, { bg: string; fg: string }> = {
   completed: { bg: '#EAECF3', fg: '#3D4257' },
   cancelled: { bg: '#F6E4E3', fg: '#B3261E' },
   'no-show': { bg: '#F6E4E3', fg: '#B3261E' },
-};
-
-const CLINIC_STYLE: Record<string, { bg: string; fg: string }> = {
-  colombo: { bg: '#E4EBFF', fg: '#1B2A6B' },
-  buraca: { bg: '#EFE6FA', fg: '#5B2E91' },
 };
 
 /** Instante UTC → minutos do dia na parede de Lisboa (mesmo helper da agenda) */
@@ -291,6 +292,7 @@ export default async function DoctorDashboardPage() {
   const clinicById = new Map(
     clinics.map(c => [String(c._id), { slug: c.slug, name: c.name }]),
   );
+  const badgeBySlug = clinicBadgeMap(clinics);
 
   const patientIds = [
     ...new Set([...appointments, ...staleRaw].map(a => String(a.patientId))),
@@ -436,7 +438,7 @@ export default async function DoctorDashboardPage() {
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div className='cdc-dash'>
       {/* A página vive aberta entre consultas — dados frescos sem F5 */}
       <AutoRefresh intervalMs={90_000} />
       {/* Cabeçalho */}
@@ -461,104 +463,6 @@ export default async function DoctorDashboardPage() {
           {dateLabel}
         </p>
       </div>
-
-      {/* Consultas de dias anteriores esquecidas abertas — fechar liberta a
-          baixa de stock e a fila de cobrança. Só aparece quando existem. */}
-      {stale.length > 0 && (
-        <div
-          style={{
-            backgroundColor: '#FFF9EC',
-            border: '1px solid #F0DCB0',
-            borderRadius: '14px',
-            overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
-              padding: '12px 20px',
-              borderBottom: '1px solid #F0DCB0',
-              fontSize: '14px',
-              fontWeight: 700,
-              color: '#8A5A00',
-            }}
-          >
-            Consultas por fechar
-            <span
-              style={{
-                marginLeft: '8px',
-                fontSize: '12px',
-                fontWeight: 500,
-                color: '#8A5A00',
-              }}
-            >
-              — de dias anteriores; concluir regulariza o registo clínico, o
-              stock e a cobrança
-            </span>
-          </div>
-          {stale.map((s, i) => {
-            const cl = CLINIC_STYLE[s.clinicSlug] ?? {
-              bg: '#EAECF3',
-              fg: '#3D4257',
-            };
-            return (
-              <Link
-                key={s.id}
-                href={`/doutor/consulta/${s.id}`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '14px',
-                  padding: '10px 20px',
-                  borderTop: i === 0 ? 'none' : '1px solid #F5EBD2',
-                  textDecoration: 'none',
-                }}
-              >
-                <span
-                  style={{
-                    fontVariantNumeric: 'tabular-nums',
-                    fontSize: '13px',
-                    fontWeight: 700,
-                    color: '#8A5A00',
-                    minWidth: '92px',
-                  }}
-                >
-                  {s.dateLabel} · {s.time}
-                </span>
-                <span
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    color: '#1B2A6B',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {s.patientLabel}
-                </span>
-                <Badge bg={cl.bg} fg={cl.fg}>
-                  {s.clinicSlug
-                    ? s.clinicSlug.charAt(0).toUpperCase() +
-                      s.clinicSlug.slice(1)
-                    : '—'}
-                </Badge>
-                <span
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    color: '#8A5A00',
-                    flexShrink: 0,
-                  }}
-                >
-                  Retomar →
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      )}
 
       {/* Destaque: consulta em curso / próximo paciente */}
       {highlight && (
@@ -637,48 +541,123 @@ export default async function DoctorDashboardPage() {
         </Link>
       )}
 
-      {/* KPIs do dia */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-          gap: '12px',
-        }}
-      >
-        {[
-          { label: 'Consultas hoje', value: active.length },
-          { label: 'Concluídas', value: completedCount },
-          { label: 'Por atender', value: Math.max(remainingCount, 0) },
-          { label: 'Faltas / canceladas', value: missedCount },
-        ].map(kpi => (
+      {/* Consultas de dias anteriores esquecidas abertas — fechar liberta a
+          baixa de stock e a fila de cobrança. Só aparece quando existem. */}
+      {stale.length > 0 && (
+        <div
+          style={{
+            backgroundColor: '#FFF9EC',
+            border: '1px solid #F0DCB0',
+            borderRadius: '14px',
+            overflow: 'hidden',
+          }}
+        >
           <div
-            key={kpi.label}
             style={{
-              backgroundColor: '#FFFFFF',
-              border: '1px solid #EEF1F8',
-              borderRadius: '12px',
-              padding: '14px 18px',
+              padding: '12px 20px',
+              borderBottom: '1px solid #F0DCB0',
+              fontSize: '14px',
+              fontWeight: 700,
+              color: '#8A5A00',
             }}
           >
-            <p
+            Consultas por fechar
+            <span
               style={{
-                margin: 0,
-                fontSize: '26px',
-                fontWeight: 700,
-                color: '#1B2A6B',
-                lineHeight: 1.1,
+                marginLeft: '8px',
+                fontSize: '12px',
+                fontWeight: 500,
+                color: '#8A5A00',
               }}
             >
-              {kpi.value}
-            </p>
-            <p
-              style={{ margin: '4px 0 0', fontSize: '13px', color: '#6A7186' }}
-            >
-              {kpi.label}
-            </p>
+              — de dias anteriores; concluir regulariza o registo clínico, o
+              stock e a cobrança
+            </span>
           </div>
-        ))}
-      </div>
+          {stale.map((s, i) => {
+            const cl = badgeBySlug[s.clinicSlug] ?? {
+              bg: '#EAECF3',
+              fg: '#3D4257',
+              label: '—',
+            };
+            return (
+              <Link
+                key={s.id}
+                href={`/doutor/consulta/${s.id}`}
+                className='cdc-line'
+                style={{
+                  padding: '10px 20px',
+                  borderTop: i === 0 ? 'none' : '1px solid #F5EBD2',
+                  textDecoration: 'none',
+                }}
+              >
+                <span
+                  style={{
+                    fontVariantNumeric: 'tabular-nums',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: '#8A5A00',
+                    width: 92,
+                    flexShrink: 0,
+                  }}
+                >
+                  {s.dateLabel} · {s.time}
+                </span>
+                <span
+                  className='cdc-line-main'
+                  style={{
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: '#1B2A6B',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {s.patientLabel}
+                </span>
+                <span className='cdc-line-meta'>
+                  <Badge bg={cl.bg} fg={cl.fg}>
+                    {cl.label}
+                  </Badge>
+                  <span
+                    style={{
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#8A5A00',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Retomar
+                  </span>
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {/* KPIs do dia — faixa única (6→3→2 colunas), sem caixa por número */}
+      <HojeStrip
+        items={[
+          { label: 'Consultas hoje', value: String(active.length) },
+          {
+            label: 'Concluídas',
+            value: String(completedCount),
+            tone: completedCount > 0 ? 'good' : undefined,
+          },
+          {
+            label: 'Por atender',
+            value: String(Math.max(remainingCount, 0)),
+            tone: remainingCount > 0 ? 'info' : undefined,
+          },
+          {
+            label: 'Faltas / canceladas',
+            value: String(missedCount),
+            tone: missedCount > 0 ? 'bad' : undefined,
+          },
+        ]}
+      />
 
       {/* O meu mês — produção e comissão do PRÓPRIO médico (snapshots) */}
       <div
@@ -906,14 +885,12 @@ export default async function DoctorDashboardPage() {
                 bg: '#EAECF3',
                 fg: '#3D4257',
               };
-              const cl = CLINIC_STYLE[a.clinicSlug] ?? {
+              const cl = badgeBySlug[a.clinicSlug] ?? {
                 bg: '#EAECF3',
                 fg: '#3D4257',
+                label: '—',
               };
               const rowStyle: React.CSSProperties = {
-                display: 'flex',
-                alignItems: 'center',
-                gap: '16px',
                 padding: '12px 20px',
                 borderBottom: '1px solid #F4F6FB',
                 opacity: muted ? 0.55 : 1,
@@ -927,12 +904,13 @@ export default async function DoctorDashboardPage() {
                       fontSize: '14px',
                       fontWeight: 700,
                       color: '#1B2A6B',
-                      minWidth: '92px',
+                      width: 92,
+                      flexShrink: 0,
                     }}
                   >
                     {minToHhmm(a.startMin)}–{minToHhmm(a.endMin)}
                   </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className='cdc-line-main'>
                     <p
                       style={{
                         margin: 0,
@@ -970,45 +948,45 @@ export default async function DoctorDashboardPage() {
                       {a.notes ? ` · ${a.notes}` : ''}
                     </p>
                   </div>
-                  <Badge bg={cl.bg} fg={cl.fg}>
-                    {a.clinicSlug
-                      ? a.clinicSlug.charAt(0).toUpperCase() +
-                        a.clinicSlug.slice(1)
-                      : a.clinicName}
-                  </Badge>
-                  <Badge bg={st.bg} fg={st.fg}>
-                    {STATUS_LABEL[a.status] ?? a.status}
-                  </Badge>
-                  {a.isUrgent && (
-                    <Badge bg='#FDEDED' fg='#B3261E'>
-                      Urgência
+                  <div className='cdc-line-meta' style={{ flexWrap: 'wrap' }}>
+                    <Badge bg={cl.bg} fg={cl.fg}>
+                      {a.clinicSlug ? cl.label : a.clinicName}
                     </Badge>
-                  )}
-                  {a.anamnesis === 'missing' && (
-                    <Badge bg='#FFF4E5' fg='#9A6700'>
-                      Anamnese em falta
+                    <Badge bg={st.bg} fg={st.fg}>
+                      {STATUS_LABEL[a.status] ?? a.status}
                     </Badge>
-                  )}
-                  {a.anamnesis === 'expired' && (
-                    <Badge bg='#FFF4E5' fg='#9A6700'>
-                      Anamnese &gt;1 ano
-                    </Badge>
-                  )}
-                  {a.anamnesis === 'unreviewed' && (
-                    <Badge bg='#EEF2FF' fg='#2743A6'>
-                      Anamnese por validar
-                    </Badge>
-                  )}
+                    {a.isUrgent && (
+                      <Badge bg='#FDEDED' fg='#B3261E'>
+                        Urgência
+                      </Badge>
+                    )}
+                    {a.anamnesis === 'missing' && (
+                      <Badge bg='#FFF4E5' fg='#9A6700'>
+                        Anamnese em falta
+                      </Badge>
+                    )}
+                    {a.anamnesis === 'expired' && (
+                      <Badge bg='#FFF4E5' fg='#9A6700'>
+                        Anamnese &gt;1 ano
+                      </Badge>
+                    )}
+                    {a.anamnesis === 'unreviewed' && (
+                      <Badge bg='#EEF2FF' fg='#2743A6'>
+                        Anamnese por validar
+                      </Badge>
+                    )}
+                  </div>
                 </>
               );
               return muted ? (
-                <div key={a.id} style={rowStyle}>
+                <div key={a.id} className='cdc-line' style={rowStyle}>
                   {rowContent}
                 </div>
               ) : (
                 <Link
                   key={a.id}
                   href={`/doutor/consulta/${a.id}`}
+                  className='cdc-line'
                   style={rowStyle}
                 >
                   {rowContent}

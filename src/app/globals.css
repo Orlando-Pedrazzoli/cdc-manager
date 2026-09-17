@@ -101,9 +101,15 @@ body {
   padding: 24px;
 }
 
+.cdc-hide-mobile {
+  display: flex;
+}
 @media (max-width: 1023px) {
   .cdc-sidebar-desktop {
     display: none;
+  }
+  .cdc-hide-mobile {
+    display: none !important;
   }
   .cdc-topbar-user {
     display: none;
@@ -172,6 +178,9 @@ body {
 .cdc-dash-hoje > * + * {
   border-left: 1px solid #e6eaf3;
 }
+.cdc-dash-hoje-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 .cdc-dash-main {
   display: grid;
   grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
@@ -206,6 +215,15 @@ body {
     row-gap: 12px;
   }
   .cdc-dash-hoje > :nth-child(4) {
+    border-left: none;
+  }
+  .cdc-dash-hoje-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cdc-dash-hoje-4 > :nth-child(4) {
+    border-left: 1px solid #e6eaf3;
+  }
+  .cdc-dash-hoje-4 > :nth-child(odd) {
     border-left: none;
   }
   .cdc-dash-main {

@@ -5,7 +5,8 @@
 // Os 6 números que a receção/gestor precisa de ver antes de tudo. Sem caixas
 // individuais (evita card→card→card): um único bloco, colunas separadas por
 // filete (globals.css .cdc-dash-hoje). Cada número é um link para a ação
-// correspondente. 6 → 3 → 2 colunas conforme a largura.
+// correspondente. 6 → 3 → 2 colunas conforme a largura; com ≤4 itens
+// (dashboard do médico) a faixa é 4 → 2 → 2 (.cdc-dash-hoje-4).
 // =============================================================================
 
 import Link from 'next/link';
@@ -23,7 +24,7 @@ export type HojeItem = {
 export function HojeStrip({ items }: { items: HojeItem[] }) {
   return (
     <div
-      className='cdc-dash-hoje'
+      className={`cdc-dash-hoje${items.length <= 4 ? ' cdc-dash-hoje-4' : ''}`}
       style={{
         backgroundColor: '#FFFFFF',
         border: `1px solid ${C.line}`,
