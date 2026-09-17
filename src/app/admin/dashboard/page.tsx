@@ -1,13 +1,21 @@
 // 📄 src/app/admin/dashboard/page.tsx
 // =============================================================================
-// CDC Manager — Dashboard Admin: a operação do dia
+// CDC Manager — Dashboard Admin v2: "o que preciso fazer agora?"
 // -----------------------------------------------------------------------------
-// Server Component. O ecrã de entrada da gestão: como está o dia AGORA nas
-// duas clínicas — marcações e o seu progresso, atos executados e valor, o que
-// está POR COBRAR (ponte visível para a Cobrança), recalls por contactar e
-// stock a repor. Tudo calculado ao vivo do MongoDB, sem caches.
+// Server Component. O ecrã de entrada da gestão, desenhado em torno de cinco
+// perguntas — não em torno de métricas:
+//   ① O que acontece hoje?        → faixa Hoje + "A seguir hoje" (bloco principal)
+//   ② O que precisa de atenção?   → "Requer atenção" (RX, próteses, recalls,
+//                                    stock; catálogo como tarefa administrativa)
+//   ③ Como está a clínica?        → Produção com contexto + Por cobrar
+//   ④ O que está pendente?        → amanhã por confirmar, laboratório
+//   ⑤ Há algum problema?          → faltas/cancelamentos, atrasos
+// A camada de dados é a da v1 (tudo ao vivo do MongoDB, sem caches); a v2
+// acrescenta só a meta mensal (soma dos objetivos dos médicos ativos).
+// Apresentação em src/components/dashboard/*; responsivo em globals.css
+// (.cdc-dash-*): 6→3→2 colunas na faixa, blocos empilhados abaixo de 1024px.
 //
-// Notas de implementação:
+// Notas de implementação (mantidas da v1):
 // · Recalls "por contactar" = status 'due' OU 'scheduled' cuja data já chegou
 //   (leitura pura — a promoção lazy scheduled→due acontece só no load de
 //   /admin/recalls; aqui apenas CONTAMOS, nunca escrevemos).
@@ -15,19 +23,12 @@
 //   casas abaixo do mínimo (mesma regra do badge "Repor" da StockTable).
 // · Badge da clínica: derivado do slug (capitalizado) — 3.ª clínica = zero
 //   código, como nas colunas dinâmicas do Stock.
-// · KPI "Por confirmar amanhã": marcações pending de amanhã — o gesto diário
-//   da receção (ligar a confirmar presença) com visibilidade e um clique.
 // · "Faltas e cancelamentos hoje": lista acionável (paciente → ficha,
-//   Remarcar → agenda da clínica) — o Dentoral mostrava a falta; aqui age-se.
-// · "Aniversários hoje": fidelização barata — nome, idade e telefone
-//   clicável. Match dia+mês feito no Mongo com timezone Europe/Lisbon.
-// · <AutoRefresh/>: a receção deixa a página aberta o dia todo — refresh
-//   silencioso a cada 90s (pausa com separador oculto).
-// · Sparkline de produção: 30 dias civis (Lisboa) em SVG puro no KPI —
-//   zeros preenchidos, hoje em destaque verde. Tendência que o Dentoral
-//   nunca deu.
-// · Ocupação por clínica: minutos bloqueantes de hoje ÷ (abertura ×
-//   gabinetes). Antecipa o C.8 com leitura simples.
+//   Remarcar → agenda da clínica).
+// · "Aniversários hoje": match dia+mês feito no Mongo com timezone Europe/Lisbon.
+// · <AutoRefresh/>: refresh silencioso a cada 90s (pausa com separador oculto).
+// · Sparkline de produção: 30 dias civis (Lisboa) em SVG puro.
+// · Ocupação por clínica: minutos bloqueantes de hoje ÷ (abertura × gabinetes).
 // · KPI "Novos pacientes": createdAt no mês 1–N vs anterior. ATENÇÃO
 //   pós-migração Dentoral: o import em massa infla este número no mês da
 //   migração (createdAt = data de inserção).
@@ -48,7 +49,28 @@ import TreatmentType from '@/models/TreatmentType';
 import RxRequest from '@/models/RxRequest';
 import LabCase from '@/models/LabCase';
 import { LAB_WORK_TYPE_LABEL, type LabWorkType } from '@/lib/domain';
-import { FlaskConical } from 'lucide-react';
+import { Cake, FlaskConical } from 'lucide-react';
+import { HojeStrip, type HojeItem } from '@/components/dashboard/HojeStrip';
+import {
+  AttentionPanel,
+  type AttentionItem,
+} from '@/components/dashboard/AttentionPanel';
+import { ProductionCard } from '@/components/dashboard/ProductionCard';
+import { CollectCard } from '@/components/dashboard/CollectCard';
+import {
+  UpcomingCard,
+  type UpcomingRow,
+} from '@/components/dashboard/UpcomingCard';
+import { ClinicCard } from '@/components/dashboard/ClinicCard';
+import {
+  ActionLink,
+  C,
+  EmptyLine,
+  Pill,
+  Row,
+  Section,
+  type Tone,
+} from '@/components/dashboard/ui';
 import { getActiveClinics } from '@/models/Clinic';
 import {
   lisbonToUtc,
@@ -116,7 +138,6 @@ export default async function AdminDashboardPage() {
   const [
     clinics,
     apptsByClinic,
-    patientsTotal,
     executedByClinic,
     toCollect,
     recallsDue,
@@ -135,6 +156,7 @@ export default async function AdminDashboardPage() {
     rxPending,
     labOverdue,
     labDueRaw,
+    doctorGoalAgg,
   ] = await Promise.all([
     getActiveClinics(),
     // Marcações de hoje agrupadas por clínica × estado
@@ -150,7 +172,6 @@ export default async function AdminDashboardPage() {
         },
       },
     ]),
-    Patient.countDocuments({ status: 'active' }),
     // Atos executados hoje (nº + valor) POR CLÍNICA — o global soma-se abaixo
     Procedure.aggregate<{
       _id: mongoose.Types.ObjectId;
@@ -343,6 +364,12 @@ export default async function AdminDashboardPage() {
       .select('labName workType patientId dueDate clinicId')
       .sort({ dueDate: 1, labName: 1 })
       .lean(),
+    // Meta mensal da clínica = soma dos objetivos dos médicos ativos. Sem
+    // objetivos definidos → 0 e a barra não aparece (nunca inventamos meta).
+    Doctor.aggregate<{ _id: null; cents: number }>([
+      { $match: { active: true, monthlyGoalCents: { $gt: 0 } } },
+      { $group: { _id: null, cents: { $sum: '$monthlyGoalCents' } } },
+    ]),
   ]);
 
   // Entregas de laboratório hoje/amanhã, por laboratório (E3)
@@ -484,35 +511,38 @@ export default async function AdminDashboardPage() {
     minute: '2-digit',
     timeZone: 'Europe/Lisbon',
   });
-  const UP_STATUS: Record<string, { label: string; bg: string; fg: string }> = {
-    'in-progress': { label: 'Em curso', bg: '#E7F5EC', fg: '#186A3B' },
-    'checked-in': { label: 'Em espera', bg: '#FFF4E0', fg: '#8A5A00' },
-    confirmed: { label: 'Confirmada', bg: '#E4EBFF', fg: '#1B2A6B' },
-    pending: { label: 'Pendente', bg: '#EAECF3', fg: '#3D4257' },
+  const UP_STATUS: Record<string, { label: string; tone: Tone }> = {
+    'in-progress': { label: 'Em curso', tone: 'good' },
+    'checked-in': { label: 'Em espera', tone: 'warn' },
+    confirmed: { label: 'Confirmada', tone: 'info' },
+    pending: { label: 'Por confirmar', tone: 'neutral' },
   };
-  const upcoming = upcomingRaw.map(a => ({
-    id: String(a._id),
-    time: timeFmt.format(a.startAt as Date),
-    patientId: String(a.patientId),
-    patientName: patientNameById.get(String(a.patientId)) ?? '(paciente)',
-    doctorName: a.doctorId
-      ? (doctorNameById.get(String(a.doctorId)) ?? '(médico)')
-      : 'Por atribuir',
-    clinicSlug: clinicSlugById.get(String(a.clinicId)) ?? '',
-    status: UP_STATUS[a.status as string] ?? {
-      label: a.status as string,
-      bg: '#EAECF3',
-      fg: '#3D4257',
-    },
-  }));
+  const minutesLisbon = (dt: Date) =>
+    Math.round((dt.getTime() - dayStart.getTime()) / 60_000);
+  const upcoming: UpcomingRow[] = upcomingRaw.map(a => {
+    const slug = clinicSlugById.get(String(a.clinicId)) ?? '';
+    return {
+      id: String(a._id),
+      time: timeFmt.format(a.startAt as Date),
+      minutes: minutesLisbon(a.startAt as Date),
+      patientId: String(a.patientId),
+      patientName: patientNameById.get(String(a.patientId)) ?? '(paciente)',
+      doctorName: a.doctorId
+        ? (doctorNameById.get(String(a.doctorId)) ?? '(médico)')
+        : 'Por atribuir',
+      clinicLabel: slugLabel(slug),
+      clinicTone: CLINIC_STYLE[slug] ?? { bg: '#EAECF3', fg: '#3D4257' },
+      status: UP_STATUS[a.status as string] ?? {
+        label: a.status as string,
+        tone: 'neutral',
+      },
+    };
+  });
 
   // --- Faltas e cancelamentos de hoje (acionáveis) ---------------------------
-  const MISSED_STATUS: Record<
-    string,
-    { label: string; bg: string; fg: string }
-  > = {
-    'no-show': { label: 'Falta', bg: '#FDF3F2', fg: '#B3261E' },
-    cancelled: { label: 'Cancelada', bg: '#EAECF3', fg: '#3D4257' },
+  const MISSED_STATUS: Record<string, { label: string; tone: Tone }> = {
+    'no-show': { label: 'Falta', tone: 'bad' },
+    cancelled: { label: 'Cancelada', tone: 'neutral' },
   };
   const missed = missedRaw.map(a => ({
     id: String(a._id),
@@ -525,8 +555,7 @@ export default async function AdminDashboardPage() {
     clinicSlug: clinicSlugById.get(String(a.clinicId)) ?? '',
     status: MISSED_STATUS[a.status as string] ?? {
       label: a.status as string,
-      bg: '#EAECF3',
-      fg: '#3D4257',
+      tone: 'neutral' as Tone,
     },
   }));
 
@@ -548,13 +577,12 @@ export default async function AdminDashboardPage() {
   }).format(new Date());
   const dateLabel = rawDate.charAt(0).toUpperCase() + rawDate.slice(1);
 
-  const card: React.CSSProperties = {
-    backgroundColor: '#FFFFFF',
-    border: '1px solid #EEF1F8',
-    borderRadius: '14px',
-    padding: '16px 20px',
-  };
-
+  // --- Agregados do dia (todas as clínicas) ----------------------------------
+  const sumStatus = (...keys: string[]) =>
+    [...perClinic.values()].reduce(
+      (s, e) => s + keys.reduce((t, k) => t + (e.byStatus[k] ?? 0), 0),
+      0,
+    );
   const doneOf = (byStatus: Record<string, number>) =>
     byStatus['completed'] ?? 0;
   const activeOf = (byStatus: Record<string, number>) =>
@@ -566,158 +594,156 @@ export default async function AdminDashboardPage() {
   const missedOf = (byStatus: Record<string, number>) =>
     (byStatus['cancelled'] ?? 0) + (byStatus['no-show'] ?? 0);
 
-  // ---------------------------------------------------------------------------
-  // KPIs — os acionáveis (Por cobrar, Recalls, Stock) são cartões-link.
-  // Paleta de alerta: azul (cobrança), vermelho (recalls), âmbar (stock).
-  // ---------------------------------------------------------------------------
-  const kpis: Array<{
-    label: string;
-    value: string;
-    sub?: string;
-    href?: string;
-    accentBg?: string;
-    accentBorder?: string;
-    valueColor?: string;
-    /** Série diária para mini-gráfico de barras (SVG inline, sem libs) */
-    spark?: number[];
-  }> = [
-    { label: 'Pacientes ativos', value: String(patientsTotal) },
+  const todayTotal = sumStatus(
+    'pending',
+    'confirmed',
+    'checked-in',
+    'in-progress',
+    'completed',
+  );
+  const todayDone = sumStatus('completed');
+  const todayToConfirm = sumStatus('pending');
+  const goalCents = doctorGoalAgg[0]?.cents ?? 0;
+
+  // Janela do dia para a timeline de "A seguir hoje": da abertura mais cedo
+  // ao fecho mais tarde entre as clínicas abertas hoje (fallback 08:00–20:00)
+  let dayOpenMin = Infinity;
+  let dayCloseMin = -Infinity;
+  for (const c of clinics) {
+    const day = c.openingHours.find(o => o.weekday === weekdayToday);
+    for (const r of day?.ranges ?? []) {
+      dayOpenMin = Math.min(dayOpenMin, hhmmToMin(r.start));
+      dayCloseMin = Math.max(dayCloseMin, hhmmToMin(r.end));
+    }
+  }
+  if (!Number.isFinite(dayOpenMin)) dayOpenMin = 8 * 60;
+  if (!Number.isFinite(dayCloseMin)) dayCloseMin = 20 * 60;
+  const nowMin = Math.round((now.getTime() - dayStart.getTime()) / 60_000);
+
+  // --- Requer atenção: pendências acionáveis, só as que existem --------------
+  const attention: AttentionItem[] = [
     {
-      label: 'Novos pacientes este mês',
+      count: collectTotalN,
+      label: `${collectTotalN} ${collectTotalN === 1 ? 'ato' : 'atos'} por cobrar (${formatCents(collectTotalCents)})`,
+      href: '/admin/cobranca',
+      tone: 'info',
+    },
+    {
+      count: rxPending,
+      label: `${rxPending} RX por captar na sala`,
+      href: '/admin/rx',
+      tone: 'warn',
+    },
+    {
+      count: labOverdue,
+      label: `${labOverdue} ${labOverdue === 1 ? 'prótese atrasada' : 'próteses atrasadas'} no laboratório`,
+      href: '/admin/proteses?filtro=atrasadas',
+      tone: 'bad',
+    },
+    {
+      count: recallsDue,
+      label: `${recallsDue} ${recallsDue === 1 ? 'recall' : 'recalls'} para contactar`,
+      href: '/admin/recalls',
+      tone: 'bad',
+    },
+    {
+      count: stockLowN,
+      label: `${stockLowN} ${stockLowN === 1 ? 'produto' : 'produtos'} abaixo do stock mínimo`,
+      href: '/admin/stock',
+      tone: 'warn',
+    },
+    {
+      count: catalogUnconfirmed,
+      label: `Catálogo: ${catalogUnconfirmed} atos por confirmar (preço, duração, flags)`,
+      href: '/admin/tratamentos',
+      tone: 'neutral',
+      admin: true,
+    },
+  ];
+  const attentionN = attention.filter(a => !a.admin && a.count > 0).length;
+
+  // --- Faixa Hoje: 6 números, cada um com a sua ação --------------------------
+  const hoje: HojeItem[] = [
+    {
+      label: 'Consultas hoje',
+      value: String(todayTotal),
+      sub:
+        todayTotal > 0
+          ? `${todayDone} concluída${todayDone === 1 ? '' : 's'} · ${todayToConfirm} por confirmar`
+          : 'Sem marcações',
+      href: '/admin/agenda',
+    },
+    {
+      label: 'Novos pacientes',
       value: String(newPatientsMonth),
       sub:
         newPatientsPrev > 0
-          ? `${newPatientsMonth >= newPatientsPrev ? '▲' : '▼'} vs ${newPatientsPrev} no mesmo período do mês passado`
-          : newPatientsMonth > 0
-            ? 'Primeiros registos do período'
-            : 'Sem registos novos',
+          ? `${newPatientsMonth >= newPatientsPrev ? '▲' : '▼'} ${newPatientsPrev} no mês anterior`
+          : 'este mês',
       href: '/admin/pacientes',
     },
     {
-      label: 'Atos executados hoje',
-      value: String(executedTotalN),
-      sub: formatCents(executedTotalCents),
-    },
-    {
-      // "Produção" e não "Faturado": mede atos EXECUTADOS (executedAt), não
-      // documentos fiscais — quando o Moloni entrar (Sprint 4), "faturado"
-      // passa a ter significado próprio e este nome evita a confusão.
-      label: 'Produção este mês',
-      value: formatCents(monthCents),
-      spark,
-      // Comparação honesta: mesmo intervalo de dias (1–N) do mês anterior
-      sub:
-        prevCents > 0
-          ? `${monthCents >= prevCents ? '▲' : '▼'} vs ${formatCents(prevCents)} no mesmo período do mês passado`
-          : `${monthN} ato${monthN === 1 ? '' : 's'} executado${monthN === 1 ? '' : 's'}`,
+      label: 'Produção hoje',
+      value: formatCents(executedTotalCents),
+      sub: `${executedTotalN} ato${executedTotalN === 1 ? '' : 's'} executado${executedTotalN === 1 ? '' : 's'}`,
       href: '/admin/relatorios',
+      tone: executedTotalCents > 0 ? 'good' : undefined,
     },
     {
       label: 'Por cobrar',
       value: formatCents(collectTotalCents),
       sub:
         collectTotalN > 0
-          ? `${collectTotalN} ato${collectTotalN === 1 ? '' : 's'} aguarda${collectTotalN === 1 ? '' : 'm'} cobrança`
+          ? `${collectTotalN} ato${collectTotalN === 1 ? '' : 's'}`
           : 'Tudo cobrado',
       href: '/admin/cobranca',
-      ...(collectTotalCents > 0
-        ? { accentBg: '#F5F8FF', accentBorder: '#C9D4FF' }
-        : {}),
     },
     {
-      label: 'Por confirmar amanhã',
+      label: 'Amanhã por confirmar',
       value: String(pendingTomorrow),
-      sub:
-        pendingTomorrow > 0
-          ? 'Ligar a confirmar presença'
-          : 'Amanhã confirmado',
+      sub: pendingTomorrow > 0 ? 'Ligar a confirmar' : 'Amanhã confirmado',
       href: `/admin/agenda?date=${tomorrowStr}`,
-      ...(pendingTomorrow > 0
-        ? { accentBg: '#F5F8FF', accentBorder: '#C9D4FF' }
-        : {}),
+      tone: pendingTomorrow > 0 ? 'warn' : undefined,
     },
     {
-      // Fila da sala de RX (requested + in-progress, qualquer dia) — âmbar
-      // quando há captações a dever; liga direto à fila /admin/rx
-      label: 'RX por captar',
-      value: String(rxPending),
-      sub: rxPending > 0 ? 'Na fila da sala de RX' : 'Fila vazia',
-      href: '/admin/rx',
-      ...(rxPending > 0
-        ? {
-            accentBg: '#FFF9EE',
-            accentBorder: '#F2DEB6',
-            valueColor: '#8A5A00',
-          }
-        : {}),
-    },
-    {
-      // Próteses com chegada prevista ultrapassada — cobrar o laboratório
-      label: 'Próteses atrasadas',
-      value: String(labOverdue),
-      sub: labOverdue > 0 ? 'Cobrar o laboratório' : 'Laboratório em dia',
-      href: '/admin/proteses?filtro=atrasadas',
-      ...(labOverdue > 0
-        ? {
-            accentBg: '#FDF3F2',
-            accentBorder: '#F3CFCC',
-            valueColor: '#B3261E',
-          }
-        : {}),
-    },
-    {
-      label: 'Recalls por contactar',
-      value: String(recallsDue),
-      sub: recallsDue > 0 ? 'Na fila de contacto' : 'Em dia',
-      href: '/admin/recalls',
-      ...(recallsDue > 0
-        ? {
-            accentBg: '#FDF3F2',
-            accentBorder: '#F3CFCC',
-            valueColor: '#B3261E',
-          }
-        : {}),
-    },
-    {
-      label: 'Stock a repor',
-      value: String(stockLowN),
-      sub: stockLowN > 0 ? 'Abaixo do mínimo' : 'Níveis OK',
-      href: '/admin/stock',
-      ...(stockLowN > 0
-        ? {
-            accentBg: '#FFF9EE',
-            accentBorder: '#F2DEB6',
-            valueColor: '#8A5A00',
-          }
-        : {}),
-    },
-    {
-      label: 'Catálogo por confirmar',
-      value: String(catalogUnconfirmed),
-      sub:
-        catalogUnconfirmed > 0
-          ? 'Rever duração, preço e flags'
-          : 'Catálogo confirmado',
-      href: '/admin/tratamentos',
-      ...(catalogUnconfirmed > 0
-        ? {
-            accentBg: '#FFF9EE',
-            accentBorder: '#F2DEB6',
-            valueColor: '#8A5A00',
-          }
-        : {}),
+      label: 'Pendências',
+      value: String(attentionN),
+      sub: attentionN > 0 ? 'Requer atenção' : 'Tudo em dia',
+      href: '#requer-atencao',
+      tone: attentionN > 0 ? 'bad' : 'good',
     },
   ];
 
+  const collectByClinicRows = clinics
+    .map(c => {
+      const r = collectByClinic.get(String(c._id));
+      return { name: c.name, cents: r?.cents ?? 0, n: r?.n ?? 0 };
+    })
+    .filter(r => r.cents > 0);
+
+  const btn: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '9px 16px',
+    borderRadius: '10px',
+    fontSize: '13px',
+    fontWeight: 600,
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div className='cdc-dash'>
       {/* Dados frescos sem F5: a página vive aberta na receção o dia todo */}
       <AutoRefresh intervalMs={90_000} />
+
+      {/* Cabeçalho: saudação + data discreta; ações primárias sempre à mão */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'flex-start',
+          alignItems: 'center',
           gap: '12px',
           flexWrap: 'wrap',
         }}
@@ -728,42 +754,30 @@ export default async function AdminDashboardPage() {
               margin: 0,
               fontSize: '22px',
               fontWeight: 700,
-              color: '#1B2A6B',
+              letterSpacing: '-0.2px',
+              color: C.navy,
             }}
           >
             {firstName ? `Olá, ${firstName}` : 'Dashboard'}
           </h1>
-          <p style={{ margin: '4px 0 0', fontSize: '14px', color: '#6A7186' }}>
+          <p style={{ margin: '3px 0 0', fontSize: '13px', color: C.faint }}>
             {dateLabel}
           </p>
         </div>
-        {/* Ações rápidas: os dois gestos mais frequentes da administração */}
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <Link
             href='/admin/agenda'
-            style={{
-              padding: '9px 16px',
-              borderRadius: '10px',
-              backgroundColor: '#2743A6',
-              color: '#FFFFFF',
-              fontSize: '13px',
-              fontWeight: 600,
-              textDecoration: 'none',
-            }}
+            style={{ ...btn, backgroundColor: C.action, color: '#FFFFFF' }}
           >
             + Nova marcação
           </Link>
           <Link
             href='/admin/pacientes/novo'
             style={{
-              padding: '9px 16px',
-              borderRadius: '10px',
+              ...btn,
               backgroundColor: '#FFFFFF',
-              color: '#2743A6',
+              color: C.action,
               border: '1px solid #C9D4FF',
-              fontSize: '13px',
-              fontWeight: 600,
-              textDecoration: 'none',
             }}
           >
             + Novo paciente
@@ -771,312 +785,101 @@ export default async function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* KPIs globais + alertas operacionais */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-          gap: '12px',
-        }}
-      >
-        {kpis.map(kpi => {
-          const sparkMax = kpi.spark ? Math.max(...kpi.spark) : 0;
-          const body = (
-            <div
-              style={{
-                ...card,
-                height: '100%',
-                boxSizing: 'border-box',
-                border: kpi.accentBorder
-                  ? `1px solid ${kpi.accentBorder}`
-                  : card.border,
-                backgroundColor: kpi.accentBg ?? '#FFFFFF',
-              }}
-            >
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '24px',
-                  fontWeight: 700,
-                  color: kpi.valueColor ?? '#1B2A6B',
-                  lineHeight: 1.15,
-                }}
-              >
-                {kpi.value}
-              </p>
-              <p
-                style={{
-                  margin: '4px 0 0',
-                  fontSize: '13px',
-                  color: '#6A7186',
-                }}
-              >
-                {kpi.label}
-              </p>
-              {kpi.sub && (
-                <p
-                  style={{
-                    margin: '2px 0 0',
-                    fontSize: '12px',
-                    color: '#9AA1B4',
-                  }}
-                >
-                  {kpi.sub}
-                </p>
-              )}
-              {kpi.spark && sparkMax > 0 && (
-                // 30 barras = 30 dias; a última (hoje) em destaque.
-                // viewBox fixo + preserveAspectRatio none → estica à largura
-                // do cartão sem media queries.
-                <svg
-                  viewBox={`0 0 ${kpi.spark.length * 5} 30`}
-                  preserveAspectRatio='none'
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    height: '30px',
-                    marginTop: '8px',
-                  }}
-                  aria-hidden='true'
-                >
-                  {kpi.spark.map((v, i) => {
-                    const h =
-                      v > 0 ? Math.max(2, Math.round((v / sparkMax) * 28)) : 1;
-                    const isToday = i === kpi.spark!.length - 1;
-                    return (
-                      <rect
-                        key={i}
-                        x={i * 5}
-                        y={30 - h}
-                        width={4}
-                        height={h}
-                        rx={1}
-                        fill={
-                          v === 0 ? '#E8EBF4' : isToday ? '#0F7B4D' : '#2743A6'
-                        }
-                      />
-                    );
-                  })}
-                </svg>
-              )}
-              {kpi.href && (
-                <p
-                  style={{
-                    margin: '6px 0 0',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    color: '#2743A6',
-                  }}
-                >
-                  Abrir →
-                </p>
-              )}
-            </div>
-          );
-          return kpi.href ? (
-            <Link
-              key={kpi.label}
-              href={kpi.href}
-              style={{ textDecoration: 'none', display: 'block' }}
-            >
-              {body}
-            </Link>
-          ) : (
-            <div key={kpi.label}>{body}</div>
+      {/* ① Hoje */}
+      <HojeStrip items={hoje} />
+
+      {/* ① + ② A seguir hoje (principal) · Requer atenção */}
+      <div className='cdc-dash-main'>
+        <UpcomingCard
+          rows={upcoming}
+          dayStartMin={dayOpenMin}
+          dayEndMin={dayCloseMin}
+          nowMin={nowMin}
+        />
+        <div id='requer-atencao' style={{ scrollMarginTop: '72px' }}>
+          <AttentionPanel items={attention} />
+        </div>
+      </div>
+
+      {/* ③ Como está a clínica: produção com contexto · por cobrar */}
+      <div className='cdc-dash-two'>
+        <ProductionCard
+          monthCents={monthCents}
+          monthN={monthN}
+          prevCents={prevCents}
+          todayCents={executedTotalCents}
+          todayN={executedTotalN}
+          goalCents={goalCents}
+          spark={spark}
+        />
+        <CollectCard
+          totalCents={collectTotalCents}
+          totalN={collectTotalN}
+          byClinic={collectByClinicRows}
+          pendingTomorrow={pendingTomorrow}
+          tomorrowHref={`/admin/agenda?date=${tomorrowStr}`}
+        />
+      </div>
+
+      {/* Clínicas lado a lado */}
+      <div className='cdc-dash-auto'>
+        {clinics.map(c => {
+          const stats = perClinic.get(String(c._id)) ?? {
+            total: 0,
+            byStatus: {},
+          };
+          const executed = executedMap.get(String(c._id));
+          const collect = collectByClinic.get(String(c._id));
+          const cl = CLINIC_STYLE[c.slug] ?? { bg: '#EAECF3', fg: '#3D4257' };
+          const occ = occupancyByClinic.get(String(c._id)) ?? {
+            pct: 0,
+            openMin: 0,
+          };
+          return (
+            <ClinicCard
+              key={c.slug}
+              name={c.name}
+              slug={c.slug}
+              badge={{ ...cl, label: slugLabel(c.slug) }}
+              occupancyPct={occ.pct}
+              isOpen={occ.openMin > 0}
+              total={activeOf(stats.byStatus)}
+              done={doneOf(stats.byStatus)}
+              toConfirm={stats.byStatus['pending'] ?? 0}
+              missed={missedOf(stats.byStatus)}
+              inProgress={stats.byStatus['in-progress'] ?? 0}
+              waiting={stats.byStatus['checked-in'] ?? 0}
+              executedCents={executed?.cents ?? 0}
+              executedN={executed?.n ?? 0}
+              collectCents={collect?.cents ?? 0}
+            />
           );
         })}
       </div>
 
-      {/* A seguir hoje: quem é o próximo, em que clínica, com que médico */}
-      <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '13px 20px',
-            borderBottom: '1px solid #EEF1F8',
-          }}
-        >
-          <span style={{ fontSize: '14px', fontWeight: 700, color: '#1B2A6B' }}>
-            A seguir hoje
-          </span>
-          <Link
-            href='/admin/agenda'
-            style={{
-              fontSize: '13px',
-              fontWeight: 600,
-              color: '#2743A6',
-              textDecoration: 'none',
-            }}
-          >
-            Abrir agenda →
-          </Link>
-        </div>
-        {upcoming.length === 0 ? (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '14px',
-              padding: '16px 20px',
-            }}
-          >
-            <p style={{ margin: 0, fontSize: '13px', color: '#9AA1B4' }}>
-              Sem mais consultas hoje.
-            </p>
-            <Link
-              href='/admin/agenda'
-              style={{
-                fontSize: '13px',
-                fontWeight: 600,
-                color: '#2743A6',
-                textDecoration: 'none',
-              }}
-            >
-              + Nova marcação
-            </Link>
-          </div>
-        ) : (
-          <div>
-            {upcoming.map((u, i) => {
-              const cl = CLINIC_STYLE[u.clinicSlug] ?? {
-                bg: '#EAECF3',
-                fg: '#3D4257',
-              };
-              return (
-                <div
-                  key={u.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '14px',
-                    padding: '10px 20px',
-                    borderTop: i === 0 ? 'none' : '1px solid #F4F6FB',
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: '14px',
-                      fontWeight: 700,
-                      color: '#1B2A6B',
-                      width: 46,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {u.time}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <Link
-                      href={`/admin/pacientes/${u.patientId}`}
-                      style={{
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        color: '#1C2233',
-                        textDecoration: 'none',
-                      }}
-                    >
-                      {u.patientName}
-                    </Link>
-                    <p
-                      style={{
-                        margin: '1px 0 0',
-                        fontSize: '12px',
-                        color: '#6A7186',
-                      }}
-                    >
-                      {u.doctorName}
-                    </p>
-                  </div>
-                  <span
-                    style={{
-                      borderRadius: '999px',
-                      padding: '2px 10px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      backgroundColor: cl.bg,
-                      color: cl.fg,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {slugLabel(u.clinicSlug)}
-                  </span>
-                  <span
-                    style={{
-                      borderRadius: '999px',
-                      padding: '2px 10px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      backgroundColor: u.status.bg,
-                      color: u.status.fg,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {u.status.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Entregas de laboratório hoje / amanhã, por laboratório (E3) */}
+      {/* ④ Entregas de laboratório hoje / amanhã, por laboratório (E3) */}
       {labDue.length > 0 && (
-        <div
-          style={{
-            backgroundColor: '#FFFFFF',
-            border: '1px solid #EEF1F8',
-            borderRadius: '14px',
-            padding: '16px 18px',
-          }}
+        <Section
+          title='Entregas de laboratório'
+          icon={<FlaskConical size={16} style={{ color: C.action }} />}
+          action={
+            <ActionLink href='/admin/proteses?filtro=a-chegar'>
+              Ver todas
+            </ActionLink>
+          }
         >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 10,
-            }}
-          >
-            <h2
-              style={{
-                margin: 0,
-                fontSize: '15px',
-                fontWeight: 700,
-                color: '#1B2A6B',
-              }}
-            >
-              <FlaskConical
-                size={16}
-                style={{ marginRight: 6, verticalAlign: -3, color: '#2743A6' }}
-              />
-              Entregas de laboratório — hoje e amanhã
-            </h2>
-            <Link
-              href='/admin/proteses?filtro=a-chegar'
-              style={{
-                fontSize: '12px',
-                color: '#2743A6',
-                fontWeight: 600,
-                textDecoration: 'none',
-              }}
-            >
-              Ver todas →
-            </Link>
-          </div>
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-              gap: 10,
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              gap: '10px',
             }}
           >
             {labDue.map(g => (
               <div
                 key={g.lab}
                 style={{
-                  border: '1px solid #EEF1F8',
+                  border: `1px solid ${C.line}`,
                   borderRadius: '10px',
                   padding: '10px 12px',
                   backgroundColor: g.today > 0 ? '#EEF2FF' : '#F8F9FD',
@@ -1084,21 +887,22 @@ export default async function AdminDashboardPage() {
               >
                 <div
                   style={{
-                    fontSize: '13px',
-                    fontWeight: 700,
-                    color: '#1B2A6B',
-                    marginBottom: 6,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: '8px',
+                    marginBottom: '6px',
                   }}
                 >
-                  {g.lab}
                   <span
                     style={{
-                      marginLeft: 8,
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: '#6A7186',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      color: C.navy,
                     }}
                   >
+                    {g.lab}
+                  </span>
+                  <span style={{ fontSize: '11px', color: C.muted }}>
                     {g.today} hoje · {g.items.length - g.today} amanhã
                   </span>
                 </div>
@@ -1107,14 +911,14 @@ export default async function AdminDashboardPage() {
                     key={it.id}
                     style={{
                       fontSize: '12px',
-                      color: '#3D4257',
+                      color: C.neutralFg,
                       display: 'flex',
-                      gap: 6,
+                      gap: '6px',
                     }}
                   >
                     <span
                       style={{
-                        color: it.isToday ? '#2743A6' : '#9AA1B4',
+                        color: it.isToday ? C.action : C.faint,
                         fontWeight: 700,
                         minWidth: 48,
                       }}
@@ -1129,363 +933,80 @@ export default async function AdminDashboardPage() {
               </div>
             ))}
           </div>
-        </div>
+        </Section>
       )}
 
-      {/* Faltas de hoje (acionáveis) + aniversários — só quando existem */}
+      {/* ⑤ Faltas de hoje (acionáveis) + aniversários — só quando existem */}
       {(missed.length > 0 || birthdays.length > 0) && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-            gap: '12px',
-          }}
-        >
+        <div className='cdc-dash-two'>
           {missed.length > 0 && (
-            <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
-              <div
-                style={{
-                  padding: '13px 20px',
-                  borderBottom: '1px solid #EEF1F8',
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: '14px',
-                    fontWeight: 700,
-                    color: '#B3261E',
-                  }}
-                >
-                  Faltas e cancelamentos hoje
-                </span>
-              </div>
-              <div>
-                {missed.map((f, i) => {
-                  return (
-                    <div
-                      key={f.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '14px',
-                        padding: '10px 20px',
-                        borderTop: i === 0 ? 'none' : '1px solid #F4F6FB',
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: '14px',
-                          fontWeight: 700,
-                          color: '#3D4257',
-                          width: 46,
-                          flexShrink: 0,
-                        }}
-                      >
-                        {f.time}
-                      </span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <Link
-                          href={`/admin/pacientes/${f.patientId}`}
-                          style={{
-                            fontSize: '14px',
-                            fontWeight: 600,
-                            color: '#1C2233',
-                            textDecoration: 'none',
-                          }}
-                        >
-                          {f.patientName}
-                        </Link>
-                        <p
-                          style={{
-                            margin: '1px 0 0',
-                            fontSize: '12px',
-                            color: '#6A7186',
-                          }}
-                        >
-                          {f.doctorName}
-                        </p>
-                      </div>
-                      <span
-                        style={{
-                          borderRadius: '999px',
-                          padding: '2px 10px',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          backgroundColor: f.status.bg,
-                          color: f.status.fg,
-                          flexShrink: 0,
-                        }}
-                      >
-                        {f.status.label}
-                      </span>
-                      <Link
+            <Section
+              title='Faltas e cancelamentos hoje'
+              titleColor={C.bad}
+              flush
+            >
+              {missed.map((f, i) => (
+                <Row
+                  key={f.id}
+                  first={i === 0}
+                  time={f.time}
+                  timeColor={C.neutralFg}
+                  title={f.patientName}
+                  titleHref={`/admin/pacientes/${f.patientId}`}
+                  subtitle={f.doctorName}
+                  meta={
+                    <>
+                      <Pill tone={f.status.tone}>{f.status.label}</Pill>
+                      <ActionLink
                         href={`/admin/agenda?clinic=${f.clinicSlug}`}
-                        style={{
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          color: '#2743A6',
-                          textDecoration: 'none',
-                          flexShrink: 0,
-                        }}
+                        small
                       >
-                        Remarcar →
-                      </Link>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+                        Remarcar
+                      </ActionLink>
+                    </>
+                  }
+                />
+              ))}
+            </Section>
           )}
           {birthdays.length > 0 && (
-            <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
-              <div
-                style={{
-                  padding: '13px 20px',
-                  borderBottom: '1px solid #EEF1F8',
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: '14px',
-                    fontWeight: 700,
-                    color: '#1B2A6B',
-                  }}
-                >
-                  Aniversários hoje 🎂
-                </span>
-              </div>
-              <div>
-                {birthdays.map((b, i) => (
-                  <div
-                    key={b.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '14px',
-                      padding: '10px 20px',
-                      borderTop: i === 0 ? 'none' : '1px solid #F4F6FB',
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <Link
-                        href={`/admin/pacientes/${b.id}`}
-                        style={{
-                          fontSize: '14px',
-                          fontWeight: 600,
-                          color: '#1C2233',
-                          textDecoration: 'none',
-                        }}
-                      >
-                        {b.name}
-                      </Link>
-                      <p
-                        style={{
-                          margin: '1px 0 0',
-                          fontSize: '12px',
-                          color: '#6A7186',
-                        }}
-                      >
-                        Faz {b.age} anos
-                      </p>
-                    </div>
-                    {b.phone && (
+            <Section
+              title='Aniversários hoje'
+              icon={<Cake size={16} style={{ color: C.action }} />}
+              flush
+            >
+              {birthdays.map((b, i) => (
+                <Row
+                  key={b.id}
+                  first={i === 0}
+                  title={b.name}
+                  titleHref={`/admin/pacientes/${b.id}`}
+                  subtitle={`Faz ${b.age} anos`}
+                  meta={
+                    b.phone ? (
                       <a
                         href={`tel:${b.phone}`}
                         style={{
                           fontSize: '12px',
                           fontWeight: 600,
-                          color: '#2743A6',
+                          color: C.action,
                           textDecoration: 'none',
-                          flexShrink: 0,
                         }}
                       >
                         {b.phone}
                       </a>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+                    ) : undefined
+                  }
+                />
+              ))}
+            </Section>
           )}
         </div>
       )}
 
-      {/* O dia por clínica */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-          gap: '12px',
-        }}
-      >
-        {clinics.map(c => {
-          const stats = perClinic.get(String(c._id)) ?? {
-            total: 0,
-            byStatus: {},
-          };
-          const executed = executedMap.get(String(c._id));
-          const collect = collectByClinic.get(String(c._id));
-          const cl = CLINIC_STYLE[c.slug] ?? { bg: '#EAECF3', fg: '#3D4257' };
-          const inProgress = stats.byStatus['in-progress'] ?? 0;
-          const waiting = stats.byStatus['checked-in'] ?? 0;
-          const occ = occupancyByClinic.get(String(c._id)) ?? {
-            pct: 0,
-            openMin: 0,
-          };
-          return (
-            <div
-              key={c.slug}
-              style={{ ...card, padding: 0, overflow: 'hidden' }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '13px 20px',
-                  borderBottom: '1px solid #EEF1F8',
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: '14px',
-                    fontWeight: 700,
-                    color: '#1B2A6B',
-                  }}
-                >
-                  {c.name}
-                </span>
-                <span
-                  style={{
-                    borderRadius: '999px',
-                    padding: '2px 10px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    backgroundColor: cl.bg,
-                    color: cl.fg,
-                  }}
-                >
-                  {slugLabel(c.slug)}
-                </span>
-              </div>
-              <div
-                style={{
-                  padding: '14px 20px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                }}
-              >
-                {occ.openMin > 0 ? (
-                  <div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'baseline',
-                        marginBottom: '4px',
-                      }}
-                    >
-                      <span style={{ fontSize: '12px', color: '#6A7186' }}>
-                        Ocupação hoje
-                      </span>
-                      <span
-                        style={{
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          color: '#1B2A6B',
-                        }}
-                      >
-                        {occ.pct}%
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        height: '6px',
-                        borderRadius: '999px',
-                        backgroundColor: '#EEF1F8',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <div
-                        style={{
-                          height: '100%',
-                          width: `${occ.pct}%`,
-                          borderRadius: '999px',
-                          backgroundColor: '#2743A6',
-                        }}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <p style={{ margin: 0, fontSize: '12px', color: '#9AA1B4' }}>
-                    Fechada hoje
-                  </p>
-                )}
-                <p style={{ margin: 0, fontSize: '14px', color: '#3D4257' }}>
-                  <strong style={{ color: '#1B2A6B' }}>
-                    {activeOf(stats.byStatus)}
-                  </strong>{' '}
-                  consulta{activeOf(stats.byStatus) === 1 ? '' : 's'} hoje ·{' '}
-                  {doneOf(stats.byStatus)} concluída
-                  {doneOf(stats.byStatus) === 1 ? '' : 's'}
-                  {missedOf(stats.byStatus) > 0 && (
-                    <span style={{ color: '#B3261E' }}>
-                      {' '}
-                      · {missedOf(stats.byStatus)} falta
-                      {missedOf(stats.byStatus) === 1 ? '' : 's'}/cancelada
-                      {missedOf(stats.byStatus) === 1 ? '' : 's'}
-                    </span>
-                  )}
-                </p>
-                {(inProgress > 0 || waiting > 0) && (
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: '13px',
-                      color: '#0F7B4D',
-                      fontWeight: 600,
-                    }}
-                  >
-                    Agora: {inProgress > 0 ? `${inProgress} em curso` : ''}
-                    {inProgress > 0 && waiting > 0 ? ' · ' : ''}
-                    {waiting > 0 ? `${waiting} em espera` : ''}
-                  </p>
-                )}
-                {executed && executed.cents > 0 && (
-                  <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
-                    Executado hoje:{' '}
-                    <strong style={{ color: '#0F7B4D' }}>
-                      {formatCents(executed.cents)}
-                    </strong>{' '}
-                    ({executed.n} ato{executed.n === 1 ? '' : 's'})
-                  </p>
-                )}
-                {collect && collect.cents > 0 && (
-                  <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
-                    Por cobrar:{' '}
-                    <strong style={{ color: '#1B2A6B' }}>
-                      {formatCents(collect.cents)}
-                    </strong>{' '}
-                    ({collect.n} ato{collect.n === 1 ? '' : 's'})
-                  </p>
-                )}
-                <Link
-                  href={`/admin/agenda?clinic=${c.slug}`}
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    color: '#2743A6',
-                    textDecoration: 'none',
-                  }}
-                >
-                  Abrir agenda →
-                </Link>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {upcoming.length === 0 && todayTotal === 0 && missed.length === 0 && (
+        <EmptyLine text='Dia sem marcações. A agenda de amanhã já está preparada?' />
+      )}
     </div>
   );
 }

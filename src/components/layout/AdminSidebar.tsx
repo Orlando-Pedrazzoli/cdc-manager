@@ -2,12 +2,21 @@
 // =============================================================================
 // CDC Manager — Layout: Sidebar da área Admin/Receção
 // -----------------------------------------------------------------------------
-// Navegação lateral fixa. Client Component apenas pelo usePathname (marcar a
-// secção ativa) — os dados do utilizador vêm por props do layout (server).
+// Navegação lateral. Client Component apenas pelo usePathname (marcar a
+// secção ativa). Posicionamento (sticky no desktop / drawer no mobile) é
+// responsabilidade do AdminShell + globals.css — aqui só a coluna em si.
 //
-// Módulos ainda não construídos aparecem DESATIVADOS com o sprint previsto:
-// o Victor vê o mapa do produto completo desde o primeiro dia, e ninguém
-// clica num link morto.
+// Arquitetura de navegação (v2 — preparação para produto multi-clínica):
+// cinco áreas mentais em vez de dois grupos genéricos.
+//   Operação   → o balcão: o que acontece hoje
+//   Clínica    → o trabalho clínico e os seus circuitos (RX, prótese, recall)
+//   Financeiro → Cobranças (o que o paciente ainda deve) vs Faturação
+//                (documentos fiscais) — nomes distintos de propósito
+//   Gestão     → recursos e análise
+//   Sistema    → configuração e atalhos externos
+//
+// `onNavigate` (opcional): o drawer mobile fecha ao clicar num link.
+// Módulos por construir aparecem DESATIVADOS com o sprint previsto.
 // =============================================================================
 
 'use client';
@@ -36,6 +45,7 @@ import {
   Truck,
   ListChecks,
   UsersRound,
+  FileSignature,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 
@@ -54,43 +64,39 @@ const NAV: { section: string; items: NavItem[] }[] = [
     section: 'Operação',
     items: [
       { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { href: '/admin/pacientes', label: 'Pacientes', icon: Users },
       { href: '/admin/agenda', label: 'Agenda', icon: CalendarDays },
+      { href: '/admin/pacientes', label: 'Pacientes', icon: Users },
       { href: '/admin/sala-espera', label: 'Sala de espera', icon: Armchair },
-      { href: '/admin/cobranca', label: 'Cobrança', icon: ReceiptEuro },
-      { href: '/admin/rx', label: 'Raio-X', icon: ScanLine },
-      { href: '/admin/proteses', label: 'Próteses', icon: FlaskConical },
-      {
-        href: '/admin/recalls',
-        label: 'Recalls',
-        icon: RefreshCcw,
-      },
     ],
   },
   {
-    section: 'Gestão',
+    section: 'Clínica',
     items: [
-      { href: '/admin/medicos', label: 'Corpo Clínico', icon: Stethoscope },
-      // Catálogo de atos promovido de Configurações a entidade própria:
-      // com a matriz real importada (749 atos Dentoral) é gestão viva
-      // (durações, flags, confirmações), não configuração pontual
+      // Catálogo de atos como entidade viva (749 atos Dentoral): durações,
+      // flags, confirmações — não é configuração pontual
       {
         href: '/admin/tratamentos',
         label: 'Tratamentos',
         icon: ClipboardList,
       },
-      {
-        href: '/admin/faturacao',
-        label: 'Faturação',
-        icon: FileText,
-      },
+      { href: '/admin/rx', label: 'Raio-X', icon: ScanLine },
+      { href: '/admin/proteses', label: 'Próteses', icon: FlaskConical },
+      { href: '/admin/recalls', label: 'Recalls', icon: RefreshCcw },
+      { href: '/admin/medicos', label: 'Corpo clínico', icon: Stethoscope },
+    ],
+  },
+  {
+    section: 'Financeiro',
+    items: [
+      { href: '/admin/cobranca', label: 'Cobranças', icon: ReceiptEuro },
+      { href: '/admin/faturacao', label: 'Faturação', icon: FileText },
+    ],
+  },
+  {
+    section: 'Gestão',
+    items: [
       { href: '/admin/stock', label: 'Stock', icon: Package },
       { href: '/admin/fornecedores', label: 'Fornecedores', icon: Truck },
-      {
-        href: '/admin/modelos',
-        label: 'Modelos de documentos',
-        icon: FileText,
-      },
       // Fase 6A (E16) — RH; a página bloqueia não-admin
       {
         href: '/admin/colaboradores',
@@ -99,6 +105,11 @@ const NAV: { section: string; items: NavItem[] }[] = [
       },
       { href: '/admin/relatorios', label: 'Relatórios', icon: BarChart3 },
       { href: '/admin/listagens', label: 'Listagens', icon: ListChecks },
+      {
+        href: '/admin/modelos',
+        label: 'Modelos de documentos',
+        icon: FileSignature,
+      },
     ],
   },
   {
@@ -109,20 +120,15 @@ const NAV: { section: string; items: NavItem[] }[] = [
         label: 'Configurações',
         icon: Settings,
       },
-      // Webmail da clínica (contacto@centrodentariocolombo.com) — atalho
-      // externo: abre a Hostinger em separador novo; credenciais da caixa
-      // são pedidas lá (não há SSO)
+      // Webmail da clínica — atalho externo (Hostinger); credenciais pedidas lá
       {
         href: 'https://mail.hostinger.com/mailboxes/INBOX',
         label: 'Email da clínica',
         icon: Mail,
         external: true,
       },
-      // Gestor de reviews do Google Business Profile — responder rápido a
-      // avaliações pesa no ranking local e na confiança dos pacientes.
-      // Requer sessão Google com acesso às fichas; se a conta da clínica
-      // gerir Colombo E Buraca, esta página lista as duas.
-      // (Reviews DENTRO da app c/ badge = GBP API, aprovação Google — Sprint 6)
+      // Gestor de reviews do Google Business Profile — responder rápido pesa
+      // no ranking local. (Reviews DENTRO da app c/ badge = GBP API — Sprint 6)
       {
         href: 'https://business.google.com/reviews',
         label: 'Google Reviews',
@@ -133,8 +139,18 @@ const NAV: { section: string; items: NavItem[] }[] = [
   },
 ];
 
-export function AdminSidebar() {
-  const pathname = usePathname();
+const ROW: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  padding: '9px 10px',
+  borderRadius: '8px',
+  fontSize: '14px',
+  textDecoration: 'none',
+};
+
+export function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
+  const pathname = usePathname() ?? '';
 
   return (
     <aside
@@ -144,17 +160,14 @@ export function AdminSidebar() {
         display: 'flex',
         flexDirection: 'column',
         backgroundColor: '#1B2A6B',
-        minHeight: '100vh',
-        position: 'sticky',
-        top: 0,
-        alignSelf: 'flex-start',
-        maxHeight: '100vh',
+        height: '100%',
         overflowY: 'auto',
       }}
     >
       {/* Logo */}
       <Link
         href='/admin/dashboard'
+        onClick={onNavigate}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -198,8 +211,8 @@ export function AdminSidebar() {
         style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: '18px',
-          padding: '8px 12px 24px',
+          gap: '16px',
+          padding: '4px 12px 24px',
           flex: 1,
         }}
       >
@@ -207,12 +220,11 @@ export function AdminSidebar() {
           <div key={group.section}>
             <p
               style={{
-                margin: '0 0 6px',
+                margin: '0 0 4px',
                 padding: '0 10px',
                 fontSize: '11px',
                 fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.8px',
+                letterSpacing: '0.6px',
                 color: '#8FA0DC',
               }}
             >
@@ -232,16 +244,7 @@ export function AdminSidebar() {
                     <span
                       key={item.href}
                       title={`Disponível no ${item.soon}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: '9px 10px',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        color: '#5D6DB0',
-                        cursor: 'default',
-                      }}
+                      style={{ ...ROW, color: '#5D6DB0', cursor: 'default' }}
                     >
                       <Icon size={17} />
                       <span style={{ flex: 1 }}>{item.label}</span>
@@ -269,17 +272,7 @@ export function AdminSidebar() {
                       href={item.href}
                       target='_blank'
                       rel='noopener noreferrer'
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: '9px 10px',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        textDecoration: 'none',
-                        color: '#C9D4FF',
-                      }}
+                      style={{ ...ROW, fontWeight: 500, color: '#C9D4FF' }}
                     >
                       <Icon size={17} />
                       <span style={{ flex: 1 }}>{item.label}</span>
@@ -292,15 +285,11 @@ export function AdminSidebar() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={onNavigate}
+                    aria-current={active ? 'page' : undefined}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '9px 10px',
-                      borderRadius: '8px',
-                      fontSize: '14px',
+                      ...ROW,
                       fontWeight: active ? 700 : 500,
-                      textDecoration: 'none',
                       color: active ? '#FFFFFF' : '#C9D4FF',
                       backgroundColor: active ? '#2743A6' : 'transparent',
                     }}
