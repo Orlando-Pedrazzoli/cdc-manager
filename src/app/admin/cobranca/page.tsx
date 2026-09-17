@@ -26,7 +26,7 @@ import {
 } from '@/components/cobranca/CheckoutModal';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Cobrança' };
+export const metadata = { title: 'Cobranças' };
 
 function lisbonDateTime(d: Date): string {
   return new Intl.DateTimeFormat('pt-PT', {
@@ -126,7 +126,7 @@ export default async function CobrancaPage({
               color: '#1B2A6B',
             }}
           >
-            Cobrança
+            Cobranças
           </h1>
           <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6A7186' }}>
             {queue.size} paciente{queue.size === 1 ? '' : 's'} por cobrar ·{' '}
@@ -263,23 +263,33 @@ export default async function CobrancaPage({
                 {acts.map(a => (
                   <div
                     key={a.id}
+                    className='cdc-line'
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '14px',
                       padding: '8px 20px',
                       borderBottom: '1px solid #F4F6FB',
                       fontSize: '13px',
                     }}
                   >
-                    <span
-                      style={{ flex: 1, color: '#1B2A6B', fontWeight: 600 }}
-                    >
-                      {a.name}
-                    </span>
-                    <span style={{ color: '#6A7186', fontSize: '12px' }}>
-                      {a.executedAtLabel} · {a.doctorName}
-                    </span>
+                    <div className='cdc-line-main'>
+                      <span
+                        style={{
+                          display: 'block',
+                          color: '#1B2A6B',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {a.name}
+                      </span>
+                      <span
+                        style={{
+                          display: 'block',
+                          color: '#6A7186',
+                          fontSize: '12px',
+                        }}
+                      >
+                        {a.executedAtLabel} · {a.doctorName}
+                      </span>
+                    </div>
                     <span
                       style={{
                         fontWeight: 700,
@@ -339,66 +349,68 @@ export default async function CobrancaPage({
             return (
               <div
                 key={String(inv._id)}
+                className='cdc-line'
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '14px',
                   padding: '10px 20px',
                   borderBottom: '1px solid #F4F6FB',
                   fontSize: '13px',
                 }}
               >
-                <span
-                  style={{
-                    color: '#6A7186',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {inv.paidAt ? lisbonDateTime(inv.paidAt) : '—'}
-                </span>
-                <span style={{ flex: 1, fontWeight: 600, color: '#1B2A6B' }}>
-                  {p?.name ?? '—'}
-                </span>
-                <span style={{ color: '#6A7186' }}>
-                  {PAYMENT_METHOD_LABEL[inv.paymentMethod as PaymentMethod] ??
-                    inv.paymentMethod}
-                </span>
-                {inv.status === 'awaiting-emission' && (
+                <div className='cdc-line-main'>
                   <span
                     style={{
-                      borderRadius: '999px',
-                      padding: '2px 10px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      backgroundColor: '#FFF4DE',
-                      color: '#8A5A00',
+                      display: 'block',
+                      fontWeight: 600,
+                      color: '#1B2A6B',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    Aguarda emissão (Moloni)
+                    {p?.name ?? '—'}
                   </span>
-                )}
-                <span
-                  style={{
-                    fontWeight: 700,
-                    color: '#1B2A6B',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {formatCents(inv.totalCents)}
-                </span>
-                <Link
-                  href={`/admin/faturacao/${String(inv._id)}`}
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    color: '#2743A6',
-                    textDecoration: 'none',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  Ver →
-                </Link>
+                  <span
+                    style={{
+                      display: 'block',
+                      color: '#6A7186',
+                      fontSize: '12px',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {inv.paidAt ? lisbonDateTime(inv.paidAt) : '—'} ·{' '}
+                    {PAYMENT_METHOD_LABEL[inv.paymentMethod as PaymentMethod] ??
+                      inv.paymentMethod}
+                    {inv.status === 'awaiting-emission' && (
+                      <span style={{ color: '#8A5A00', fontWeight: 600 }}>
+                        {' '}
+                        · aguarda emissão (Moloni)
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className='cdc-line-meta'>
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      color: '#1B2A6B',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {formatCents(inv.totalCents)}
+                  </span>
+                  <Link
+                    href={`/admin/faturacao/${String(inv._id)}`}
+                    style={{
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#2743A6',
+                      textDecoration: 'none',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Ver fatura
+                  </Link>
+                </div>
               </div>
             );
           })

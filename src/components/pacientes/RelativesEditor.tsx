@@ -136,9 +136,11 @@ function RelativeLine({
 
   return (
     <div
+      className='cdc-relative-row'
       style={{
         display: 'grid',
-        gridTemplateColumns: '2fr 1.2fr 1.2fr auto',
+        // --cdc-rel-cols vem do globals.css: 4 colunas desktop, 1 no mobile
+        gridTemplateColumns: 'var(--cdc-rel-cols, 2fr 1.2fr 1.2fr auto)',
         gap: 8,
         alignItems: 'start',
         border: '1px solid #EEF1F8',

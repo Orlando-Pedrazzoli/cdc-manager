@@ -254,10 +254,12 @@ export function AgendaGrid({
         }}
       >
         <div
+          className='cdc-agenda-grid'
           style={{
             display: 'grid',
-            gridTemplateColumns: `56px repeat(${columns.length}, minmax(180px, 1fr))`,
-            minWidth: 56 + columns.length * 180,
+            // --cdc-col-min vem do globals.css: 180px desktop, 150px mobile
+            gridTemplateColumns: `56px repeat(${columns.length}, minmax(var(--cdc-col-min, 180px), 1fr))`,
+            minWidth: `calc(56px + ${columns.length} * var(--cdc-col-min, 180px))`,
           }}
         >
           {/* Cabeçalhos — canto e coluna das horas fixos à esquerda para o

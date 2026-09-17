@@ -8,7 +8,7 @@
 // Separadores por URL (?tab=) em vez de estado de cliente: partilháveis,
 // back/forward funciona, e cada separador futuro carrega só os SEUS dados.
 //   dados      → formulário de edição (Sprint 1 — este)
-//   consultas  → placeholder (Sprint 2: agenda/marcações)
+//   consultas  → próximas + histórico de marcações (PatientAppointments)
 //   anamnese   → ficha de anamnese completa (Fase 3B) — receção/admin preenche
 //   documentos → placeholder (Sprint 3/5: RX, consentimentos, faturas)
 // =============================================================================
@@ -38,6 +38,7 @@ import {
 import ClinicalDocument from '@/models/Document';
 import { signedPreviewUrl } from '@/lib/cloudinary';
 import { PatientLabCases } from '@/components/proteses/PatientLabCases';
+import { PatientAppointments } from '@/components/pacientes/PatientAppointments';
 import { IssueDocumentToolbar } from '@/components/documentos/IssueDocumentToolbar';
 import { PatientAccount } from '@/components/faturacao/PatientAccount';
 import ClinicalRecord from '@/models/ClinicalRecord';
@@ -256,10 +257,10 @@ export default async function PatientPage({
         href={`/admin/pacientes/${id}?tab=anamnese`}
       />
 
-      {/* Separadores */}
+      {/* Separadores — no telemóvel deslizam na horizontal (.cdc-tabs) */}
       <div
+        className='cdc-tabs'
         style={{
-          display: 'flex',
           gap: '4px',
           borderBottom: '1px solid #EEF1F8',
         }}
@@ -286,6 +287,8 @@ export default async function PatientPage({
                   ? '2px solid #2743A6'
                   : '2px solid transparent',
                 marginBottom: '-1px',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
               }}
             >
               {t.label}
@@ -355,22 +358,9 @@ export default async function PatientPage({
         >
           <PatientAccount patientId={id} />
         </div>
-      ) : tab === 'anamnese' ? null : (
-        <div
-          style={{
-            backgroundColor: '#FFFFFF',
-            border: '1px solid #EEF1F8',
-            borderRadius: '12px',
-            padding: '48px 24px',
-            textAlign: 'center',
-            color: '#9AA1B4',
-            fontSize: '14px',
-          }}
-        >
-          {tab === 'consultas' &&
-            'Histórico e marcação de consultas — disponível no Sprint 2 (agenda).'}
-        </div>
-      )}
+      ) : tab === 'consultas' ? (
+        <PatientAppointments patientId={id} />
+      ) : null}
       {tab === 'anamnese' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <AnamnesisStatusBanner

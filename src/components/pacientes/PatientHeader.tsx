@@ -408,8 +408,8 @@ export function PatientHeader({ patient }: { patient: PatientHeaderData }) {
         </div>
       </div>
 
-      {/* Ações */}
-      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+      {/* Ações — no telemóvel em grelha de 2 colunas (.cdc-actions) */}
+      <div className='cdc-actions' style={{ gap: '10px' }}>
         {patient.status === 'active' && (
           <GdprConsentButton
             patientId={patient.id}

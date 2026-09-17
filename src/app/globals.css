@@ -247,3 +247,74 @@ body {
   outline-offset: 2px;
   border-radius: 8px;
 }
+
+/* --- Agenda + Cobrança + Ficha do paciente (mobile) ----------------------- */
+.cdc-agenda-actions,
+.cdc-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* Largura mínima das colunas por médico na grelha do dia (AgendaGrid lê a
+   variável): 180px em desktop, 150px em mobile → ~2 colunas visíveis + scroll */
+.cdc-agenda-grid {
+  --cdc-col-min: 180px;
+}
+/* Linha de duas alturas: [hora] [título + subtítulo] [meta à direita] */
+.cdc-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.cdc-line-main {
+  flex: 1;
+  min-width: 0;
+}
+.cdc-line-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Separadores: linha única com scroll horizontal, sem barra visível */
+.cdc-tabs {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.cdc-tabs::-webkit-scrollbar {
+  display: none;
+}
+.cdc-relative-row {
+  --cdc-rel-cols: 2fr 1.2fr 1.2fr auto;
+}
+
+@media (max-width: 639px) {
+  .cdc-relative-row {
+    --cdc-rel-cols: minmax(0, 1fr);
+  }
+  .cdc-agenda-actions > a,
+  .cdc-agenda-actions > button,
+  .cdc-actions > a,
+  .cdc-actions > button {
+    flex: 1 1 calc(50% - 4px);
+    justify-content: center;
+  }
+  .cdc-agenda-grid {
+    --cdc-col-min: 150px;
+  }
+  /* Mobile: os metadados descem para uma 2.ª linha alinhada à direita —
+     o nome do paciente nunca é esmagado por pastilhas/valores */
+  .cdc-line {
+    flex-wrap: wrap;
+    gap: 6px 10px;
+  }
+  .cdc-line-meta {
+    flex: 1 0 100%;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+}

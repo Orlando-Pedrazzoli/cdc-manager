@@ -642,14 +642,7 @@ export default async function AgendaPage({
             <DateJump date={date} makeHref={buildHref({ date: '__DATE__' })} />
           </div>
 
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              flexWrap: 'wrap',
-            }}
-          >
+          <div className='cdc-agenda-actions'>
             {/* Histórico de apagadas/remarcadas (P7) */}
             <Link
               href={`/admin/agenda/historico?clinic=${clinic.slug}`}
@@ -744,52 +737,72 @@ export default async function AgendaPage({
               return (
                 <div
                   key={String(a._id)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    flexWrap: 'wrap',
-                    fontSize: '13px',
-                    color: '#3A3F4A',
-                  }}
+                  className='cdc-line'
+                  style={{ fontSize: '13px', color: '#3A3F4A' }}
                 >
                   <span
                     style={{
                       fontWeight: 700,
                       color: '#1B2A6B',
-                      minWidth: 110,
+                      width: 96,
+                      flexShrink: 0,
+                      fontVariantNumeric: 'tabular-nums',
                     }}
                   >
                     {isToday ? 'Hoje' : 'Amanhã'} {hhmm(s.min)}
                   </span>
-                  <span style={{ fontWeight: 600 }}>
-                    {p?.name ?? '(paciente removido)'}
-                  </span>
-                  {p?.phone ? (
-                    <a
-                      href={`tel:${p.phone}`}
+                  <div className='cdc-line-main'>
+                    <span style={{ fontWeight: 600, display: 'block' }}>
+                      {p?.name ?? '(paciente removido)'}
+                    </span>
+                    <span
                       style={{
-                        color: '#2743A6',
-                        fontWeight: 700,
-                        textDecoration: 'none',
+                        display: 'block',
+                        color: '#6A7186',
+                        fontSize: '12px',
                       }}
                     >
-                      {p.phone}
-                    </a>
-                  ) : (
-                    <span style={{ color: '#B3261E' }}>sem telefone</span>
-                  )}
-                  <span style={{ color: '#6A7186' }}>
-                    {treatmentById.get(String(a.treatmentTypeId)) ?? '—'}
-                    {a.doctorId
-                      ? ` · ${doctorNameById.get(String(a.doctorId)) ?? ''}`
-                      : ''}
-                  </span>
-                  {!a.reminder24hSentAt && (
-                    <span style={{ color: '#9A6700', fontSize: '12px' }}>
-                      (lembrete ainda não enviado)
+                      {treatmentById.get(String(a.treatmentTypeId)) ?? '—'}
+                      {a.doctorId
+                        ? ` · ${doctorNameById.get(String(a.doctorId)) ?? ''}`
+                        : ''}
+                      {!a.reminder24hSentAt && (
+                        <span style={{ color: '#9A6700' }}>
+                          {' '}
+                          · lembrete ainda não enviado
+                        </span>
+                      )}
                     </span>
-                  )}
+                  </div>
+                  {/* O telefone é a ação: botão tocável no mobile */}
+                  <div className='cdc-line-meta'>
+                    {p?.phone ? (
+                      <a
+                        href={`tel:${p.phone}`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '6px 10px',
+                          borderRadius: '8px',
+                          border: '1px solid #F0C36D',
+                          backgroundColor: '#FFFFFF',
+                          color: '#2743A6',
+                          fontWeight: 700,
+                          textDecoration: 'none',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <PhoneCall size={13} />
+                        {p.phone}
+                      </a>
+                    ) : (
+                      <span style={{ color: '#B3261E', flexShrink: 0 }}>
+                        sem telefone
+                      </span>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -948,11 +961,8 @@ export default async function AgendaPage({
                   return (
                     <div
                       key={String(a._id)}
+                      className='cdc-line'
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '14px',
-                        flexWrap: 'wrap',
                         padding: '10px 14px',
                         borderTop: i === 0 ? 'none' : '1px solid #EEF0F4',
                         fontSize: '13px',
@@ -962,68 +972,86 @@ export default async function AgendaPage({
                         style={{
                           fontWeight: 700,
                           color: '#1B2A6B',
-                          minWidth: 96,
+                          width: 92,
+                          flexShrink: 0,
+                          fontVariantNumeric: 'tabular-nums',
                         }}
                       >
                         {hhmm(s.min)}–
                         {hhmm(e.date === s.date ? e.min : 24 * 60)}
                       </span>
-                      <span
-                        style={{
-                          fontWeight: 600,
-                          color: '#1B2A6B',
-                          minWidth: 160,
-                        }}
-                      >
-                        {p ? p.name : '(paciente removido)'}
-                        {p?.processNumber ? (
-                          <span style={{ color: '#6A7186', fontWeight: 500 }}>
-                            {' '}
-                            · {p.processNumber}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span
-                        style={{ color: '#3A3F4A', flex: 1, minWidth: 140 }}
-                      >
-                        {treatmentById.get(String(a.treatmentTypeId)) ?? '—'}
-                      </span>
-                      <span style={{ color: '#6A7186', minWidth: 120 }}>
-                        {a.doctorId
-                          ? (doctorNameById.get(String(a.doctorId)) ?? '—')
-                          : 'Sem médico'}
-                      </span>
-                      {p?.phone && (
-                        <a
-                          href={`tel:${p.phone}`}
+                      <div className='cdc-line-main'>
+                        <span
                           style={{
-                            color: '#2743A6',
+                            display: 'block',
                             fontWeight: 600,
-                            textDecoration: 'none',
+                            color: '#1B2A6B',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
                           }}
                         >
-                          {p.phone}
-                        </a>
-                      )}
-                      <span
-                        style={{
-                          padding: '3px 10px',
-                          borderRadius: '999px',
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          backgroundColor: meta.bg,
-                          color: meta.fg,
-                        }}
-                      >
-                        {meta.label}
-                        {a.status === 'confirmed' && a.confirmedVia
-                          ? ` · ${
-                              a.confirmedVia === 'front-desk'
-                                ? 'balcão'
-                                : a.confirmedVia
-                            }`
-                          : ''}
-                      </span>
+                          {p ? p.name : '(paciente removido)'}
+                          {p?.processNumber ? (
+                            <span style={{ color: '#6A7186', fontWeight: 500 }}>
+                              {' '}
+                              · {p.processNumber}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span
+                          style={{
+                            display: 'block',
+                            color: '#6A7186',
+                            fontSize: '12px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {treatmentById.get(String(a.treatmentTypeId)) ?? '—'}
+                          {' · '}
+                          {a.doctorId
+                            ? (doctorNameById.get(String(a.doctorId)) ?? '—')
+                            : 'Sem médico'}
+                        </span>
+                      </div>
+                      <div className='cdc-line-meta'>
+                        {p?.phone && (
+                          <a
+                            href={`tel:${p.phone}`}
+                            style={{
+                              color: '#2743A6',
+                              fontWeight: 600,
+                              fontSize: '12px',
+                              textDecoration: 'none',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {p.phone}
+                          </a>
+                        )}
+                        <span
+                          style={{
+                            padding: '3px 10px',
+                            borderRadius: '999px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            backgroundColor: meta.bg,
+                            color: meta.fg,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {meta.label}
+                          {a.status === 'confirmed' && a.confirmedVia
+                            ? ` · ${
+                                a.confirmedVia === 'front-desk'
+                                  ? 'balcão'
+                                  : a.confirmedVia
+                              }`
+                            : ''}
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
