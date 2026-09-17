@@ -74,6 +74,14 @@ const ClinicSchema = new Schema(
       required: [true, 'Nome da clínica é obrigatório'],
       trim: true,
     },
+    /** Nome curto para pastilhas/pills ("Colombo") — default: slug capitalizado */
+    shortName: { type: String, default: null, trim: true, maxlength: 24 },
+    /** Cor da clínica (hex) — pastilhas, badges; sem valor usa paleta por ordem */
+    color: {
+      type: String,
+      default: null,
+      match: [/^#[0-9a-fA-F]{6}$/, 'Cor inválida (#RRGGBB)'],
+    },
     legalName: {
       type: String,
       trim: true,

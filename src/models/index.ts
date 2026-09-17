@@ -39,3 +39,8 @@ export {
   getClinicBySlug,
   getClinicById,
 } from './Clinic';
+export {
+  default as Organization,
+  getOrganization,
+  DEFAULT_BRAND,
+} from './Organization';

@@ -255,6 +255,18 @@ export const updateClinicSchema = z.object({
     emptyToNull,
     z.string().trim().max(160, 'Denominação demasiado longa').nullable(),
   ),
+  // Identidade visual da clínica (pastilhas): nome curto + cor
+  shortName: z.preprocess(
+    emptyToNull,
+    z.string().trim().max(24, 'Nome curto demasiado longo').nullable(),
+  ),
+  color: z.preprocess(
+    emptyToNull,
+    z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida (#RRGGBB)')
+      .nullable(),
+  ),
   nipc: nipcField,
   address: z.preprocess(
     emptyToNull,
@@ -347,3 +359,43 @@ export const updateClinicHoursSchema = z.object({
   ),
 });
 export type UpdateClinicHoursInput = z.infer<typeof updateClinicHoursSchema>;
+
+// -----------------------------------------------------------------------------
+// Organização (identidade do cliente do software) — /admin/configuracoes?tab=organizacao
+// -----------------------------------------------------------------------------
+const optionalText = (max: number, msg: string) =>
+  z.preprocess(emptyToNull, z.string().trim().max(max, msg).nullable());
+
+export const updateOrganizationSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, 'Nome demasiado curto')
+    .max(120, 'Nome demasiado longo'),
+  appName: z
+    .string()
+    .trim()
+    .min(2, 'Nome da aplicação demasiado curto')
+    .max(60, 'Nome da aplicação demasiado longo'),
+  legalName: optionalText(160, 'Denominação demasiado longa'),
+  nipc: nipcField,
+  address: optionalText(240, 'Morada demasiado longa'),
+  phone: optionalText(40, 'Telefone demasiado longo'),
+  email: z.preprocess(
+    emptyToNull,
+    z.email('Email inválido').toLowerCase().nullable(),
+  ),
+  website: optionalText(160, 'Website demasiado longo'),
+  logoUrl: optionalText(400, 'URL do logo demasiado longo'),
+  primaryColor: z
+    .string()
+    .trim()
+    .regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida (#RRGGBB)'),
+  emailFromName: optionalText(80, 'Nome do remetente demasiado longo'),
+  emailFromAddress: z.preprocess(
+    emptyToNull,
+    z.email('Email do remetente inválido').toLowerCase().nullable(),
+  ),
+  emailFooter: optionalText(200, 'Rodapé demasiado longo'),
+});
+export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>;

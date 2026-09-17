@@ -43,6 +43,8 @@ export interface ClinicSettings {
   slug: string;
   name: string;
   legalName: string | null;
+  shortName: string | null;
+  color: string | null;
   nipc: string | null;
   address: string | null;
   phone: string | null;
@@ -123,6 +125,33 @@ function ClinicDataForm({ clinic }: { clinic: ClinicSettings }) {
               label='Denominação social'
               defaultValue={clinic.legalName ?? ''}
               maxLength={160}
+            />
+          </div>
+        </div>
+
+        {/* Identidade visual: pastilhas na agenda/dashboard usam isto */}
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 200px' }}>
+            <Input
+              id={`${clinic.slug}-short`}
+              name='shortName'
+              label='Nome curto (pastilhas)'
+              defaultValue={clinic.shortName ?? ''}
+              placeholder={
+                clinic.slug.charAt(0).toUpperCase() + clinic.slug.slice(1)
+              }
+              maxLength={24}
+              help='Aparece nas pastilhas da agenda e do dashboard'
+            />
+          </div>
+          <div style={{ width: 140 }}>
+            <Input
+              id={`${clinic.slug}-color`}
+              name='color'
+              type='color'
+              label='Cor da clínica'
+              defaultValue={clinic.color ?? '#1B2A6B'}
+              style={{ height: 40, padding: 4 }}
             />
           </div>
         </div>

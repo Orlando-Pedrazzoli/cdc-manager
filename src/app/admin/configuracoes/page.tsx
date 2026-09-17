@@ -30,6 +30,8 @@ import {
   type TeamUser,
 } from '@/components/configuracoes/UsersPanel';
 import { MoloniPanel } from '@/components/configuracoes/MoloniPanel';
+import { OrganizationForm } from '@/components/configuracoes/OrganizationForm';
+import { getOrganization } from '@/models/Organization';
 import { isMoloniConfigured, isMoloniEmissionReady } from '@/lib/moloni';
 import User from '@/models/User';
 
@@ -37,6 +39,7 @@ export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Configurações' };
 
 const TABS = [
+  { key: 'organizacao', label: 'Organização' },
   { key: 'clinicas', label: 'Clínicas & horários' },
   { key: 'utilizadores', label: 'Utilizadores' },
   { key: 'integracoes', label: 'Integrações' }, // Fase 7A — Moloni
@@ -53,14 +56,9 @@ export default async function ConfiguracoesPage({
   // Memória muscular/bookmarks: o catálogo viveu aqui até ago/2026
   if (tab === 'catalogo') redirect('/admin/tratamentos');
 
-  const activeTab =
-    tab === 'conta'
-      ? 'conta'
-      : tab === 'utilizadores'
-        ? 'utilizadores'
-        : tab === 'integracoes'
-          ? 'integracoes'
-          : 'clinicas';
+  const activeTab: (typeof TABS)[number]['key'] = TABS.some(t => t.key === tab)
+    ? (tab as (typeof TABS)[number]['key'])
+    : 'clinicas';
 
   const session = await auth();
   if (!session?.user) return null;
@@ -136,6 +134,8 @@ export default async function ConfiguracoesPage({
       slug: d.slug,
       name: d.name,
       legalName: d.legalName ?? null,
+      shortName: d.shortName ?? null,
+      color: d.color ?? null,
       nipc: d.nipc ?? null,
       address: d.address ?? null,
       phone: d.phone ?? null,
@@ -186,14 +186,15 @@ export default async function ConfiguracoesPage({
           Configurações
         </h1>
         <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6A7186' }}>
-          Dados das clínicas, horários de funcionamento e segurança da conta.
+          Identidade da organização, clínicas e horários, utilizadores e
+          integrações.
         </p>
       </div>
 
-      {/* Separadores ?tab= */}
+      {/* Separadores ?tab= — scroll horizontal no telemóvel */}
       <div
+        className='cdc-tabs'
         style={{
-          display: 'flex',
           gap: '6px',
           borderBottom: '1px solid #E4E8F2',
         }}
@@ -214,6 +215,8 @@ export default async function ConfiguracoesPage({
                   ? '2px solid #2743A6'
                   : '2px solid transparent',
                 marginBottom: '-1px',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
               }}
             >
               {t.label}
@@ -222,7 +225,9 @@ export default async function ConfiguracoesPage({
         })}
       </div>
 
-      {activeTab === 'utilizadores' ? (
+      {activeTab === 'organizacao' ? (
+        <OrganizationForm brand={await getOrganization()} />
+      ) : activeTab === 'utilizadores' ? (
         <UsersPanel users={teamUsers} currentUserId={session.user.id ?? ''} />
       ) : activeTab === 'conta' ? (
         <ChangePasswordForm email={session.user.email ?? ''} />

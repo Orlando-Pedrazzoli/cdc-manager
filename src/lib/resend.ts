@@ -20,6 +20,7 @@
 // =============================================================================
 
 import { Resend } from 'resend';
+import { getOrganization, type Brand } from '@/models/Organization';
 
 // -----------------------------------------------------------------------------
 // Cliente (lazy singleton)
@@ -37,9 +38,19 @@ function getClient(): Resend {
   return _client;
 }
 
-const FROM =
+// Remetente: Organization (nome + endereço) → EMAIL_FROM → default histórico.
+// O endereço tem de pertencer a um domínio verificado no Resend.
+const FALLBACK_FROM =
   process.env.EMAIL_FROM ??
   'Centro Dentário Colombo <noreply@send.centrodentariocolombo.com>';
+
+async function resolveFrom(): Promise<string> {
+  const org = await getOrganization();
+  if (org.emailFromAddress) {
+    return `${org.emailFromName ?? org.name} <${org.emailFromAddress}>`;
+  }
+  return FALLBACK_FROM;
+}
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
@@ -55,7 +66,7 @@ async function send(params: {
 }): Promise<SendResult> {
   try {
     const { error } = await getClient().emails.send({
-      from: FROM,
+      from: await resolveFrom(),
       to: params.to,
       subject: params.subject,
       html: params.html,
@@ -75,7 +86,9 @@ async function send(params: {
 // -----------------------------------------------------------------------------
 // Layout base — moldura comum a todos os emails da clínica
 // -----------------------------------------------------------------------------
-function baseLayout(contentHtml: string): string {
+function baseLayout(contentHtml: string, org: Brand): string {
+  const footer =
+    org.emailFooter ?? [org.name, org.address].filter(Boolean).join(' · ');
   return `<!DOCTYPE html>
 <html lang="pt-PT">
 <head>
@@ -89,9 +102,9 @@ function baseLayout(contentHtml: string): string {
         <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
           <!-- Cabeçalho -->
           <tr>
-            <td style="background-color:#1B2A6B;border-radius:12px 12px 0 0;padding:24px 32px;" align="center">
+            <td style="background-color:${org.primaryColor};border-radius:12px 12px 0 0;padding:24px 32px;" align="center">
               <span style="color:#FFFFFF;font-size:18px;font-weight:bold;letter-spacing:0.5px;">
-                Centro Dentário Colombo
+                ${org.name}
               </span>
             </td>
           </tr>
@@ -105,7 +118,7 @@ function baseLayout(contentHtml: string): string {
           <tr>
             <td align="center" style="padding:24px 32px;">
               <p style="margin:0;color:#9AA1B4;font-size:12px;line-height:1.6;">
-                Centro Dentário Colombo · Centro Comercial Colombo, Lisboa<br />
+                ${footer}<br />
                 Este email foi enviado automaticamente — por favor não responda.
               </p>
             </td>
@@ -165,6 +178,7 @@ export async function sendActivationEmail(params: {
   plainCode: string;
   expiresAt: Date;
 }): Promise<SendResult> {
+  const org = await getOrganization();
   // Deep-link: código + email seguem no URL — o utilizador só define a
   // password (o código já viaja neste mesmo email; o link não expõe nada
   // de novo, é single-use e expira)
@@ -176,7 +190,7 @@ export async function sendActivationEmail(params: {
     </h1>
     <p style="margin:0 0 8px 0;color:#3A3F4A;font-size:14px;line-height:1.7;">
       Foi criada uma conta em seu nome no portal do
-      <strong>Centro Dentário Colombo</strong>. Para a ativar e definir a sua
+      <strong>${org.name}</strong>. Para a ativar e definir a sua
       password, utilize o seguinte código:
     </p>
     ${codeBlock(params.plainCode)}
@@ -193,8 +207,8 @@ export async function sendActivationEmail(params: {
 
   return send({
     to: params.to,
-    subject: 'Ative a sua conta — Centro Dentário Colombo',
-    html: baseLayout(content),
+    subject: `Ative a sua conta — ${org.name}`,
+    html: baseLayout(content, org),
   });
 }
 
@@ -207,6 +221,7 @@ export async function sendPasswordResetEmail(params: {
   plainCode: string;
   expiresAt: Date;
 }): Promise<SendResult> {
+  const org = await getOrganization();
   // Deep-link: mesmo padrão da ativação — salta direto para a fase de
   // definição da nova password com email + código preenchidos
   const resetUrl = `${APP_URL}/recuperar-password?codigo=${encodeURIComponent(params.plainCode)}&email=${encodeURIComponent(params.to)}`;
@@ -231,8 +246,8 @@ export async function sendPasswordResetEmail(params: {
 
   return send({
     to: params.to,
-    subject: 'Recuperação de password — Centro Dentário Colombo',
-    html: baseLayout(content),
+    subject: `Recuperação de password — ${org.name}`,
+    html: baseLayout(content, org),
   });
 }
 
@@ -256,6 +271,7 @@ export async function sendAppointmentConfirmationEmail(params: {
   // da marcação (primeiro toque da cadência; o lembrete 24h repete-o)
   confirmUrl?: string | null;
 }): Promise<SendResult> {
+  const org = await getOrganization();
   const rows: [string, string][] = [
     ['Data', params.dateLabel],
     ['Hora', params.timeLabel],
@@ -304,7 +320,7 @@ export async function sendAppointmentConfirmationEmail(params: {
   return send({
     to: params.to,
     subject: `Consulta marcada — ${params.dateLabel}, ${params.timeLabel}`,
-    html: baseLayout(content),
+    html: baseLayout(content, org),
   });
 }
 
@@ -321,6 +337,7 @@ export async function sendDoctorNewAppointmentEmail(params: {
   treatmentName: string;
   note: string | null;
 }): Promise<SendResult> {
+  const org = await getOrganization();
   const agendaUrl = `${APP_URL}/doutor/agenda`;
   const rows: [string, string][] = [
     ['Paciente', params.patientName],
@@ -353,13 +370,13 @@ export async function sendDoctorNewAppointmentEmail(params: {
     </table>
     ${actionButton('Ver a minha agenda', agendaUrl)}
     <p style="margin:0;color:#6A7186;font-size:13px;line-height:1.7;">
-      Este é um aviso automático do CDC Manager.
+      Este é um aviso automático do ${org.appName}.
     </p>`;
 
   return send({
     to: params.to,
     subject: `Nova marcação — ${params.patientName}, ${params.dateLabel} às ${params.timeLabel}`,
-    html: baseLayout(content),
+    html: baseLayout(content, org),
   });
 }
 
@@ -381,6 +398,7 @@ export async function sendAppointmentReminderEmail(params: {
   doctorName: string | null;
   confirmUrl: string | null; // null = já confirmada → lembrete simples
 }): Promise<SendResult> {
+  const org = await getOrganization();
   const rows: [string, string][] = [
     ['Data', params.dateLabel],
     ['Hora', params.timeLabel],
@@ -432,6 +450,6 @@ export async function sendAppointmentReminderEmail(params: {
   return send({
     to: params.to,
     subject: `Lembrete: consulta amanhã — ${params.dateLabel}, ${params.timeLabel}`,
-    html: baseLayout(content),
+    html: baseLayout(content, org),
   });
 }

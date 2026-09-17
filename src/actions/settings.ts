@@ -362,6 +362,8 @@ export async function updateClinicAction(
       clinicId: formData.get('clinicId'),
       name: formData.get('name'),
       legalName: formData.get('legalName'),
+      shortName: formData.get('shortName'),
+      color: formData.get('color'),
       nipc: formData.get('nipc'),
       address: formData.get('address'),
       phone: formData.get('phone'),
