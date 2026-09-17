@@ -113,36 +113,38 @@ function Section({
         </Button>
       </div>
       {open && <div style={{ marginBottom: 10 }}>{children}</div>}
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <tbody>
-          {entries.length === 0 && (
-            <tr>
-              <td style={{ ...td, color: '#9AA1B4' }}>Sem registos.</td>
-            </tr>
-          )}
-          {entries.map(e => (
-            <tr key={e.id}>
-              <td style={{ ...td, whiteSpace: 'nowrap', color: '#6A7186' }}>
-                {e.at}
-              </td>
-              <td style={{ ...td, fontWeight: 600 }}>{e.value}</td>
-              <td style={{ ...td, color: '#3D4257', whiteSpace: 'pre-wrap' }}>
-                {e.note ?? ''}
-              </td>
-              <td
-                style={{
-                  ...td,
-                  color: '#9AA1B4',
-                  fontSize: '11px',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {e.by}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className='cdc-table-scroll'>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <tbody>
+            {entries.length === 0 && (
+              <tr>
+                <td style={{ ...td, color: '#9AA1B4' }}>Sem registos.</td>
+              </tr>
+            )}
+            {entries.map(e => (
+              <tr key={e.id}>
+                <td style={{ ...td, whiteSpace: 'nowrap', color: '#6A7186' }}>
+                  {e.at}
+                </td>
+                <td style={{ ...td, fontWeight: 600 }}>{e.value}</td>
+                <td style={{ ...td, color: '#3D4257', whiteSpace: 'pre-wrap' }}>
+                  {e.note ?? ''}
+                </td>
+                <td
+                  style={{
+                    ...td,
+                    color: '#9AA1B4',
+                    fontSize: '11px',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {e.by}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#9AA1B4' }}>
         {valueLabel}
       </p>

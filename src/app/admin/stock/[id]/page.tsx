@@ -266,86 +266,88 @@ export default async function ProductLedgerPage({
             stock.
           </p>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <tbody>
-              {movements.map(m => {
-                const inbound = STOCK_INBOUND_TYPES.includes(
-                  m.type as StockMovementType,
-                );
-                const wh = warehouseById.get(String(m.warehouseId));
-                const clinicName = wh
-                  ? (clinicNameById.get(String(wh.clinicId)) ?? '—')
-                  : '—';
-                const who = m.createdByUserId
-                  ? (userById.get(String(m.createdByUserId))?.name ?? '—')
-                  : 'Sistema';
-                return (
-                  <tr
-                    key={String(m._id)}
-                    style={{ borderBottom: '1px solid #F4F6FB' }}
-                  >
-                    <td
-                      style={{
-                        padding: '10px 14px',
-                        fontSize: '13px',
-                        color: '#454C63',
-                        whiteSpace: 'nowrap',
-                      }}
+          <div className='cdc-table-scroll'>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                {movements.map(m => {
+                  const inbound = STOCK_INBOUND_TYPES.includes(
+                    m.type as StockMovementType,
+                  );
+                  const wh = warehouseById.get(String(m.warehouseId));
+                  const clinicName = wh
+                    ? (clinicNameById.get(String(wh.clinicId)) ?? '—')
+                    : '—';
+                  const who = m.createdByUserId
+                    ? (userById.get(String(m.createdByUserId))?.name ?? '—')
+                    : 'Sistema';
+                  return (
+                    <tr
+                      key={String(m._id)}
+                      style={{ borderBottom: '1px solid #F4F6FB' }}
                     >
-                      {lisbonDateTime(m.createdAt as Date)}
-                    </td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <Badge variant={inbound ? 'success' : 'danger'}>
-                        {STOCK_MOVEMENT_LABEL[m.type as StockMovementType]}
-                      </Badge>
-                    </td>
-                    <td
-                      style={{
-                        padding: '10px 14px',
-                        fontSize: '13px',
-                        color: '#454C63',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {clinicName}
-                    </td>
-                    <td
-                      style={{
-                        padding: '10px 14px',
-                        fontSize: '14px',
-                        fontWeight: 700,
-                        color: inbound ? '#1E7A3C' : '#B3261E',
-                        textAlign: 'right',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {inbound ? '+' : '−'}
-                      {m.quantity}
-                    </td>
-                    <td
-                      style={{
-                        padding: '10px 14px',
-                        fontSize: '13px',
-                        color: '#454C63',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {who}
-                    </td>
-                    <td
-                      style={{
-                        padding: '10px 14px',
-                        fontSize: '12px',
-                        color: '#9AA1B4',
-                      }}
-                    >
-                      {m.note ?? ''}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      <td
+                        style={{
+                          padding: '10px 14px',
+                          fontSize: '13px',
+                          color: '#454C63',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {lisbonDateTime(m.createdAt as Date)}
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <Badge variant={inbound ? 'success' : 'danger'}>
+                          {STOCK_MOVEMENT_LABEL[m.type as StockMovementType]}
+                        </Badge>
+                      </td>
+                      <td
+                        style={{
+                          padding: '10px 14px',
+                          fontSize: '13px',
+                          color: '#454C63',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {clinicName}
+                      </td>
+                      <td
+                        style={{
+                          padding: '10px 14px',
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          color: inbound ? '#1E7A3C' : '#B3261E',
+                          textAlign: 'right',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {inbound ? '+' : '−'}
+                        {m.quantity}
+                      </td>
+                      <td
+                        style={{
+                          padding: '10px 14px',
+                          fontSize: '13px',
+                          color: '#454C63',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {who}
+                      </td>
+                      <td
+                        style={{
+                          padding: '10px 14px',
+                          fontSize: '12px',
+                          color: '#9AA1B4',
+                        }}
+                      >
+                        {m.note ?? ''}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

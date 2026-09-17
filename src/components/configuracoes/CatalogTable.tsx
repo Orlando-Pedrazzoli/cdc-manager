@@ -717,172 +717,174 @@ export function CatalogTable({
           overflow: 'hidden',
         }}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ backgroundColor: '#F8F9FD' }}>
-              {[
-                'Ato',
-                'Especialidade',
-                'Duração',
-                'Preço',
-                'Online',
-                'Recall',
-                'Fonte',
-                'Estado',
-                '',
-              ].map((h, i) => (
-                <th
-                  key={i}
-                  style={{
-                    textAlign: 'left',
-                    padding: '10px 14px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.4px',
-                    color: '#6A7186',
-                    borderBottom: '1px solid #EEF1F8',
-                  }}
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr>
-                <td
-                  colSpan={9}
-                  style={{
-                    padding: '28px 14px',
-                    textAlign: 'center',
-                    fontSize: '14px',
-                    color: '#6A7186',
-                  }}
-                >
-                  Nenhum ato corresponde aos filtros.
-                </td>
-              </tr>
-            )}
-            {filtered.map(t => (
-              <tr
-                key={t.id}
-                style={{
-                  borderBottom: '1px solid #F4F6FB',
-                  opacity: t.active ? 1 : 0.55,
-                }}
-              >
-                <td style={{ padding: '10px 14px' }}>
-                  <p
+        <div className='cdc-table-scroll'>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#F8F9FD' }}>
+                {[
+                  'Ato',
+                  'Especialidade',
+                  'Duração',
+                  'Preço',
+                  'Online',
+                  'Recall',
+                  'Fonte',
+                  'Estado',
+                  '',
+                ].map((h, i) => (
+                  <th
+                    key={i}
                     style={{
-                      margin: 0,
+                      textAlign: 'left',
+                      padding: '10px 14px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.4px',
+                      color: '#6A7186',
+                      borderBottom: '1px solid #EEF1F8',
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={9}
+                    style={{
+                      padding: '28px 14px',
+                      textAlign: 'center',
                       fontSize: '14px',
+                      color: '#6A7186',
+                    }}
+                  >
+                    Nenhum ato corresponde aos filtros.
+                  </td>
+                </tr>
+              )}
+              {filtered.map(t => (
+                <tr
+                  key={t.id}
+                  style={{
+                    borderBottom: '1px solid #F4F6FB',
+                    opacity: t.active ? 1 : 0.55,
+                  }}
+                >
+                  <td style={{ padding: '10px 14px' }}>
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        color: '#1C2233',
+                      }}
+                    >
+                      {t.name}
+                    </p>
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: '12px',
+                        color: '#9AA1B4',
+                      }}
+                    >
+                      {/* Importados: código Dentoral + nomenclatura (a
+                        linguagem do Victor); restantes: slug técnico */}
+                      {t.dentoralCode
+                        ? [t.dentoralCode, t.entityCode]
+                            .filter(Boolean)
+                            .join(' · ')
+                        : t.slug}
+                    </p>
+                  </td>
+                  <td
+                    style={{
+                      padding: '10px 14px',
+                      fontSize: '13px',
+                      color: '#454C63',
+                    }}
+                  >
+                    {SPECIALTY_LABEL[t.specialty]}
+                  </td>
+                  <td
+                    style={{
+                      padding: '10px 14px',
+                      fontSize: '13px',
+                      color: '#454C63',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {t.durationMin}
+                    {t.bufferMin > 0 ? ` + ${t.bufferMin}` : ''} min
+                  </td>
+                  <td
+                    style={{
+                      padding: '10px 14px',
+                      fontSize: '13px',
                       fontWeight: 600,
                       color: '#1C2233',
+                      whiteSpace: 'nowrap',
                     }}
                   >
-                    {t.name}
-                  </p>
-                  <p
+                    {formatCents(t.priceCents)}
+                  </td>
+                  <td style={{ padding: '10px 14px' }}>
+                    {t.bookableOnline ? (
+                      <Badge variant='info'>Online</Badge>
+                    ) : (
+                      <span style={{ fontSize: '13px', color: '#9AA1B4' }}>
+                        —
+                      </span>
+                    )}
+                  </td>
+                  <td
                     style={{
-                      margin: 0,
-                      fontSize: '12px',
-                      color: '#9AA1B4',
+                      padding: '10px 14px',
+                      fontSize: '13px',
+                      color: '#454C63',
+                      whiteSpace: 'nowrap',
                     }}
                   >
-                    {/* Importados: código Dentoral + nomenclatura (a
-                        linguagem do Victor); restantes: slug técnico */}
-                    {t.dentoralCode
-                      ? [t.dentoralCode, t.entityCode]
-                          .filter(Boolean)
-                          .join(' · ')
-                      : t.slug}
-                  </p>
-                </td>
-                <td
-                  style={{
-                    padding: '10px 14px',
-                    fontSize: '13px',
-                    color: '#454C63',
-                  }}
-                >
-                  {SPECIALTY_LABEL[t.specialty]}
-                </td>
-                <td
-                  style={{
-                    padding: '10px 14px',
-                    fontSize: '13px',
-                    color: '#454C63',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {t.durationMin}
-                  {t.bufferMin > 0 ? ` + ${t.bufferMin}` : ''} min
-                </td>
-                <td
-                  style={{
-                    padding: '10px 14px',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    color: '#1C2233',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {formatCents(t.priceCents)}
-                </td>
-                <td style={{ padding: '10px 14px' }}>
-                  {t.bookableOnline ? (
-                    <Badge variant='info'>Online</Badge>
-                  ) : (
-                    <span style={{ fontSize: '13px', color: '#9AA1B4' }}>
-                      —
-                    </span>
-                  )}
-                </td>
-                <td
-                  style={{
-                    padding: '10px 14px',
-                    fontSize: '13px',
-                    color: '#454C63',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {t.recallIntervalMonths
-                    ? `${t.recallIntervalMonths} meses`
-                    : '—'}
-                </td>
-                <td style={{ padding: '10px 14px' }}>
-                  <Badge
-                    variant={
-                      t.source === 'clinic-confirmed' ? 'success' : 'warning'
-                    }
-                  >
-                    {t.source === 'clinic-confirmed'
-                      ? 'Confirmado'
-                      : t.source === 'imported'
-                        ? 'Importado'
-                        : 'Benchmark'}
-                  </Badge>
-                </td>
-                <td style={{ padding: '10px 14px' }}>
-                  <ActiveToggle treatment={t} />
-                </td>
-                <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                  <Button
-                    type='button'
-                    variant='ghost'
-                    size='sm'
-                    onClick={() => setModal({ mode: 'edit', treatment: t })}
-                  >
-                    <Pencil size={14} style={{ marginRight: 4 }} />
-                    Editar
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                    {t.recallIntervalMonths
+                      ? `${t.recallIntervalMonths} meses`
+                      : '—'}
+                  </td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <Badge
+                      variant={
+                        t.source === 'clinic-confirmed' ? 'success' : 'warning'
+                      }
+                    >
+                      {t.source === 'clinic-confirmed'
+                        ? 'Confirmado'
+                        : t.source === 'imported'
+                          ? 'Importado'
+                          : 'Benchmark'}
+                    </Badge>
+                  </td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <ActiveToggle treatment={t} />
+                  </td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      size='sm'
+                      onClick={() => setModal({ mode: 'edit', treatment: t })}
+                    >
+                      <Pencil size={14} style={{ marginRight: 4 }} />
+                      Editar
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* key força remount ao trocar de alvo — limpa defaultValue e handled */}

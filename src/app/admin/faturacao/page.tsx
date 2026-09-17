@@ -315,11 +315,18 @@ export default async function FaturacaoPage({
           overflow: 'hidden',
         }}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ backgroundColor: '#F8F9FD' }}>
-              {['Data', 'Documento', 'Paciente', 'Meio', 'Total', 'Estado'].map(
-                (h, i) => (
+        <div className='cdc-table-scroll'>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#F8F9FD' }}>
+                {[
+                  'Data',
+                  'Documento',
+                  'Paciente',
+                  'Meio',
+                  'Total',
+                  'Estado',
+                ].map((h, i) => (
                   <th
                     key={i}
                     style={{
@@ -335,115 +342,115 @@ export default async function FaturacaoPage({
                   >
                     {h}
                   </th>
-                ),
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {invoices.length === 0 && (
-              <tr>
-                <td
-                  colSpan={6}
-                  style={{
-                    padding: '28px 14px',
-                    textAlign: 'center',
-                    fontSize: '14px',
-                    color: '#6A7186',
-                  }}
-                >
-                  Sem documentos neste período.
-                </td>
+                ))}
               </tr>
-            )}
-            {invoices.map(inv => {
-              const p = patientById.get(String(inv.patientId));
-              const when = (inv.paidAt ?? inv.createdAt) as Date;
-              return (
-                <tr
-                  key={String(inv._id)}
-                  style={{ borderBottom: '1px solid #F4F6FB' }}
-                >
+            </thead>
+            <tbody>
+              {invoices.length === 0 && (
+                <tr>
                   <td
+                    colSpan={6}
                     style={{
-                      padding: '10px 14px',
-                      fontSize: '13px',
-                      color: '#454C63',
-                      whiteSpace: 'nowrap',
+                      padding: '28px 14px',
+                      textAlign: 'center',
+                      fontSize: '14px',
+                      color: '#6A7186',
                     }}
                   >
-                    {lisbonDateTime(when)}
-                  </td>
-                  <td style={{ padding: '10px 14px' }}>
-                    <Link
-                      href={`/admin/faturacao/${String(inv._id)}`}
-                      style={{
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        color: '#2743A6',
-                        textDecoration: 'none',
-                      }}
-                    >
-                      {inv.moloniDocumentNumber ??
-                        `Interno #${String(inv._id).slice(-6).toUpperCase()}`}
-                    </Link>
-                  </td>
-                  <td
-                    style={{
-                      padding: '10px 14px',
-                      fontSize: '13px',
-                      color: '#454C63',
-                    }}
-                  >
-                    {p?.name ?? 'Paciente removido'}
-                  </td>
-                  <td
-                    style={{
-                      padding: '10px 14px',
-                      fontSize: '13px',
-                      color: '#454C63',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {PAYMENT_METHOD_LABEL[inv.paymentMethod as PaymentMethod]}
-                  </td>
-                  <td
-                    style={{
-                      padding: '10px 14px',
-                      fontSize: '13px',
-                      fontWeight: 700,
-                      color: '#1C2233',
-                      textAlign: 'right',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {formatCents(inv.totalCents)}
-                    {/* Fase 5C: saldo em dívida (pagamento parcial) */}
-                    {inv.status !== 'voided' &&
-                      inv.paidCents != null &&
-                      inv.paidCents < inv.totalCents && (
-                        <span
-                          style={{
-                            display: 'block',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            color: '#B3261E',
-                          }}
-                        >
-                          em dívida{' '}
-                          {formatCents(inv.totalCents - inv.paidCents)}
-                        </span>
-                      )}
-                  </td>
-                  <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                    <Badge variant={STATUS_VARIANT[inv.status]}>
-                      {INVOICE_STATUS_LABEL[inv.status]}
-                    </Badge>
+                    Sem documentos neste período.
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              )}
+              {invoices.map(inv => {
+                const p = patientById.get(String(inv.patientId));
+                const when = (inv.paidAt ?? inv.createdAt) as Date;
+                return (
+                  <tr
+                    key={String(inv._id)}
+                    style={{ borderBottom: '1px solid #F4F6FB' }}
+                  >
+                    <td
+                      style={{
+                        padding: '10px 14px',
+                        fontSize: '13px',
+                        color: '#454C63',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {lisbonDateTime(when)}
+                    </td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <Link
+                        href={`/admin/faturacao/${String(inv._id)}`}
+                        style={{
+                          fontSize: '14px',
+                          fontWeight: 600,
+                          color: '#2743A6',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        {inv.moloniDocumentNumber ??
+                          `Interno #${String(inv._id).slice(-6).toUpperCase()}`}
+                      </Link>
+                    </td>
+                    <td
+                      style={{
+                        padding: '10px 14px',
+                        fontSize: '13px',
+                        color: '#454C63',
+                      }}
+                    >
+                      {p?.name ?? 'Paciente removido'}
+                    </td>
+                    <td
+                      style={{
+                        padding: '10px 14px',
+                        fontSize: '13px',
+                        color: '#454C63',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {PAYMENT_METHOD_LABEL[inv.paymentMethod as PaymentMethod]}
+                    </td>
+                    <td
+                      style={{
+                        padding: '10px 14px',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        color: '#1C2233',
+                        textAlign: 'right',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {formatCents(inv.totalCents)}
+                      {/* Fase 5C: saldo em dívida (pagamento parcial) */}
+                      {inv.status !== 'voided' &&
+                        inv.paidCents != null &&
+                        inv.paidCents < inv.totalCents && (
+                          <span
+                            style={{
+                              display: 'block',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              color: '#B3261E',
+                            }}
+                          >
+                            em dívida{' '}
+                            {formatCents(inv.totalCents - inv.paidCents)}
+                          </span>
+                        )}
+                    </td>
+                    <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                      <Badge variant={STATUS_VARIANT[inv.status]}>
+                        {INVOICE_STATUS_LABEL[inv.status]}
+                      </Badge>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

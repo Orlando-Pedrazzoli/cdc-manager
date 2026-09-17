@@ -131,71 +131,76 @@ export default async function ColaboradoresPage({
           overflow: 'hidden',
         }}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={th}>Nome</th>
-              <th style={th}>Categoria</th>
-              <th style={th}>Vínculo</th>
-              <th style={th}>Admissão</th>
-              <th style={{ ...th, textAlign: 'right' }}>Salário atual</th>
-              <th style={th}>Registos</th>
-            </tr>
-          </thead>
-          <tbody>
-            {employees.length === 0 && (
+        <div className='cdc-table-scroll'>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
               <tr>
-                <td style={{ ...td, color: '#6A7186' }} colSpan={6}>
-                  Sem colaboradores. Comece por «Novo colaborador».
-                </td>
+                <th style={th}>Nome</th>
+                <th style={th}>Categoria</th>
+                <th style={th}>Vínculo</th>
+                <th style={th}>Admissão</th>
+                <th style={{ ...th, textAlign: 'right' }}>Salário atual</th>
+                <th style={th}>Registos</th>
               </tr>
-            )}
-            {employees.map(e => (
-              <tr key={String(e._id)} style={{ opacity: e.active ? 1 : 0.55 }}>
-                <td style={td}>
-                  <Link
-                    href={`/admin/colaboradores/${String(e._id)}`}
+            </thead>
+            <tbody>
+              {employees.length === 0 && (
+                <tr>
+                  <td style={{ ...td, color: '#6A7186' }} colSpan={6}>
+                    Sem colaboradores. Comece por «Novo colaborador».
+                  </td>
+                </tr>
+              )}
+              {employees.map(e => (
+                <tr
+                  key={String(e._id)}
+                  style={{ opacity: e.active ? 1 : 0.55 }}
+                >
+                  <td style={td}>
+                    <Link
+                      href={`/admin/colaboradores/${String(e._id)}`}
+                      style={{
+                        color: '#1B2A6B',
+                        fontWeight: 700,
+                        textDecoration: 'none',
+                      }}
+                    >
+                      {e.name}
+                    </Link>
+                    {!e.active && (
+                      <span style={{ marginLeft: 8 }}>
+                        <Badge variant='danger'>Inativo</Badge>
+                      </span>
+                    )}
+                  </td>
+                  <td style={td}>{e.category}</td>
+                  <td style={td}>
+                    {EMPLOYEE_CONTRACT_LABEL[
+                      e.contractType as EmployeeContractType
+                    ] ?? e.contractType}
+                  </td>
+                  <td style={td}>{ptDate(e.startDate)}</td>
+                  <td
                     style={{
-                      color: '#1B2A6B',
-                      fontWeight: 700,
-                      textDecoration: 'none',
+                      ...td,
+                      textAlign: 'right',
+                      fontVariantNumeric: 'tabular-nums',
                     }}
                   >
-                    {e.name}
-                  </Link>
-                  {!e.active && (
-                    <span style={{ marginLeft: 8 }}>
-                      <Badge variant='danger'>Inativo</Badge>
-                    </span>
-                  )}
-                </td>
-                <td style={td}>{e.category}</td>
-                <td style={td}>
-                  {EMPLOYEE_CONTRACT_LABEL[
-                    e.contractType as EmployeeContractType
-                  ] ?? e.contractType}
-                </td>
-                <td style={td}>{ptDate(e.startDate)}</td>
-                <td
-                  style={{
-                    ...td,
-                    textAlign: 'right',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {e.currentSalaryCents != null
-                    ? formatCents(e.currentSalaryCents)
-                    : '—'}
-                </td>
-                <td style={{ ...td, fontSize: '12px', color: '#6A7186' }}>
-                  {(e.raises ?? []).length} aumento(s) ·{' '}
-                  {(e.categoryChanges ?? []).length} categoria(s) ·{' '}
-                  {(e.warnings ?? []).length} advertência(s)
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                    {e.currentSalaryCents != null
+                      ? formatCents(e.currentSalaryCents)
+                      : '—'}
+                  </td>
+                  <td style={{ ...td, fontSize: '12px', color: '#6A7186' }}>
+                    {(e.raises ?? []).length} aumento(s) ·{' '}
+                    {(e.categoryChanges ?? []).length} categoria(s) ·{' '}
+                    {(e.warnings ?? []).length} advertência(s)
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

@@ -114,44 +114,46 @@ export function PaymentsPanel({
           </span>
         </div>
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <tbody>
-          {payments.length === 0 && (
-            <tr>
-              <td style={{ ...td, color: '#6A7186' }}>
-                Sem pagamentos registados.
-              </td>
-            </tr>
-          )}
-          {payments.map((p, i) => (
-            <tr key={p.id}>
-              <td style={{ ...td, color: '#6A7186', whiteSpace: 'nowrap' }}>
-                Recibo {i + 1}
-              </td>
-              <td style={{ ...td, whiteSpace: 'nowrap' }}>{p.paidAtLabel}</td>
-              <td style={td}>
-                {PAYMENT_METHOD_LABEL[
-                  p.method as keyof typeof PAYMENT_METHOD_LABEL
-                ] ?? p.method}
-              </td>
-              <td style={{ ...td, color: '#6A7186' }}>
-                {p.receivedBy}
-                {p.note ? ` · ${p.note}` : ''}
-              </td>
-              <td
-                style={{
-                  ...td,
-                  textAlign: 'right',
-                  fontWeight: 700,
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {formatCents(p.amountCents)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className='cdc-table-scroll'>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <tbody>
+            {payments.length === 0 && (
+              <tr>
+                <td style={{ ...td, color: '#6A7186' }}>
+                  Sem pagamentos registados.
+                </td>
+              </tr>
+            )}
+            {payments.map((p, i) => (
+              <tr key={p.id}>
+                <td style={{ ...td, color: '#6A7186', whiteSpace: 'nowrap' }}>
+                  Recibo {i + 1}
+                </td>
+                <td style={{ ...td, whiteSpace: 'nowrap' }}>{p.paidAtLabel}</td>
+                <td style={td}>
+                  {PAYMENT_METHOD_LABEL[
+                    p.method as keyof typeof PAYMENT_METHOD_LABEL
+                  ] ?? p.method}
+                </td>
+                <td style={{ ...td, color: '#6A7186' }}>
+                  {p.receivedBy}
+                  {p.note ? ` · ${p.note}` : ''}
+                </td>
+                <td
+                  style={{
+                    ...td,
+                    textAlign: 'right',
+                    fontWeight: 700,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {formatCents(p.amountCents)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {canRegister && due > 0 && (
         <form
           onSubmit={e => {

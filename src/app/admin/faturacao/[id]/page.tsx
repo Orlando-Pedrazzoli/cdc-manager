@@ -230,90 +230,92 @@ export default async function InvoiceDetailPage({
           overflow: 'hidden',
         }}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ backgroundColor: '#F8F9FD' }}>
-              <th
-                style={{
-                  textAlign: 'left',
-                  padding: '10px 14px',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.4px',
-                  color: '#6A7186',
-                  borderBottom: '1px solid #EEF1F8',
-                }}
-              >
-                Descrição
-              </th>
-              <th
-                style={{
-                  textAlign: 'right',
-                  padding: '10px 14px',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.4px',
-                  color: '#6A7186',
-                  borderBottom: '1px solid #EEF1F8',
-                }}
-              >
-                Valor
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {inv.lines.map((l, i) => (
-              <tr key={i} style={{ borderBottom: '1px solid #F4F6FB' }}>
-                <td
+        <div className='cdc-table-scroll'>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#F8F9FD' }}>
+                <th
                   style={{
+                    textAlign: 'left',
                     padding: '10px 14px',
-                    fontSize: '14px',
-                    color: '#1C2233',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.4px',
+                    color: '#6A7186',
+                    borderBottom: '1px solid #EEF1F8',
                   }}
                 >
-                  {l.description}
+                  Descrição
+                </th>
+                <th
+                  style={{
+                    textAlign: 'right',
+                    padding: '10px 14px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.4px',
+                    color: '#6A7186',
+                    borderBottom: '1px solid #EEF1F8',
+                  }}
+                >
+                  Valor
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {inv.lines.map((l, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid #F4F6FB' }}>
+                  <td
+                    style={{
+                      padding: '10px 14px',
+                      fontSize: '14px',
+                      color: '#1C2233',
+                    }}
+                  >
+                    {l.description}
+                  </td>
+                  <td
+                    style={{
+                      padding: '10px 14px',
+                      fontSize: '14px',
+                      color: '#1C2233',
+                      textAlign: 'right',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {formatCents(l.priceCents)}
+                  </td>
+                </tr>
+              ))}
+              <tr>
+                <td
+                  style={{
+                    padding: '12px 14px',
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    color: '#1B2A6B',
+                  }}
+                >
+                  Total (IVA isento — art. 9.º CIVA)
                 </td>
                 <td
                   style={{
-                    padding: '10px 14px',
-                    fontSize: '14px',
-                    color: '#1C2233',
+                    padding: '12px 14px',
+                    fontSize: '16px',
+                    fontWeight: 700,
+                    color: '#1B2A6B',
                     textAlign: 'right',
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {formatCents(l.priceCents)}
+                  {formatCents(inv.totalCents)}
                 </td>
               </tr>
-            ))}
-            <tr>
-              <td
-                style={{
-                  padding: '12px 14px',
-                  fontSize: '14px',
-                  fontWeight: 700,
-                  color: '#1B2A6B',
-                }}
-              >
-                Total (IVA isento — art. 9.º CIVA)
-              </td>
-              <td
-                style={{
-                  padding: '12px 14px',
-                  fontSize: '16px',
-                  fontWeight: 700,
-                  color: '#1B2A6B',
-                  textAlign: 'right',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {formatCents(inv.totalCents)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Fase 5C: pagamentos / recibos / saldo */}

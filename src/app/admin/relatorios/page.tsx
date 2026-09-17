@@ -34,6 +34,7 @@ import {
   adjustmentsMatch,
 } from '@/lib/commission-accounting';
 import { getActiveClinics } from '@/models/Clinic';
+import { clinicLabel } from '@/lib/branding';
 import { formatCents } from '@/lib/commissions';
 import { ExportCsvButton } from '@/components/relatorios/ExportCsvButton';
 
@@ -222,12 +223,7 @@ export default async function RelatoriosPage({
       adjPriceCents: a.priceCents,
     });
   }
-  const clinicName = new Map(
-    clinics.map(c => [
-      String(c._id),
-      c.slug === 'colombo' ? 'Colombo' : 'Buraca',
-    ]),
-  );
+  const clinicName = new Map(clinics.map(c => [String(c._id), clinicLabel(c)]));
   const prodClinic = new Map(prodByClinic.map(r => [String(r._id), r]));
   const invClinic = new Map(invByClinic.map(r => [String(r._id), r]));
   const collectClinic = new Map(toCollect.map(r => [String(r._id), r.cents]));
@@ -414,110 +410,118 @@ export default async function RelatoriosPage({
               Sem atos executados neste mês.
             </p>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={th}>Profissional</th>
-                  <th style={thNum}>Atos</th>
-                  <th style={thNum}>Produção</th>
-                  <th style={thNum}>Custo direto</th>
-                  <th style={thNum}>Comissão</th>
-                  <th style={thNum}>Estornos</th>
-                  <th style={thNum}>A pagar</th>
-                  <th style={thNum}>Parte da clínica</th>
-                </tr>
-              </thead>
-              <tbody>
-                {prodByDoctor.map(r => {
-                  const d = doctorById.get(String(r._id));
-                  return (
-                    <tr key={String(r._id)}>
-                      <td style={td}>
-                        <span
+            <div className='cdc-table-scroll'>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={th}>Profissional</th>
+                    <th style={thNum}>Atos</th>
+                    <th style={thNum}>Produção</th>
+                    <th style={thNum}>Custo direto</th>
+                    <th style={thNum}>Comissão</th>
+                    <th style={thNum}>Estornos</th>
+                    <th style={thNum}>A pagar</th>
+                    <th style={thNum}>Parte da clínica</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {prodByDoctor.map(r => {
+                    const d = doctorById.get(String(r._id));
+                    return (
+                      <tr key={String(r._id)}>
+                        <td style={td}>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              width: 9,
+                              height: 9,
+                              borderRadius: '50%',
+                              backgroundColor:
+                                (d?.color as string) ?? '#C7CEE0',
+                              marginRight: 8,
+                            }}
+                          />
+                          {d ? (
+                            <Link
+                              href={`/admin/medicos/${String(r._id)}`}
+                              style={{
+                                color: '#1B2A6B',
+                                textDecoration: 'none',
+                              }}
+                            >
+                              {d.name}
+                            </Link>
+                          ) : (
+                            '(profissional removido)'
+                          )}
+                        </td>
+                        <td style={tdNum}>{r.n}</td>
+                        <td style={tdNum}>{formatCents(r.producedCents)}</td>
+                        <td style={tdNum}>{formatCents(r.costCents)}</td>
+                        <td style={tdNum}>{formatCents(r.commissionCents)}</td>
+                        <td
                           style={{
-                            display: 'inline-block',
-                            width: 9,
-                            height: 9,
-                            borderRadius: '50%',
-                            backgroundColor: (d?.color as string) ?? '#C7CEE0',
-                            marginRight: 8,
+                            ...tdNum,
+                            color:
+                              r.adjCommissionCents < 0 ? '#B3261E' : '#9AA1B4',
                           }}
-                        />
-                        {d ? (
-                          <Link
-                            href={`/admin/medicos/${String(r._id)}`}
-                            style={{ color: '#1B2A6B', textDecoration: 'none' }}
-                          >
-                            {d.name}
-                          </Link>
-                        ) : (
-                          '(profissional removido)'
-                        )}
-                      </td>
-                      <td style={tdNum}>{r.n}</td>
-                      <td style={tdNum}>{formatCents(r.producedCents)}</td>
-                      <td style={tdNum}>{formatCents(r.costCents)}</td>
-                      <td style={tdNum}>{formatCents(r.commissionCents)}</td>
-                      <td
-                        style={{
-                          ...tdNum,
-                          color:
-                            r.adjCommissionCents < 0 ? '#B3261E' : '#9AA1B4',
-                        }}
-                      >
-                        {r.adjN > 0 ? formatCents(r.adjCommissionCents) : '—'}
-                      </td>
-                      <td style={{ ...tdNum, fontWeight: 700 }}>
-                        {formatCents(r.commissionCents + r.adjCommissionCents)}
-                      </td>
-                      <td style={tdNum}>
-                        {formatCents(
-                          r.producedCents -
-                            r.costCents -
-                            (r.commissionCents + r.adjCommissionCents),
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                <tr>
-                  <td style={{ ...td, fontWeight: 700 }}>Total</td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>
-                    {prodByDoctor.reduce((s, r) => s + r.n, 0)}
-                  </td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>
-                    {formatCents(totalProduced)}
-                  </td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>
-                    {formatCents(
-                      prodByDoctor.reduce((s, r) => s + r.costCents, 0),
-                    )}
-                  </td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>
-                    {formatCents(totalCommission - totalAdj)}
-                  </td>
-                  <td
-                    style={{
-                      ...tdNum,
-                      fontWeight: 700,
-                      color: totalAdj < 0 ? '#B3261E' : '#9AA1B4',
-                    }}
-                  >
-                    {totalAdj !== 0 ? formatCents(totalAdj) : '—'}
-                  </td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>
-                    {formatCents(totalCommission)}
-                  </td>
-                  <td style={{ ...tdNum, fontWeight: 700 }}>
-                    {formatCents(
-                      totalProduced -
-                        prodByDoctor.reduce((s, r) => s + r.costCents, 0) -
-                        totalCommission,
-                    )}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                        >
+                          {r.adjN > 0 ? formatCents(r.adjCommissionCents) : '—'}
+                        </td>
+                        <td style={{ ...tdNum, fontWeight: 700 }}>
+                          {formatCents(
+                            r.commissionCents + r.adjCommissionCents,
+                          )}
+                        </td>
+                        <td style={tdNum}>
+                          {formatCents(
+                            r.producedCents -
+                              r.costCents -
+                              (r.commissionCents + r.adjCommissionCents),
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr>
+                    <td style={{ ...td, fontWeight: 700 }}>Total</td>
+                    <td style={{ ...tdNum, fontWeight: 700 }}>
+                      {prodByDoctor.reduce((s, r) => s + r.n, 0)}
+                    </td>
+                    <td style={{ ...tdNum, fontWeight: 700 }}>
+                      {formatCents(totalProduced)}
+                    </td>
+                    <td style={{ ...tdNum, fontWeight: 700 }}>
+                      {formatCents(
+                        prodByDoctor.reduce((s, r) => s + r.costCents, 0),
+                      )}
+                    </td>
+                    <td style={{ ...tdNum, fontWeight: 700 }}>
+                      {formatCents(totalCommission - totalAdj)}
+                    </td>
+                    <td
+                      style={{
+                        ...tdNum,
+                        fontWeight: 700,
+                        color: totalAdj < 0 ? '#B3261E' : '#9AA1B4',
+                      }}
+                    >
+                      {totalAdj !== 0 ? formatCents(totalAdj) : '—'}
+                    </td>
+                    <td style={{ ...tdNum, fontWeight: 700 }}>
+                      {formatCents(totalCommission)}
+                    </td>
+                    <td style={{ ...tdNum, fontWeight: 700 }}>
+                      {formatCents(
+                        totalProduced -
+                          prodByDoctor.reduce((s, r) => s + r.costCents, 0) -
+                          totalCommission,
+                      )}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           )}
           <p
             style={{

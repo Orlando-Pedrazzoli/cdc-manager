@@ -829,212 +829,218 @@ export function StockTable({
           overflow: 'hidden',
         }}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ backgroundColor: '#F8F9FD' }}>
-              {th('Produto')}
-              {th('Família')}
-              {clinics.map(c => th(c.name, true))}
-              {th('Total', true)}
-              {th('Estado')}
-              {th('')}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr>
-                <td
-                  colSpan={5 + clinics.length}
-                  style={{
-                    padding: '28px 14px',
-                    textAlign: 'center',
-                    fontSize: '14px',
-                    color: '#6A7186',
-                  }}
-                >
-                  {products.length === 0
-                    ? 'Ainda sem produtos — crie o primeiro em «Novo produto».'
-                    : 'Nenhum produto corresponde aos filtros.'}
-                </td>
+        <div className='cdc-table-scroll'>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#F8F9FD' }}>
+                {th('Produto')}
+                {th('Família')}
+                {clinics.map(c => th(c.name, true))}
+                {th('Total', true)}
+                {th('Estado')}
+                {th('')}
               </tr>
-            )}
-            {filtered.map(p => {
-              const low = p.active && p.minStock > 0 && p.total < p.minStock;
-              return (
-                <tr
-                  key={p.id}
-                  style={{
-                    borderBottom: '1px solid #F4F6FB',
-                    opacity: p.active ? 1 : 0.55,
-                  }}
-                >
-                  <td style={{ padding: '10px 12px' }}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: '8px',
-                          border: '1px solid #EEF1F8',
-                          backgroundColor: '#F4F6FB',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          overflow: 'hidden',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {p.imageThumbUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element -- URL assinada dinâmica
-                          <img
-                            src={p.imageThumbUrl}
-                            alt=''
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit: 'cover',
-                            }}
-                          />
-                        ) : (
-                          <Package size={16} style={{ color: '#C3C9D9' }} />
-                        )}
-                      </div>
-                      <div>
-                        <Link
-                          href={`/admin/stock/${p.id}`}
-                          style={{
-                            fontSize: '14px',
-                            fontWeight: 600,
-                            color: '#1C2233',
-                            textDecoration: 'none',
-                          }}
-                        >
-                          {p.name}
-                        </Link>
-                        <p
-                          style={{
-                            margin: 0,
-                            fontSize: '12px',
-                            color: '#9AA1B4',
-                          }}
-                        >
-                          {PRODUCT_UNIT_LABEL[p.unit]}
-                          {p.supplierName ? ` · ${p.supplierName}` : ''}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr>
                   <td
+                    colSpan={5 + clinics.length}
                     style={{
-                      padding: '10px 12px',
-                      fontSize: '13px',
-                      color: '#454C63',
+                      padding: '28px 14px',
+                      textAlign: 'center',
+                      fontSize: '14px',
+                      color: '#6A7186',
                     }}
                   >
-                    {p.family ?? '—'}
+                    {products.length === 0
+                      ? 'Ainda sem produtos — crie o primeiro em «Novo produto».'
+                      : 'Nenhum produto corresponde aos filtros.'}
                   </td>
-                  {clinics.map(c => (
+                </tr>
+              )}
+              {filtered.map(p => {
+                const low = p.active && p.minStock > 0 && p.total < p.minStock;
+                return (
+                  <tr
+                    key={p.id}
+                    style={{
+                      borderBottom: '1px solid #F4F6FB',
+                      opacity: p.active ? 1 : 0.55,
+                    }}
+                  >
+                    <td style={{ padding: '10px 12px' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: '8px',
+                            border: '1px solid #EEF1F8',
+                            backgroundColor: '#F4F6FB',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            overflow: 'hidden',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {p.imageThumbUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element -- URL assinada dinâmica
+                            <img
+                              src={p.imageThumbUrl}
+                              alt=''
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover',
+                              }}
+                            />
+                          ) : (
+                            <Package size={16} style={{ color: '#C3C9D9' }} />
+                          )}
+                        </div>
+                        <div>
+                          <Link
+                            href={`/admin/stock/${p.id}`}
+                            style={{
+                              fontSize: '14px',
+                              fontWeight: 600,
+                              color: '#1C2233',
+                              textDecoration: 'none',
+                            }}
+                          >
+                            {p.name}
+                          </Link>
+                          <p
+                            style={{
+                              margin: 0,
+                              fontSize: '12px',
+                              color: '#9AA1B4',
+                            }}
+                          >
+                            {PRODUCT_UNIT_LABEL[p.unit]}
+                            {p.supplierName ? ` · ${p.supplierName}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
                     <td
-                      key={c.slug}
                       style={{
                         padding: '10px 12px',
                         fontSize: '13px',
                         color: '#454C63',
+                      }}
+                    >
+                      {p.family ?? '—'}
+                    </td>
+                    {clinics.map(c => (
+                      <td
+                        key={c.slug}
+                        style={{
+                          padding: '10px 12px',
+                          fontSize: '13px',
+                          color: '#454C63',
+                          textAlign: 'right',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {p.balances[c.slug] ?? 0}
+                      </td>
+                    ))}
+                    <td
+                      style={{
+                        padding: '10px 12px',
+                        fontSize: '14px',
+                        fontWeight: 700,
+                        color: low ? '#B3261E' : '#1C2233',
                         textAlign: 'right',
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {p.balances[c.slug] ?? 0}
+                      {p.total}
+                      {low && (
+                        <span
+                          style={{ marginLeft: 8, verticalAlign: 'middle' }}
+                        >
+                          <Badge variant='danger'>Repor</Badge>
+                        </span>
+                      )}
                     </td>
-                  ))}
-                  <td
-                    style={{
-                      padding: '10px 12px',
-                      fontSize: '14px',
-                      fontWeight: 700,
-                      color: low ? '#B3261E' : '#1C2233',
-                      textAlign: 'right',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {p.total}
-                    {low && (
-                      <span style={{ marginLeft: 8, verticalAlign: 'middle' }}>
-                        <Badge variant='danger'>Repor</Badge>
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <ActiveToggle product={p} />
-                  </td>
-                  <td
-                    style={{
-                      padding: '10px 12px',
-                      textAlign: 'right',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    <div
+                    <td style={{ padding: '10px 12px' }}>
+                      <ActiveToggle product={p} />
+                    </td>
+                    <td
                       style={{
-                        display: 'inline-flex',
-                        gap: '4px',
+                        padding: '10px 12px',
+                        textAlign: 'right',
+                        whiteSpace: 'nowrap',
                       }}
                     >
-                      <Button
-                        type='button'
-                        variant='ghost'
-                        size='sm'
-                        title='Entrada'
-                        onClick={() => setModal({ kind: 'entry', product: p })}
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          gap: '4px',
+                        }}
                       >
-                        <ArrowDownToLine size={15} />
-                      </Button>
-                      <Button
-                        type='button'
-                        variant='ghost'
-                        size='sm'
-                        title='Saída'
-                        onClick={() => setModal({ kind: 'exit', product: p })}
-                      >
-                        <ArrowUpFromLine size={15} />
-                      </Button>
-                      {clinics.length > 1 && (
                         <Button
                           type='button'
                           variant='ghost'
                           size='sm'
-                          title='Transferir entre clínicas'
+                          title='Entrada'
                           onClick={() =>
-                            setModal({ kind: 'transfer', product: p })
+                            setModal({ kind: 'entry', product: p })
                           }
                         >
-                          <ArrowLeftRight size={15} />
+                          <ArrowDownToLine size={15} />
                         </Button>
-                      )}
-                      <Button
-                        type='button'
-                        variant='ghost'
-                        size='sm'
-                        title='Editar produto'
-                        onClick={() =>
-                          setModal({ kind: 'product', editing: p })
-                        }
-                      >
-                        <Pencil size={15} />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                        <Button
+                          type='button'
+                          variant='ghost'
+                          size='sm'
+                          title='Saída'
+                          onClick={() => setModal({ kind: 'exit', product: p })}
+                        >
+                          <ArrowUpFromLine size={15} />
+                        </Button>
+                        {clinics.length > 1 && (
+                          <Button
+                            type='button'
+                            variant='ghost'
+                            size='sm'
+                            title='Transferir entre clínicas'
+                            onClick={() =>
+                              setModal({ kind: 'transfer', product: p })
+                            }
+                          >
+                            <ArrowLeftRight size={15} />
+                          </Button>
+                        )}
+                        <Button
+                          type='button'
+                          variant='ghost'
+                          size='sm'
+                          title='Editar produto'
+                          onClick={() =>
+                            setModal({ kind: 'product', editing: p })
+                          }
+                        >
+                          <Pencil size={15} />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Modais (key remonta ao trocar de alvo) */}

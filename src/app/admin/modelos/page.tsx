@@ -93,57 +93,64 @@ export default async function ModelosPage() {
       </div>
 
       <div style={card}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={th}>Modelo</th>
-              <th style={th}>Tipo</th>
-              <th style={th}>Campos automáticos</th>
-              <th style={th}>Quem emite</th>
-              <th style={{ ...th, textAlign: 'right' }}>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {templates.map(t => (
-              <tr key={String(t._id)} style={{ opacity: t.active ? 1 : 0.55 }}>
-                <td style={td}>
-                  <div style={{ fontWeight: 700 }}>{t.title}</div>
-                  <div style={{ fontSize: '11px', color: '#9AA1B4' }}>
-                    {t.body.length.toLocaleString('pt-PT')} caracteres
-                    {t.requiresSignature ? ' · exige assinatura' : ''}
-                  </div>
-                </td>
-                <td style={td}>
-                  <Badge variant='info'>
-                    {TEMPLATE_KIND_LABEL[t.kind as TemplateKind]}
-                  </Badge>
-                </td>
-                <td style={{ ...td, fontSize: '11.5px', color: '#6A7186' }}>
-                  {placeholdersIn(t.body).join(', ') || '—'}
-                </td>
-                <td style={td}>
-                  {t.allowStaff ? 'Médico e receção' : 'Só médico'}
-                </td>
-                <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <span style={{ display: 'inline-flex', gap: 6 }}>
-                    <TemplateEditorButton
-                      initial={{
-                        id: String(t._id),
-                        kind: t.kind,
-                        title: t.title,
-                        body: t.body,
-                        allowStaff: !!t.allowStaff,
-                        requiresSignature: !!t.requiresSignature,
-                        active: !!t.active,
-                      }}
-                    />
-                    <TemplateToggle id={String(t._id)} active={!!t.active} />
-                  </span>
-                </td>
+        <div className='cdc-table-scroll'>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={th}>Modelo</th>
+                <th style={th}>Tipo</th>
+                <th style={th}>Campos automáticos</th>
+                <th style={th}>Quem emite</th>
+                <th style={{ ...th, textAlign: 'right' }}>Ações</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {templates.map(t => (
+                <tr
+                  key={String(t._id)}
+                  style={{ opacity: t.active ? 1 : 0.55 }}
+                >
+                  <td style={td}>
+                    <div style={{ fontWeight: 700 }}>{t.title}</div>
+                    <div style={{ fontSize: '11px', color: '#9AA1B4' }}>
+                      {t.body.length.toLocaleString('pt-PT')} caracteres
+                      {t.requiresSignature ? ' · exige assinatura' : ''}
+                    </div>
+                  </td>
+                  <td style={td}>
+                    <Badge variant='info'>
+                      {TEMPLATE_KIND_LABEL[t.kind as TemplateKind]}
+                    </Badge>
+                  </td>
+                  <td style={{ ...td, fontSize: '11.5px', color: '#6A7186' }}>
+                    {placeholdersIn(t.body).join(', ') || '—'}
+                  </td>
+                  <td style={td}>
+                    {t.allowStaff ? 'Médico e receção' : 'Só médico'}
+                  </td>
+                  <td
+                    style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}
+                  >
+                    <span style={{ display: 'inline-flex', gap: 6 }}>
+                      <TemplateEditorButton
+                        initial={{
+                          id: String(t._id),
+                          kind: t.kind,
+                          title: t.title,
+                          body: t.body,
+                          allowStaff: !!t.allowStaff,
+                          requiresSignature: !!t.requiresSignature,
+                          active: !!t.active,
+                        }}
+                      />
+                      <TemplateToggle id={String(t._id)} active={!!t.active} />
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

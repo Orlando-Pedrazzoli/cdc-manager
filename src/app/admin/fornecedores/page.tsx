@@ -150,130 +150,139 @@ export default async function FornecedoresPage({
       </div>
 
       <div style={card}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={th}>Nome</th>
-              <th style={th}>Tipo</th>
-              <th style={th}>Contacto</th>
-              <th style={th}>Prazo</th>
-              <th style={th}>Em curso</th>
-              <th style={{ ...th, textAlign: 'right' }}>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {suppliers.length === 0 && (
+        <div className='cdc-table-scroll'>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
               <tr>
-                <td style={{ ...td, color: '#6A7186' }} colSpan={6}>
-                  Ainda não há fornecedores neste filtro. Comece por «Novo
-                  laboratório».
-                </td>
+                <th style={th}>Nome</th>
+                <th style={th}>Tipo</th>
+                <th style={th}>Contacto</th>
+                <th style={th}>Prazo</th>
+                <th style={th}>Em curso</th>
+                <th style={{ ...th, textAlign: 'right' }}>Ações</th>
               </tr>
-            )}
-            {suppliers.map(s => {
-              const open = openBySupplier.get(String(s._id)) ?? 0;
-              return (
-                <tr key={String(s._id)} style={{ opacity: s.active ? 1 : 0.6 }}>
-                  <td style={td}>
-                    <div style={{ fontWeight: 600 }}>
-                      {s.isLab ? (
-                        <FlaskConical
-                          size={14}
-                          style={{
-                            marginRight: 6,
-                            verticalAlign: -2,
-                            color: '#2743A6',
-                          }}
-                        />
-                      ) : (
-                        <Truck
-                          size={14}
-                          style={{
-                            marginRight: 6,
-                            verticalAlign: -2,
-                            color: '#9AA1B4',
-                          }}
-                        />
-                      )}
-                      {s.name}
-                    </div>
-                    {s.nif && (
-                      <div style={{ fontSize: '11px', color: '#9AA1B4' }}>
-                        NIF {s.nif}
-                      </div>
-                    )}
-                  </td>
-                  <td style={td}>
-                    {s.isLab ? (
-                      <Badge variant='info'>Laboratório</Badge>
-                    ) : (
-                      <Badge variant='neutral'>Fornecedor</Badge>
-                    )}
-                    {!s.active && (
-                      <span style={{ marginLeft: 6 }}>
-                        <Badge variant='danger'>Inativo</Badge>
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ ...td, fontSize: '12px', color: '#3D4257' }}>
-                    {[s.contactName, s.phone, s.email]
-                      .filter(Boolean)
-                      .join(' · ') || '—'}
-                  </td>
-                  <td style={td}>
-                    {s.defaultLeadDays != null
-                      ? `${s.defaultLeadDays} dias`
-                      : '—'}
-                  </td>
-                  <td style={td}>
-                    {s.isLab ? (
-                      open > 0 ? (
-                        <Link
-                          href='/admin/proteses?filtro=em-curso'
-                          style={{
-                            color: '#2743A6',
-                            fontWeight: 600,
-                            textDecoration: 'none',
-                          }}
-                        >
-                          {open} pedido{open === 1 ? '' : 's'}
-                        </Link>
-                      ) : (
-                        <span style={{ color: '#9AA1B4' }}>0</span>
-                      )
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td
-                    style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}
-                  >
-                    <span style={{ display: 'inline-flex', gap: 6 }}>
-                      <EditSupplierButton
-                        initial={{
-                          id: String(s._id),
-                          name: s.name,
-                          isLab: !!s.isLab,
-                          nif: s.nif ?? null,
-                          contactName: s.contactName ?? null,
-                          phone: s.phone ?? null,
-                          email: s.email ?? null,
-                          address: s.address ?? null,
-                          defaultLeadDays: s.defaultLeadDays ?? null,
-                          notes: s.notes ?? null,
-                        }}
-                      />
-                      <ToggleActiveButton
-                        id={String(s._id)}
-                        active={!!s.active}
-                      />
-                    </span>
+            </thead>
+            <tbody>
+              {suppliers.length === 0 && (
+                <tr>
+                  <td style={{ ...td, color: '#6A7186' }} colSpan={6}>
+                    Ainda não há fornecedores neste filtro. Comece por «Novo
+                    laboratório».
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              )}
+              {suppliers.map(s => {
+                const open = openBySupplier.get(String(s._id)) ?? 0;
+                return (
+                  <tr
+                    key={String(s._id)}
+                    style={{ opacity: s.active ? 1 : 0.6 }}
+                  >
+                    <td style={td}>
+                      <div style={{ fontWeight: 600 }}>
+                        {s.isLab ? (
+                          <FlaskConical
+                            size={14}
+                            style={{
+                              marginRight: 6,
+                              verticalAlign: -2,
+                              color: '#2743A6',
+                            }}
+                          />
+                        ) : (
+                          <Truck
+                            size={14}
+                            style={{
+                              marginRight: 6,
+                              verticalAlign: -2,
+                              color: '#9AA1B4',
+                            }}
+                          />
+                        )}
+                        {s.name}
+                      </div>
+                      {s.nif && (
+                        <div style={{ fontSize: '11px', color: '#9AA1B4' }}>
+                          NIF {s.nif}
+                        </div>
+                      )}
+                    </td>
+                    <td style={td}>
+                      {s.isLab ? (
+                        <Badge variant='info'>Laboratório</Badge>
+                      ) : (
+                        <Badge variant='neutral'>Fornecedor</Badge>
+                      )}
+                      {!s.active && (
+                        <span style={{ marginLeft: 6 }}>
+                          <Badge variant='danger'>Inativo</Badge>
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ ...td, fontSize: '12px', color: '#3D4257' }}>
+                      {[s.contactName, s.phone, s.email]
+                        .filter(Boolean)
+                        .join(' · ') || '—'}
+                    </td>
+                    <td style={td}>
+                      {s.defaultLeadDays != null
+                        ? `${s.defaultLeadDays} dias`
+                        : '—'}
+                    </td>
+                    <td style={td}>
+                      {s.isLab ? (
+                        open > 0 ? (
+                          <Link
+                            href='/admin/proteses?filtro=em-curso'
+                            style={{
+                              color: '#2743A6',
+                              fontWeight: 600,
+                              textDecoration: 'none',
+                            }}
+                          >
+                            {open} pedido{open === 1 ? '' : 's'}
+                          </Link>
+                        ) : (
+                          <span style={{ color: '#9AA1B4' }}>0</span>
+                        )
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td
+                      style={{
+                        ...td,
+                        textAlign: 'right',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <span style={{ display: 'inline-flex', gap: 6 }}>
+                        <EditSupplierButton
+                          initial={{
+                            id: String(s._id),
+                            name: s.name,
+                            isLab: !!s.isLab,
+                            nif: s.nif ?? null,
+                            contactName: s.contactName ?? null,
+                            phone: s.phone ?? null,
+                            email: s.email ?? null,
+                            address: s.address ?? null,
+                            defaultLeadDays: s.defaultLeadDays ?? null,
+                            notes: s.notes ?? null,
+                          }}
+                        />
+                        <ToggleActiveButton
+                          id={String(s._id)}
+                          active={!!s.active}
+                        />
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
