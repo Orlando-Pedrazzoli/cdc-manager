@@ -11,6 +11,7 @@
 // patientId SEMPRE da sessão.
 // =============================================================================
 
+import { AppointmentActions } from '@/components/portal/AppointmentActions';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
@@ -114,6 +115,9 @@ function AppointmentRow({
         {row.doctor ? `${row.doctor} · ` : ''}
         {row.clinic}
       </p>
+      {showContact && (
+        <AppointmentActions appointmentId={row.id} status={row.status} />
+      )}
       {showContact && row.phone && (
         <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#6A7186' }}>
           Para remarcar ou cancelar,{' '}

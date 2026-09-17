@@ -176,7 +176,7 @@ const AppointmentSchema = new Schema(
     confirmedAt: { type: Date, default: null },
     confirmedVia: {
       type: String,
-      enum: ['whatsapp', 'sms', 'email', 'front-desk', null],
+      enum: ['whatsapp', 'sms', 'email', 'front-desk', 'portal', null],
       default: null,
     },
     // Lembretes enviados (idempotência dos crons: nunca enviar duas vezes)

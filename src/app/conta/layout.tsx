@@ -10,6 +10,7 @@
 
 import type { ReactNode } from 'react';
 import { auth } from '@/lib/auth';
+import { getOrganization } from '@/models/Organization';
 import { logoutAction } from '@/actions/auth';
 import PortalNav from '@/components/portal/PortalNav';
 
@@ -18,19 +19,28 @@ export default async function PatientLayout({
 }: {
   children: ReactNode;
 }) {
-  const session = await auth();
+  const [session, org] = await Promise.all([auth(), getOrganization()]);
   const firstName = (session?.user?.name ?? '').split(' ')[0];
 
   return (
     <div className='min-h-screen' style={{ backgroundColor: '#F4F6FB' }}>
       <header
         className='flex items-center justify-between px-4 py-3'
-        style={{ backgroundColor: '#1B2A6B' }}
+        style={{ backgroundColor: org.primaryColor }}
       >
-        <span className='text-sm font-bold' style={{ color: '#FFFFFF' }}>
-          Centro Dentário Colombo
+        <span
+          className='text-sm font-bold'
+          style={{
+            color: '#FFFFFF',
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {org.name}
         </span>
-        <div className='flex items-center gap-3'>
+        <div className='flex items-center gap-3' style={{ flexShrink: 0 }}>
           <span className='text-sm' style={{ color: '#C9D4FF' }}>
             {firstName}
           </span>

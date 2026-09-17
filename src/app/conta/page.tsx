@@ -5,10 +5,13 @@
 // Home do portal: hero com a PRÓXIMA CONSULTA (data por extenso, médico,
 // clínica e telefone clicável), atalhos com contagens reais para as secções
 // (Marcações / Documentos / Os meus dados) e contactos das clínicas.
+// Set. 2026: o paciente pode CONFIRMAR PRESENÇA e ADICIONAR AO CALENDÁRIO
+// (.ics) diretamente no hero — as duas ações que faz no telemóvel.
 // Todas as queries filtram pelo patientId DA SESSÃO — regra nº 1 do portal.
 // Sem dados clínicos sensíveis: notas, odontograma e planos ficam fora.
 // =============================================================================
 
+import { AppointmentActions } from '@/components/portal/AppointmentActions';
 import Link from 'next/link';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
@@ -173,9 +176,15 @@ export default async function PatientHomePage() {
                   display: 'inline-block',
                 }}
               >
-                Aguarda confirmação — a clínica entrará em contacto.
+                Aguarda confirmação — confirme abaixo ou aguarde o contacto da
+                clínica.
               </p>
             )}
+            {/* Confirmar presença (se pendente) + adicionar ao calendário */}
+            <AppointmentActions
+              appointmentId={String(next._id)}
+              status={next.status as string}
+            />
             {nextClinic?.phone && (
               <p
                 style={{
