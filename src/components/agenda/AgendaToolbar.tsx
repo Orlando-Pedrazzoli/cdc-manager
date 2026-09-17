@@ -16,10 +16,12 @@ export function AgendaToolbar({
   date,
   doctors,
   treatments,
+  rooms = [],
   buttonLabel,
 }: {
   clinicId: string;
   date: string;
+  rooms?: { id: string; name: string }[];
   doctors: { id: string; name: string }[];
   treatments: { id: string; name: string; category?: string | null }[];
   buttonLabel: ReactNode;
@@ -35,6 +37,7 @@ export function AgendaToolbar({
         initialDate={date}
         doctors={doctors}
         treatments={treatments}
+        rooms={rooms}
       />
     </>
   );

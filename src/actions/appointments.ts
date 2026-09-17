@@ -36,6 +36,7 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
+import Warehouse from '@/models/Warehouse';
 import Appointment, {
   STAFF_BOOKING_CHANNELS,
   type AppointmentStatus,
@@ -205,6 +206,54 @@ async function notifyNewAppointment(params: {
 }
 
 // -----------------------------------------------------------------------------
+// GABINETE (stock por local, set/2026)
+// Devolve o roomId a gravar: o indicado (validado na clínica), ou o ÚNICO
+// gabinete ativo da clínica (Buraca) quando nada foi indicado, ou null.
+// `false` = roomId indicado não pertence à clínica.
+// -----------------------------------------------------------------------------
+async function resolveRoomId(
+  clinicId: string,
+  roomId: string | null,
+): Promise<string | null | false> {
+  const rooms = await Warehouse.find({
+    clinicId,
+    kind: 'operatory',
+    active: true,
+  })
+    .select('_id')
+    .lean();
+  if (roomId) {
+    return rooms.some(r => String(r._id) === roomId) ? roomId : false;
+  }
+  return rooms.length === 1 ? String(rooms[0]._id) : null;
+}
+
+export async function setAppointmentRoomAction(
+  appointmentId: string,
+  roomId: string | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!mongoose.isValidObjectId(appointmentId)) {
+    return { ok: false, error: 'Marcação inválida.' };
+  }
+  await dbConnect();
+  const appt = await Appointment.findById(appointmentId).select('clinicId');
+  if (!appt) return { ok: false, error: 'Marcação não encontrada.' };
+  try {
+    await requireStaffForClinic(String(appt.clinicId));
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+  const resolved = await resolveRoomId(String(appt.clinicId), roomId);
+  if (resolved === false) return { ok: false, error: 'Gabinete inválido.' };
+  await Appointment.updateOne(
+    { _id: appt._id },
+    { $set: { roomId: resolved } },
+  );
+  revalidatePath('/admin/agenda');
+  return { ok: true };
+}
+
+// -----------------------------------------------------------------------------
 // CRIAR MARCAÇÃO (balcão/admin)
 // -----------------------------------------------------------------------------
 const createSchema = z.object({
@@ -218,6 +267,15 @@ const createSchema = z.object({
       .nullable(),
   ),
   treatmentTypeId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Selecione o ato'),
+  // Gabinete (Warehouse 'operatory'); vazio = auto (1 gabinete) ou depois
+  roomId: z.preprocess(
+    v => (typeof v === 'string' && v.trim() === '' ? null : v),
+    z
+      .string()
+      .regex(/^[0-9a-fA-F]{24}$/)
+      .nullable()
+      .default(null),
+  ),
   // Origem do PEDIDO (balcão/telefone/whatsapp) — nunca canais automáticos
   channel: z.enum(STAFF_BOOKING_CHANNELS).default('front-desk'),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
@@ -257,6 +315,9 @@ export async function createAppointmentAction(
     data.doctorId ? Doctor.findById(data.doctorId) : Promise.resolve(null),
   ]);
   if (!clinic || !clinic.isActive) return { error: 'Clínica inválida.' };
+  const roomId = await resolveRoomId(data.clinicId, data.roomId);
+  if (roomId === false)
+    return { error: 'Gabinete inválido para esta clínica.' };
   if (!patient || patient.status !== 'active') {
     return { error: 'Paciente inválido ou inativo.' };
   }
@@ -314,6 +375,7 @@ export async function createAppointmentAction(
             patientId: data.patientId,
             doctorId: data.doctorId,
             treatmentTypeId: data.treatmentTypeId,
+            roomId,
             startAt,
             endAt,
             status: 'pending',

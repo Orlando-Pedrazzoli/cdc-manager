@@ -23,6 +23,8 @@ export { default as Invoice } from './Invoice';
 export { default as Product } from './Product';
 export { default as Warehouse } from './Warehouse';
 export { default as StockMovement } from './StockMovement';
+export { default as StockLevel } from './StockLevel';
+export { default as StockCount } from './StockCount';
 export { default as Waitlist } from './Waitlist';
 export { default as Recall } from './Recall';
 export { default as Notification } from './Notification';

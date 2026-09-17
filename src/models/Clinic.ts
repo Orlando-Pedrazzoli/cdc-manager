@@ -112,11 +112,10 @@ const ClinicSchema = new Schema(
       max: 1,
       default: 0.4,
     },
-    // Fase 1 (E1): baixa automática de stock pela BOM ao concluir a consulta.
-    // DESLIGADA por defeito a pedido da Isabel — "a atualização do stock não
-    // pode ficar lincada à linha de tratamentos". O stock passa a mover-se
-    // por entradas (faturas de fornecedor, Fase 6) e saídas manuais.
-    // A BOM mantém-se como ficha técnica informativa.
+    // DEPRECADO (set/2026): a baixa automática pela BOM foi REMOVIDA de vez
+    // a pedido da Isabel — o stock é gerido por LOCAL (Warehouse.kind) e
+    // apurado por contagem. Campo mantido só para não partir documentos
+    // existentes; nunca é lido.
     autoConsumeBom: { type: Boolean, default: false },
     // --- Estado -------------------------------------------------------------
     // Soft-disable: clínica inativa desaparece de agendas/wizard mas todo o

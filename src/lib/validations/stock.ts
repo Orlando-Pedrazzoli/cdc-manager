@@ -22,7 +22,9 @@ import {
   MANUAL_IN_TYPES,
   MANUAL_OUT_TYPES,
   STOCK_INBOUND_TYPES,
+  WAREHOUSE_KINDS,
   type StockMovementType,
+  type WarehouseKind,
 } from '@/lib/domain';
 
 const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
@@ -113,6 +115,20 @@ export const stockEntrySchema = z
   .object({
     ...movementBase,
     type: z.enum(MANUAL_IN_TYPES, { error: 'Tipo de entrada inválido' }),
+    // Compra: custo unitário (cêntimos), lote e validade — rastreabilidade
+    // FEFO e valorização do consumo por local. Todos opcionais
+    unitCostCents: z.preprocess(
+      emptyToNull,
+      z.coerce.number().int().min(0).max(100_000_000).nullable(),
+    ),
+    lot: z.preprocess(
+      emptyToNull,
+      z.string().trim().max(60, 'Lote demasiado longo').nullable(),
+    ),
+    expiryDate: z.preprocess(
+      emptyToNull,
+      z.coerce.date({ error: 'Validade inválida' }).nullable(),
+    ),
   })
   .refine(d => d.type !== 'adjustment-in' || !!d.note, {
     message: 'Acertos exigem nota com o motivo',
@@ -152,3 +168,123 @@ export const stockTransferSchema = z
     path: ['toClinicId'],
   });
 export type StockTransferInput = z.infer<typeof stockTransferSchema>;
+
+// -----------------------------------------------------------------------------
+// 4. STOCK POR LOCAL (set/2026) — locais, requisições, níveis, contagens
+// -----------------------------------------------------------------------------
+
+export const upsertLocationSchema = z.object({
+  id: z.preprocess(
+    emptyToNull,
+    z.string().regex(OBJECT_ID, 'Local inválido').nullable(),
+  ),
+  clinicId: z.string().regex(OBJECT_ID, 'Clínica inválida'),
+  name: z
+    .string()
+    .trim()
+    .min(2, 'Nome demasiado curto')
+    .max(80, 'Nome demasiado longo'),
+  // 'central' nunca se cria pelo form (é o Armazém Geral auto-provisionado)
+  kind: z.enum(
+    WAREHOUSE_KINDS.filter(k => k !== 'central') as [
+      WarehouseKind,
+      ...WarehouseKind[],
+    ],
+    { error: 'Tipo de local inválido' },
+  ),
+  description: z.preprocess(
+    emptyToNull,
+    z.string().trim().max(300, 'Descrição demasiado longa').nullable(),
+  ),
+  responsibleUserId: z.preprocess(
+    emptyToNull,
+    z.string().regex(OBJECT_ID, 'Responsável inválido').nullable(),
+  ),
+  sortOrder: z.coerce.number().int().min(0).max(999).default(0),
+});
+export type UpsertLocationInput = z.infer<typeof upsertLocationSchema>;
+
+export const toggleLocationActiveSchema = z.object({
+  id: z.string().regex(OBJECT_ID, 'Local inválido'),
+  active: z.preprocess(v => v === 'true' || v === true, z.boolean()),
+});
+
+// Requisição: central → local da MESMA clínica (par atómico no ledger).
+// Aceita várias linhas de uma vez (a Isabel leva uma caixa de cada coisa).
+export const requisitionLineSchema = z.object({
+  productId: z.string().regex(OBJECT_ID, 'Produto inválido'),
+  quantity: quantityField,
+});
+export const requisitionSchema = z.object({
+  toWarehouseId: z.string().regex(OBJECT_ID, 'Local inválido'),
+  lines: z
+    .array(requisitionLineSchema)
+    .min(1, 'Indique pelo menos um produto')
+    .max(100, 'Máximo 100 linhas por requisição'),
+  note: z.preprocess(
+    emptyToNull,
+    z.string().trim().max(300, 'Nota demasiado longa').nullable(),
+  ),
+});
+export type RequisitionInput = z.infer<typeof requisitionSchema>;
+
+// Devolução: local → central (material não usado que volta ao armazém)
+export const returnToCentralSchema = z.object({
+  fromWarehouseId: z.string().regex(OBJECT_ID, 'Local inválido'),
+  productId: z.string().regex(OBJECT_ID, 'Produto inválido'),
+  quantity: quantityField,
+  note: z.preprocess(
+    emptyToNull,
+    z.string().trim().max(300, 'Nota demasiado longa').nullable(),
+  ),
+});
+
+export const stockLevelSchema = z
+  .object({
+    productId: z.string().regex(OBJECT_ID, 'Produto inválido'),
+    warehouseId: z.string().regex(OBJECT_ID, 'Local inválido'),
+    min: z.coerce.number().min(0, 'Mínimo inválido').max(1_000_000),
+    max: z.coerce.number().min(0, 'Máximo inválido').max(1_000_000),
+  })
+  .refine(d => d.max === 0 || d.max >= d.min, {
+    message: 'Máximo tem de ser ≥ mínimo',
+    path: ['max'],
+  });
+export type StockLevelInput = z.infer<typeof stockLevelSchema>;
+
+export const openCountSchema = z.object({
+  warehouseId: z.string().regex(OBJECT_ID, 'Local inválido'),
+});
+
+export const closeCountSchema = z.object({
+  countId: z.string().regex(OBJECT_ID, 'Contagem inválida'),
+  // { productId: counted } — só linhas efetivamente contadas
+  counted: z
+    .array(
+      z.object({
+        productId: z.string().regex(OBJECT_ID, 'Produto inválido'),
+        counted: z.coerce
+          .number({ error: 'Quantidade inválida' })
+          .min(0, 'Não pode ser negativa')
+          .max(1_000_000),
+      }),
+    )
+    .min(1, 'Conte pelo menos um produto'),
+  note: z.preprocess(
+    emptyToNull,
+    z.string().trim().max(300, 'Nota demasiado longa').nullable(),
+  ),
+});
+export type CloseCountInput = z.infer<typeof closeCountSchema>;
+
+/** Pura: diferença de uma linha de contagem → movimento a gerar (ou nada) */
+export function countLineDelta(
+  expected: number,
+  counted: number,
+): { type: 'consumption' | 'adjustment-in'; quantity: number } | null {
+  const diff = Math.round((counted - expected) * 1000) / 1000;
+  if (diff === 0) return null;
+  return diff < 0
+    ? { type: 'consumption', quantity: -diff }
+    : { type: 'adjustment-in', quantity: diff };
+}

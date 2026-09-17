@@ -2,15 +2,23 @@
 // =============================================================================
 // CDC Manager — Model: Warehouse
 // -----------------------------------------------------------------------------
-// Armazém/local de stock. O Dentoral já trabalha multi-armazém ("Armazéns"
-// nas Tabelas > Stocks) e mantemos o conceito: tipicamente um armazém geral
-// por clínica e, se quiserem, sub-stocks por zona (ex.: "Esterilização").
+// LOCAL de stock (set/2026 — redesenho a pedido da Isabel):
+//   Um Warehouse é um local físico da clínica com stock próprio. Há dois
+//   papéis, dados por `kind`:
+//     · 'central' (isDefault): o armazém central — TUDO o que entra na
+//       clínica (fatura de fornecedor) entra aqui. Exatamente um por clínica.
+//     · restantes (gabinete, esterilização, RX, receção, serviços): recebem
+//       stock por REQUISIÇÃO (transfer-out central → transfer-in local) e o
+//       consumo apura-se por CONTAGEM periódica — nunca pela linha de
+//       tratamento. Isto é a "baixa" que a Isabel pediu: dá-se quando o
+//       material é destinado ao local, não quando o médico fecha a consulta.
+//   Gabinetes ('operatory') aparecem também na agenda (Appointment.roomId)
+//   para se saber quem trabalhou em cada um entre contagens.
 //
-// MULTI-CLÍNICA: cada armazém pertence a UMA clínica — o stock do Colombo
-// e o da Buraca são fisicamente separados e nunca se misturam. Ao fechar
-// uma consulta, a baixa automática das BOM sai do armazém DEFAULT da
-// clínica onde a consulta aconteceu. Transferência entre clínicas =
-// dois StockMovement (saída num armazém, entrada noutro).
+// MULTI-CLÍNICA: cada local pertence a UMA clínica — o stock do Colombo
+// e o da Buraca são fisicamente separados e nunca se misturam.
+// Transferência entre clínicas = par transfer-out/transfer-in entre os
+// dois armazéns centrais.
 //
 // Nome único POR CLÍNICA (índice composto): as duas podem ter o seu
 // "Armazém Geral" sem conflito.
@@ -20,6 +28,9 @@
 // =============================================================================
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
+import { WAREHOUSE_KINDS, type WarehouseKind } from '@/lib/domain';
+
+export { WAREHOUSE_KINDS, type WarehouseKind };
 
 const WarehouseSchema = new Schema(
   {
@@ -42,9 +53,35 @@ const WarehouseSchema = new Schema(
       maxlength: 300,
       default: null,
     },
-    // Armazém default DA SUA CLÍNICA: recebe as baixas automáticas das BOM
-    // ao fechar consultas nessa clínica. Exatamente um por clínica deve ter
-    // isDefault: true (imposto na action)
+    // Papel do local (ver cabeçalho). Legado sem kind = 'central' se
+    // isDefault, senão 'other'
+    kind: {
+      type: String,
+      enum: WAREHOUSE_KINDS,
+      default: 'other',
+      index: true,
+    },
+    // Responsável pelo local (quem faz a contagem / recebe as requisições).
+    // null = administrador
+    responsibleUserId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    // Ordem de apresentação nos painéis (Gabinete 1..5)
+    sortOrder: {
+      type: Number,
+      default: 0,
+    },
+    // Data/hora da última contagem fechada (materialização de StockCount;
+    // alimenta o alerta "contagem em atraso" sem query ao histórico)
+    lastCountAt: {
+      type: Date,
+      default: null,
+    },
+    // Armazém CENTRAL da sua clínica (kind 'central'): única porta de
+    // entrada de stock e origem das requisições. Exatamente um por clínica
+    // deve ter isDefault: true (imposto na action)
     isDefault: {
       type: Boolean,
       default: false,

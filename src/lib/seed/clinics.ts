@@ -106,6 +106,7 @@ export async function seedClinics(): Promise<void> {
         isDefault: true,
         active: true,
       },
+      $set: { kind: 'central', sortOrder: 0 },
     },
     { upsert: true },
   );
@@ -118,6 +119,7 @@ export async function seedClinics(): Promise<void> {
         isDefault: true,
         active: true,
       },
+      $set: { kind: 'central', sortOrder: 0 },
     },
     { upsert: true },
   );

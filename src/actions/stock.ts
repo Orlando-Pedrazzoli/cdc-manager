@@ -17,9 +17,9 @@
 // transferGroupId partilhado, tudo na MESMA transação — ou acontece o par
 // completo ou nada.
 //
-// ARMAZÉNS v1: um "Armazém Geral" default por clínica, auto-provisionado
-// de forma idempotente no primeiro movimento (sem UI de gestão até haver
-// necessidade real de sub-armazéns).
+// ARMAZÉNS: as entradas/saídas MANUAIS deste ficheiro atuam sempre no
+// ARMAZÉM CENTRAL da clínica (única porta de entrada). Locais (gabinetes,
+// etc.), requisições e contagens vivem em actions/stock-locations.ts.
 //
 // RBAC: admin em tudo; receção via canOperateClinic na clínica do
 // movimento (transferências: basta operar a ORIGEM — quem envia regista;
@@ -42,7 +42,12 @@ import {
   stockTransferSchema,
   signedDelta,
 } from '@/lib/validations/stock';
-import { PRODUCT_UNIT_LABEL, STOCK_MOVEMENT_LABEL } from '@/lib/domain';
+import { STOCK_MOVEMENT_LABEL } from '@/lib/domain';
+import {
+  applyCacheDelta,
+  ensureCentralWarehouse as ensureDefaultWarehouse,
+  fmtQty,
+} from '@/lib/stock-ledger';
 import {
   stockProductPublicId,
   signDocumentUpload,
@@ -52,7 +57,6 @@ import {
 } from '@/lib/cloudinary';
 import Product from '@/models/Product';
 import StockMovement from '@/models/StockMovement';
-import Warehouse from '@/models/Warehouse';
 import User, { canOperateClinic } from '@/models/User';
 
 export type StockActionState =
@@ -86,83 +90,8 @@ async function requireOperator(
   return { ok: true, userId: session.user.id };
 }
 
-/** Armazém default da clínica — auto-provisiona "Armazém Geral" (idempotente) */
-async function ensureDefaultWarehouse(clinicId: string) {
-  const existing = await Warehouse.findOne({
-    clinicId,
-    isDefault: true,
-    active: true,
-  });
-  if (existing) return existing;
-  try {
-    return await Warehouse.create({
-      clinicId,
-      name: 'Armazém Geral',
-      isDefault: true,
-      active: true,
-    });
-  } catch (err) {
-    // Corrida com outro pedido: o índice {clinicId, name} unique rebenta —
-    // o armazém já existe, volta a ler
-    const isDup =
-      typeof err === 'object' &&
-      err !== null &&
-      'code' in err &&
-      (err as { code: unknown }).code === 11000;
-    if (!isDup) throw err;
-    const again = await Warehouse.findOne({ clinicId, isDefault: true });
-    if (!again) throw err;
-    return again;
-  }
-}
-
 function firstIssue(error: { issues: { message: string }[] }): string {
   return error.issues[0]?.message ?? 'Dados inválidos.';
-}
-
-function fmtQty(q: number, unit: string): string {
-  return `${q} ${PRODUCT_UNIT_LABEL[unit as keyof typeof PRODUCT_UNIT_LABEL] ?? unit}`;
-}
-
-/**
- * Aplica um delta ao stockCache do produto DENTRO da transação.
- * Saídas (delta < 0): condicionado a saldo suficiente — devolve false se
- * não houver (o caller aborta a transação).
- * Entradas (delta > 0): $inc na entrada existente ou $push da primeira.
- */
-async function applyCacheDelta(
-  productId: string,
-  warehouseId: mongoose.Types.ObjectId,
-  delta: number,
-  mongooseSession: mongoose.ClientSession,
-): Promise<boolean> {
-  if (delta < 0) {
-    const res = await Product.updateOne(
-      {
-        _id: productId,
-        stockCache: {
-          $elemMatch: { warehouseId, quantity: { $gte: -delta } },
-        },
-      },
-      { $inc: { 'stockCache.$.quantity': delta } },
-      { session: mongooseSession },
-    );
-    return res.modifiedCount === 1;
-  }
-  // Entrada: tenta a entrada de cache existente…
-  const inc = await Product.updateOne(
-    { _id: productId, 'stockCache.warehouseId': warehouseId },
-    { $inc: { 'stockCache.$.quantity': delta } },
-    { session: mongooseSession },
-  );
-  if (inc.modifiedCount === 1) return true;
-  // …ou cria a primeira para este armazém
-  const push = await Product.updateOne(
-    { _id: productId, 'stockCache.warehouseId': { $ne: warehouseId } },
-    { $push: { stockCache: { warehouseId, quantity: delta } } },
-    { session: mongooseSession },
-  );
-  return push.modifiedCount === 1;
 }
 
 // -----------------------------------------------------------------------------
@@ -428,6 +357,9 @@ async function registerMovement(
       quantity: formData.get('quantity'),
       type: formData.get('type'),
       note: formData.get('note'),
+      unitCostCents: formData.get('unitCostCents'),
+      lot: formData.get('lot'),
+      expiryDate: formData.get('expiryDate'),
     });
     if (!parsed.success) return { error: firstIssue(parsed.error) };
     const data = parsed.data;
@@ -470,7 +402,10 @@ async function registerMovement(
               warehouseId: warehouse._id,
               type: data.type,
               quantity: data.quantity,
-              unitCostCents: 0,
+              unitCostCents:
+                'unitCostCents' in data ? (data.unitCostCents ?? 0) : 0,
+              lot: 'lot' in data ? data.lot : null,
+              expiryDate: 'expiryDate' in data ? data.expiryDate : null,
               createdByUserId: gate.userId,
               note: data.note,
             },

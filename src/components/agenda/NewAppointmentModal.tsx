@@ -37,12 +37,15 @@ export function NewAppointmentModal({
   initialDate,
   doctors,
   treatments,
+  rooms = [],
 }: {
   open: boolean;
   onClose: () => void;
   clinicId: string;
   initialDate: string; // 'YYYY-MM-DD' — dia atualmente aberto na agenda
   doctors: { id: string; name: string }[];
+  /** Gabinetes ativos da clínica (Warehouse kind 'operatory') */
+  rooms?: { id: string; name: string }[];
   treatments: { id: string; name: string; category?: string | null }[];
 }) {
   const router = useRouter();
@@ -293,6 +296,25 @@ export function NewAppointmentModal({
             />
           )}
         </div>
+
+        {/* Gabinete (stock por local, set/2026): no Colombo os 5 são
+            rotativos e a receção escolhe; na Buraca há um só e a action
+            atribui automaticamente (o select nem aparece) */}
+        {rooms.length > 1 && (
+          <Select
+            id='ap-room'
+            name='roomId'
+            label='Gabinete'
+            help='Quem trabalhou em cada gabinete alimenta as contagens de stock.'
+          >
+            <option value=''>— Atribuir depois —</option>
+            {rooms.map(r => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </Select>
+        )}
 
         {/* Origem do pedido — de onde chegou a marcação. Alimenta a
             estatística de canais; 'website'/'system' são reservados a

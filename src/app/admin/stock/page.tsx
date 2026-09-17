@@ -4,8 +4,8 @@
 // -----------------------------------------------------------------------------
 // Vista única com o catálogo completo e saldos por clínica lado a lado
 // (o dia a dia da receção é uma tabela, não navegação). Os saldos vêm do
-// stockCache (materialização do ledger), mapeando armazém → clínica.
-// v1: um armazém default por clínica, auto-provisionado nas actions.
+// stockCache (materialização do ledger), somando TODOS os locais da
+// clínica (central + gabinetes…). O detalhe por local vive em /locais.
 // =============================================================================
 
 import { auth } from '@/lib/auth';
@@ -20,6 +20,7 @@ import {
   type StockClinic,
 } from '@/components/stock/StockTable';
 import type { ProductUnit } from '@/lib/domain';
+import { StockNav } from '@/components/stock/StockNav';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Stock' };
@@ -100,10 +101,12 @@ export default async function StockPage() {
           Stock
         </h1>
         <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6A7186' }}>
-          Existências por clínica. Entradas, saídas e transferências ficam
-          registadas no histórico de cada produto.
+          Catálogo e existências por clínica (soma de todos os locais). As
+          entradas de fornecedor entram sempre no armazém central; a
+          distribuição por gabinete faz-se em «Locais e gabinetes».
         </p>
       </div>
+      <StockNav active='/admin/stock' />
 
       <StockTable products={rows} clinics={clinics} families={families} />
     </div>

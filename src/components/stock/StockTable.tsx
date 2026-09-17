@@ -494,6 +494,41 @@ function MovementModal({
             required
           />
 
+          {/* Compra: custo, lote e validade — rastreabilidade FEFO e
+              valorização do consumo por local (set/2026). Opcionais */}
+          {isEntry && type === 'purchase' && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr 1fr',
+                gap: '10px',
+              }}
+            >
+              <Input
+                id='mov-cost'
+                name='unitCostCents'
+                label='Custo unit. (cênt.)'
+                type='number'
+                min={0}
+                step={1}
+                placeholder='Ex.: 1250'
+              />
+              <Input
+                id='mov-lot'
+                name='lot'
+                label='Lote'
+                placeholder='Ex.: L2409A'
+                maxLength={60}
+              />
+              <Input
+                id='mov-expiry'
+                name='expiryDate'
+                label='Validade'
+                type='date'
+              />
+            </div>
+          )}
+
           <Textarea
             id='mov-note'
             name='note'

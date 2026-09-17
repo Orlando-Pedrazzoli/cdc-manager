@@ -290,7 +290,6 @@ export const updateClinicSchema = z.object({
     .max(168, 'Antecedência máxima: 168 h (1 semana)'),
   bookableOnline: checkboxField,
   defaultDoctorCommission: commissionPercentField,
-  autoConsumeBom: checkboxField, // Fase 1 (E1) — default desligado
 });
 export type UpdateClinicInput = z.infer<typeof updateClinicSchema>;
 

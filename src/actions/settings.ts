@@ -373,7 +373,6 @@ export async function updateClinicAction(
       bookableOnline: formData.get('bookableOnline'),
       // Form em percentagem (40) → schema converte para fração (0.40)
       defaultDoctorCommission: formData.get('defaultDoctorCommission'),
-      autoConsumeBom: formData.get('autoConsumeBom'),
     });
     if (!parsed.success) return { error: firstIssue(parsed.error) };
     const { clinicId, ...fields } = parsed.data;

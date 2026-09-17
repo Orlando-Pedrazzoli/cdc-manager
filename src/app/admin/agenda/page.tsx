@@ -38,6 +38,7 @@ import TreatmentType from '@/models/TreatmentType';
 import Patient from '@/models/Patient';
 import User from '@/models/User';
 import LabCase from '@/models/LabCase';
+import Warehouse from '@/models/Warehouse';
 import {
   LAB_WORK_TYPE_LABEL,
   LAB_CASE_STATUS_LABEL,
@@ -408,11 +409,17 @@ export default async function AgendaPage({
     ...appts.map(a => a.patientId),
     ...unconfirmed.map(a => a.patientId),
   ];
-  const [patients, treatments] = await Promise.all([
+  const [patients, treatments, rooms] = await Promise.all([
     Patient.find({ _id: { $in: patientIds } })
       .select('name processNumber phone')
       .lean(),
     TreatmentType.find().select('name category').sort({ name: 1 }).lean(),
+    // Gabinetes da clínica (stock por local, set/2026): a receção atribui
+    // na marcação; com um só gabinete (Buraca) a action atribui sozinha
+    Warehouse.find({ clinicId, kind: 'operatory', active: true })
+      .select('name')
+      .sort({ sortOrder: 1, name: 1 })
+      .lean(),
   ]);
   const patientById = new Map(patients.map(p => [String(p._id), p]));
   const treatmentById = new Map(treatments.map(t => [String(t._id), t.name]));
@@ -687,6 +694,7 @@ export default async function AgendaPage({
             <AgendaToolbar
               clinicId={clinicId}
               date={date}
+              rooms={rooms.map(r => ({ id: String(r._id), name: r.name }))}
               doctors={doctorColumns.map(d => ({ id: d.id, name: d.name }))}
               treatments={treatments.map(t => ({
                 id: String(t._id),

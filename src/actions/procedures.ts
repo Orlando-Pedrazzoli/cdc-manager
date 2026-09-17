@@ -36,10 +36,7 @@ import {
 import { needsAdjustmentOnVoid } from '@/lib/commission-accounting';
 import { requireDoctorWithPatient } from '@/lib/rbac';
 import { createVoidAdjustment } from '@/lib/commission-adjustments';
-import {
-  consumeStockForAppointment,
-  reverseStockForProcedure,
-} from '@/lib/stock-consumption';
+import { reverseStockForProcedure } from '@/lib/stock-consumption';
 import {
   spawnRecallForProcedure,
   cancelRecallForProcedure,
@@ -488,17 +485,9 @@ export async function completeConsultationAction(
       summary: `Consulta concluída (${actsCount} ato${actsCount === 1 ? '' : 's'})`,
     });
 
-    // Baixa automática de stock pelas BOM dos atos — SÓ se a clínica a
-    // tiver ligado (Fase 1/E1: desligada por defeito; o stock move-se por
-    // entradas de fatura e saídas manuais). Best-effort, idempotente.
-    const clinic = await getClinicById(String(appt.clinicId));
-    if (clinic?.autoConsumeBom) {
-      await consumeStockForAppointment({
-        appointmentId: String(appt._id),
-        clinicId: String(appt.clinicId),
-        userId,
-      });
-    }
+    // Stock por LOCAL (set/2026, pedido da Isabel): a consulta NUNCA dá
+    // baixa de stock. O consumo apura-se por contagem no gabinete
+    // (lib/stock-locations.ts). A BOM é só consumo TEÓRICO para a variância.
 
     revalidatePath(`/doutor/consulta/${parsed.data.appointmentId}`);
     revalidatePath('/doutor/dashboard');

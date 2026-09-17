@@ -117,6 +117,17 @@ const AppointmentSchema = new Schema(
       ref: 'TreatmentType',
       required: true,
     },
+    // Gabinete onde a consulta acontece (Warehouse com kind 'operatory').
+    // null = não atribuído (Buraca tem 1, atribui-se automaticamente; no
+    // Colombo os 5 são rotativos e a receção atribui na marcação ou no
+    // check-in). Alimenta "quem trabalhou em cada gabinete" entre contagens
+    // de stock e a variância consumo teórico vs real por gabinete.
+    roomId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Warehouse',
+      default: null,
+      index: true,
+    },
     // Instantes UTC. endAt = startAt + durationMin + bufferMin (ver cabeçalho)
     startAt: {
       type: Date,

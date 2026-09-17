@@ -313,6 +313,41 @@ export const MANUAL_OUT_TYPES = [
 ] as const;
 
 // -----------------------------------------------------------------------------
+// STOCK POR LOCAL (set/2026, pedido da Isabel) — um Warehouse é um LOCAL
+// físico da clínica. O 'central' recebe tudo o que entra; os restantes
+// recebem por REQUISIÇÃO (transferência interna) e o consumo apura-se por
+// CONTAGEM periódica — nunca pela linha de tratamento.
+// -----------------------------------------------------------------------------
+export const WAREHOUSE_KINDS = [
+  'central', // armazém central (isDefault) — única porta de entrada
+  'operatory', // gabinete clínico
+  'sterilization',
+  'xray',
+  'reception',
+  'services', // casas de banho, sala de espera, copa
+  'other',
+] as const;
+export type WarehouseKind = (typeof WAREHOUSE_KINDS)[number];
+
+export const WAREHOUSE_KIND_LABEL: Record<WarehouseKind, string> = {
+  central: 'Armazém central',
+  operatory: 'Gabinete',
+  sterilization: 'Esterilização',
+  xray: 'Sala de RX',
+  reception: 'Receção',
+  services: 'Serviços (WC, sala de espera)',
+  other: 'Outro',
+};
+
+/** Cadência de contagem por local (decisão set/2026: quinzenal) */
+export const STOCK_COUNT_INTERVAL_DAYS = 15;
+/** Validades a expirar em ≤ N dias entram no alerta FEFO */
+export const STOCK_EXPIRY_ALERT_DAYS = 60;
+
+export const STOCK_COUNT_STATUS = ['open', 'closed'] as const;
+export type StockCountStatus = (typeof STOCK_COUNT_STATUS)[number];
+
+// -----------------------------------------------------------------------------
 // DOCUMENTOS CLÍNICOS (migrado de models/Document.ts — o client precisa das
 // categorias em runtime no select de upload; o model importa daqui e
 // RE-EXPORTA, código server continua a importar do model)
