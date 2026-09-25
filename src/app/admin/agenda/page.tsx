@@ -194,6 +194,17 @@ export default async function AgendaPage({
     }))
     .filter(d => d.ranges.length > 0);
 
+  // Médicos ativos nesta clínica SEM semana-tipo (nenhum período em nenhum
+  // dia): nunca aparecem como coluna, em dia nenhum — o admin precisa de saber
+  // que é uma questão de configuração e não de "a agenda não abre". Folga
+  // num dia concreto é normal e não entra aqui.
+  const doctorsWithoutSchedule = allDoctors
+    .filter(d => {
+      const cs = d.clinicSchedules.find(s => String(s.clinicId) === clinicId);
+      return !cs || !cs.weeklySchedule.some(w => w.ranges.length > 0);
+    })
+    .map(d => ({ id: String(d._id), name: d.name }));
+
   const medicoParam = /^[0-9a-fA-F]{24}$/.test(sp.medico ?? '')
     ? (sp.medico as string)
     : null;
@@ -806,6 +817,46 @@ export default async function AgendaPage({
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Médicos desta clínica sem horário definido — aviso de configuração */}
+      {doctorsWithoutSchedule.length > 0 && (
+        <div
+          role='status'
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '6px 10px',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            backgroundColor: '#FFF7E6',
+            border: '1px solid #F5C77A',
+            color: '#7A4B00',
+            fontSize: '13px',
+            lineHeight: 1.4,
+          }}
+        >
+          <span style={{ fontWeight: 700 }}>Sem horário nesta clínica:</span>
+          {doctorsWithoutSchedule.map(d => (
+            <Link
+              key={d.id}
+              href={`/admin/medicos/${d.id}?tab=dados`}
+              style={{
+                color: '#7A4B00',
+                fontWeight: 600,
+                textDecoration: 'underline',
+                textUnderlineOffset: '2px',
+              }}
+            >
+              {d.name}
+            </Link>
+          ))}
+          <span style={{ color: '#9A6A1F' }}>
+            — sem semana-tipo o médico não aparece na agenda. Defina os períodos
+            em Corpo Clínico → Horários por clínica.
+          </span>
         </div>
       )}
 

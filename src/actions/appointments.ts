@@ -720,44 +720,63 @@ export async function createWalkInAction(
   }
 
   // Início = agora (arredondado ao minuto); duração do ato (sem buffer — é
-  // um encaixe, o buffer não faz sentido)
+  // um encaixe, o buffer não faz sentido). Atos importados do legado podem
+  // não ter duração validada → nunca deixar NaN chegar ao endAt.
   const now = new Date();
   now.setSeconds(0, 0);
-  const endAt = new Date(
-    now.getTime() + Math.max(10, treatment.durationMin) * 60_000,
-  );
+  const durationMin = Number(treatment.durationMin);
+  const effectiveMin = Number.isFinite(durationMin)
+    ? Math.max(10, durationMin)
+    : 30;
+  const endAt = new Date(now.getTime() + effectiveMin * 60_000);
 
-  const created = await Appointment.create({
-    clinicId: data.clinicId,
-    patientId: data.patientId,
-    doctorId: data.doctorId,
-    treatmentTypeId: data.treatmentTypeId,
-    startAt: now,
-    endAt,
-    status: 'checked-in',
-    channel: 'front-desk',
-    createdByUserId: staff.id,
-    note: data.note,
-    isUrgent: true,
-    confirmedAt: now,
-    confirmedVia: 'front-desk',
-    checkedInAt: now,
-  });
+  // Token de confirmação como nas outras criações: mantém o documento
+  // uniforme (link /confirmar/[token] resolve para "já confirmada") e evita
+  // colisões no índice único de confirmToken.
+  const confirmToken = randomBytes(24).toString('base64url');
 
-  await logAudit({
-    userId: staff.id,
-    action: 'create',
-    entityType: 'Appointment',
-    entityId: String(created._id),
-    patientId: data.patientId,
-    clinicId: data.clinicId,
-    summary: `URGÊNCIA (sem marcação): ${patient.name} — ${treatment.name}${doctor ? ` · ${doctor.name}` : ' · sem médico'}`,
-  });
+  // Tudo o que toca a BD fica dentro do try: um erro de validação/índice
+  // tem de voltar ao modal como mensagem, nunca como página de erro.
+  try {
+    const created = await Appointment.create({
+      clinicId: data.clinicId,
+      patientId: data.patientId,
+      doctorId: data.doctorId,
+      treatmentTypeId: data.treatmentTypeId,
+      startAt: now,
+      endAt,
+      status: 'checked-in',
+      channel: 'front-desk',
+      createdByUserId: staff.id,
+      note: data.note,
+      isUrgent: true,
+      confirmToken,
+      confirmedAt: now,
+      confirmedVia: 'front-desk',
+      checkedInAt: now,
+    });
 
-  revalidatePath('/admin/agenda');
-  revalidatePath('/admin/sala-espera');
-  revalidatePath('/doutor/dashboard');
-  return { success: true, appointmentId: String(created._id) };
+    await logAudit({
+      userId: staff.id,
+      action: 'create',
+      entityType: 'Appointment',
+      entityId: String(created._id),
+      patientId: data.patientId,
+      clinicId: data.clinicId,
+      summary: `URGÊNCIA (sem marcação): ${patient.name} — ${treatment.name}${doctor ? ` · ${doctor.name}` : ' · sem médico'}`,
+    });
+
+    revalidatePath('/admin/agenda');
+    revalidatePath('/admin/sala-espera');
+    revalidatePath('/doutor/dashboard');
+    return { success: true, appointmentId: String(created._id) };
+  } catch (e) {
+    console.error('[createWalkInAction]', e);
+    return {
+      error:
+        'Não foi possível registar a urgência. Tente novamente; se persistir, contacte o suporte.',
+    };
+  }
 }
 
 // -----------------------------------------------------------------------------

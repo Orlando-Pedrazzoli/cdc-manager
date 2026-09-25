@@ -243,8 +243,19 @@ AppointmentSchema.index({ patientId: 1, startAt: -1 });
 AppointmentSchema.index({ clinicId: 1, status: 1, cancelledAt: -1 });
 // 4. Crons de lembretes: intervalo temporal + estado + flag de envio
 AppointmentSchema.index({ status: 1, startAt: 1, reminder24hSentAt: 1 });
-// 5. Lookup do link público de confirmação (sparse: só docs com token)
-AppointmentSchema.index({ confirmToken: 1 }, { unique: true, sparse: true });
+// 5. Lookup do link público de confirmação — índice PARCIAL: só documentos
+//    cujo confirmToken é string. Um índice `sparse` NÃO chega: o schema grava
+//    `confirmToken: null` explicitamente e o sparse inclui docs com null,
+//    pelo que a 2.ª marcação sem token (urgência/walk-in, seed) rebentava com
+//    E11000 dup key { confirmToken: null }. Mesmo padrão do Invoice
+//    (moloniDocumentId). Migração da base: scripts/fix-confirm-token-index.ts
+AppointmentSchema.index(
+  { confirmToken: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { confirmToken: { $type: 'string' } },
+  },
+);
 
 export type AppointmentDoc = InferSchemaType<typeof AppointmentSchema> & {
   _id: mongoose.Types.ObjectId;

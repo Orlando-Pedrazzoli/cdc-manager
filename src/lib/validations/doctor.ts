@@ -52,7 +52,17 @@ const weeklyScheduleSchema = z
 
 const clinicScheduleSchema = z.object({
   clinicId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Clínica inválida'),
-  weeklySchedule: z.array(weeklyScheduleSchema).max(7),
+  // Ativar "Trabalha em X" sem nenhum período criava um médico invisível na
+  // agenda dessa clínica (a coluna só aparece com semana-tipo com períodos)
+  // — o caso real do "médico novo cuja agenda não abre". Pelo menos um
+  // período por clínica ativada.
+  weeklySchedule: z
+    .array(weeklyScheduleSchema)
+    .max(7)
+    .refine(days => days.some(d => d.ranges.length > 0), {
+      message:
+        'Defina pelo menos um período (dia e horas) em cada clínica ativada — sem horário o médico não aparece na agenda dessa clínica.',
+    }),
   bookableOnline: z.boolean().default(true),
 });
 

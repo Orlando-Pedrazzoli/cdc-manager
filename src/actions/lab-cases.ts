@@ -74,7 +74,9 @@ export async function createLabCaseAction(
       clinicId: formData.get('clinicId'),
       patientId: formData.get('patientId'),
       doctorId: formData.get('doctorId'),
-      labName: formData.get('labName'),
+      // O formulário envia o laboratório por id (select `supplierId`); o
+      // nome fica como snapshot a partir do Supplier, mais abaixo.
+      supplierId: formData.get('supplierId'),
       workType: formData.get('workType'),
       toothNotes: formData.get('toothNotes'),
       shade: formData.get('shade'),

@@ -341,6 +341,7 @@ export async function createDoctorAction(
   }
 
   revalidatePath('/admin/medicos');
+  revalidatePath('/admin/agenda');
   return {
     success: true,
     doctorId: doctor._id.toString(),
@@ -430,6 +431,7 @@ export async function updateDoctorAction(
 
   revalidatePath('/admin/medicos');
   revalidatePath(`/admin/medicos/${doctorId}`);
+  revalidatePath('/admin/agenda');
   return { success: true, doctorId, conflictCount, warning };
 }
 
@@ -834,5 +836,6 @@ export async function setDoctorActiveAction(
 
   revalidatePath('/admin/medicos');
   revalidatePath(`/admin/medicos/${doctorId}`);
+  revalidatePath('/admin/agenda');
   return { futureAppointments };
 }

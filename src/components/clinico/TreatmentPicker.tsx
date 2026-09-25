@@ -169,15 +169,19 @@ export function TreatmentPicker({
           }}
         >
           <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Nome COMPLETO: os atos do catálogo chegam aos 98 caracteres
+                ("CONSULTA DE MEDICINA DENTARIA DE URGENCIA NOCTURNA") e o
+                que os distingue está no fim — nunca cortar com reticências */}
             <div
               style={{
                 fontSize: '14px',
                 fontWeight: 600,
                 color: '#1B2A6B',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                lineHeight: 1.3,
+                whiteSpace: 'normal',
+                overflowWrap: 'anywhere',
               }}
+              title={selected.name}
             >
               {selected.name}
             </div>
@@ -296,7 +300,7 @@ export function TreatmentPicker({
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 gap: '12px',
                 padding: '8px 10px',
                 borderRadius: '8px',
@@ -304,16 +308,17 @@ export function TreatmentPicker({
                 backgroundColor: i === active ? '#EEF2FF' : 'transparent',
               }}
             >
-              <div style={{ minWidth: 0 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div
                   style={{
                     fontSize: '13px',
                     fontWeight: 600,
                     color: '#1B2A6B',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
+                    lineHeight: 1.3,
+                    whiteSpace: 'normal',
+                    overflowWrap: 'anywhere',
                   }}
+                  title={o.name}
                 >
                   {o.name}
                 </div>
