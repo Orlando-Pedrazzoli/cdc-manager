@@ -20,6 +20,7 @@ import {
   type AppointmentFormState,
 } from '@/actions/appointments';
 import { usePatientSearch } from '@/components/agenda/usePatientSearch';
+import { PatientSearchResult } from '@/components/pacientes/PatientSearchResult';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
@@ -115,7 +116,7 @@ export function WalkInModal({
               setPatient(null);
               setPatientQuery(e.target.value);
             }}
-            placeholder='Nome, telefone ou nº de processo…'
+            placeholder='Nome, telemóvel, NIF, utente, nascimento ou nº de processo…'
             autoComplete='off'
           />
           {!patient && patientResults.length > 0 && (
@@ -126,7 +127,7 @@ export function WalkInModal({
                 left: 0,
                 right: 0,
                 margin: '4px 0 0',
-                padding: 4,
+                padding: 0,
                 listStyle: 'none',
                 backgroundColor: '#FFFFFF',
                 border: '1px solid #D8DEEF',
@@ -136,28 +137,13 @@ export function WalkInModal({
                 overflowY: 'auto',
               }}
             >
-              {patientResults.map(r => (
+              {patientResults.map((r, i) => (
                 <li key={r.id}>
-                  <button
-                    type='button'
-                    onMouseDown={e => {
-                      e.preventDefault();
-                      setPatient(r);
-                    }}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      border: 'none',
-                      background: 'transparent',
-                      padding: '8px 10px',
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      color: '#1B2A6B',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {r.label}
-                  </button>
+                  <PatientSearchResult
+                    hit={r}
+                    first={i === 0}
+                    onSelect={() => setPatient(r)}
+                  />
                 </li>
               ))}
             </ul>

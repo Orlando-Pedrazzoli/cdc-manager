@@ -7,10 +7,9 @@
 // do browser a funcionar, e ZERO estado de cliente na listagem — essencial
 // para performar com os ~86.000 registos do Dentoral.
 //
-// Pesquisa (os 3 caminhos da receção, como no Dentoral):
-//   - Nome: regex case-insensitive por termo (todos os termos têm de bater)
-//   - Telefone: se o termo tiver 6+ dígitos, pesquisa nos dígitos do E.164
-//   - Nº de processo: termo 100% numérico até 6 dígitos → match exato
+// Pesquisa: filtro único de src/lib/patient-search.ts (processo, telemóvel,
+// NIF, nº de utente, data de nascimento, nome) — o mesmo do header e dos
+// pickers da agenda (apontamento 02 da 2.ª reunião: homónimos).
 // =============================================================================
 
 import Link from 'next/link';
@@ -18,6 +17,7 @@ import { ChevronLeft, ChevronRight, UserPlus } from 'lucide-react';
 import { dbConnect } from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import { searchPatientsSchema } from '@/lib/validations/patient';
+import { patientSearchOr } from '@/lib/patient-search';
 import { PatientSearch } from '@/components/pacientes/PatientSearch';
 import { Button } from '@/components/ui/Button';
 import { PatientStatusBadge } from '@/components/ui/Badge';
@@ -32,10 +32,6 @@ import {
 } from '@/components/ui/Table';
 
 export const dynamic = 'force-dynamic'; // listagem sempre fresca
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 /** dd/mm/aaaa (Lisboa) — desambiguação de homónimos na receção */
 const birthFmt = new Intl.DateTimeFormat('pt-PT', {
@@ -71,26 +67,7 @@ export default async function PatientsPage({
 
   const term = q.trim();
   if (term) {
-    const digits = term.replace(/\D/g, '');
-    const or: Record<string, unknown>[] = [];
-
-    // Nº de processo: termo totalmente numérico (nºs até ~86000 → 6 dígitos)
-    if (/^\d{1,6}$/.test(term)) {
-      or.push({ processNumber: Number(term) });
-    }
-    // Telefone: 6+ dígitos no termo → procura na cauda do E.164
-    if (digits.length >= 6) {
-      or.push({ phone: { $regex: `${escapeRegex(digits)}` } });
-    }
-    // Nome: todos os termos têm de aparecer (ordem livre)
-    const words = term
-      .split(/\s+/)
-      .filter(Boolean)
-      .map(w => ({ name: { $regex: escapeRegex(w), $options: 'i' } }));
-    if (words.length > 0) {
-      or.push(words.length === 1 ? words[0] : { $and: words });
-    }
-
+    const or = patientSearchOr(term);
     if (or.length > 0) filter.$or = or;
   }
 
@@ -101,7 +78,9 @@ export default async function PatientsPage({
       .sort({ processNumber: -1 }) // mais recentes primeiro
       .skip((page - 1) * perPage)
       .limit(perPage)
-      .select('processNumber name phone email status birthDate deceasedAt')
+      .select(
+        'processNumber name phone email status birthDate deceasedAt nif snsNumber',
+      )
       .lean(),
   ]);
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -163,6 +142,7 @@ export default async function PatientsPage({
             <TH>Nome</TH>
             <TH width={110}>Nascimento</TH>
             <TH width={150}>Telefone</TH>
+            <TH width={170}>NIF · Utente</TH>
             <TH>Email</TH>
             <TH width={110}>Estado</TH>
           </TR>
@@ -170,7 +150,7 @@ export default async function PatientsPage({
         <TBody>
           {patients.length === 0 ? (
             <TableEmpty
-              colSpan={6}
+              colSpan={7}
               message={
                 term
                   ? 'Nenhum paciente corresponde à pesquisa.'
@@ -197,6 +177,13 @@ export default async function PatientsPage({
                 </TD>
                 <TD>{p.birthDate ? birthFmt.format(p.birthDate) : '—'}</TD>
                 <TD>{p.phone ?? '—'}</TD>
+                <TD>
+                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {p.nif ?? '—'}
+                    <span style={{ color: '#9AA1B4' }}> · </span>
+                    {p.snsNumber ?? '—'}
+                  </span>
+                </TD>
                 <TD>{p.email ?? '—'}</TD>
                 <TD>
                   <span

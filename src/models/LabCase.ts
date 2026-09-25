@@ -33,6 +33,17 @@ const LabCaseSchema = new Schema(
       ref: 'Doctor',
       default: null,
     },
+    // Apontamento 05 (2.ª reunião): "atribuir o laboratório na marcação,
+    // ligando trabalho, laboratório e paciente". Marcação de retorno /
+    // colocação a que este trabalho se destina (opcional — o pedido pode
+    // ser registado antes de haver marcação). A agenda sinaliza LAB nessa
+    // marcação independentemente da data prevista de chegada.
+    appointmentId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Appointment',
+      default: null,
+      index: true,
+    },
 
     // --- O trabalho ---------------------------------------------------------
     // E3: laboratório = Fornecedor com pisco "laboratório" (Supplier.isLab).

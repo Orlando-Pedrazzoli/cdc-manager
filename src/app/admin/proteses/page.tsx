@@ -17,6 +17,7 @@ import LabCase from '@/models/LabCase';
 import Supplier from '@/models/Supplier';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
+import Appointment from '@/models/Appointment';
 import { getActiveClinics } from '@/models/Clinic';
 import { lisbonToUtc, todayLisbon } from '@/lib/availability';
 import {
@@ -118,6 +119,31 @@ export default async function ProtesesPage({
   ]);
   const patientById = new Map(patients.map(p => [String(p._id), p]));
   const doctorById = new Map(doctors.map(d => [String(d._id), d.name]));
+
+  // Apontamento 05: marcação de retorno ligada ao trabalho (data/hora)
+  const linkedIds = cases
+    .map(c => c.appointmentId)
+    .filter((id): id is NonNullable<typeof id> => !!id);
+  const linkedAppts =
+    linkedIds.length > 0
+      ? await Appointment.find({ _id: { $in: linkedIds } })
+          .select('startAt status clinicId')
+          .lean()
+      : [];
+  const apptFmt = new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Europe/Lisbon',
+  });
+  const apptLabelById = new Map(
+    linkedAppts.map(a => [
+      String(a._id),
+      `${apptFmt.format(a.startAt as Date)}${a.status === 'cancelled' ? ' (cancelada)' : ''}`,
+    ]),
+  );
   const clinicById = new Map(clinics.map(c => [String(c._id), c.name]));
 
   // Laboratórios = fornecedores com pisco "laboratório" (E3)
@@ -319,6 +345,18 @@ export default async function ProtesesPage({
                     Prevista {ptDate(c.dueDate)}
                     {overdue ? ` · há ${daysLate(c.dueDate)} d` : ''}
                   </p>
+                  {c.appointmentId && (
+                    <p
+                      style={{
+                        margin: '2px 0 0',
+                        color: '#2743A6',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Consulta{' '}
+                      {apptLabelById.get(String(c.appointmentId)) ?? '—'}
+                    </p>
+                  )}
                 </div>
 
                 <span

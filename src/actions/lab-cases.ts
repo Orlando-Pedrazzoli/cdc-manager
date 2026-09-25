@@ -18,6 +18,7 @@ import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import { lisbonToUtc } from '@/lib/availability';
 import LabCase from '@/models/LabCase';
+import Appointment from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import Supplier from '@/models/Supplier';
 import { LAB_WORK_TYPE_LABEL } from '@/lib/domain';
@@ -77,6 +78,7 @@ export async function createLabCaseAction(
       // O formulário envia o laboratório por id (select `supplierId`); o
       // nome fica como snapshot a partir do Supplier, mais abaixo.
       supplierId: formData.get('supplierId'),
+      appointmentId: formData.get('appointmentId'),
       workType: formData.get('workType'),
       toothNotes: formData.get('toothNotes'),
       shade: formData.get('shade'),
@@ -90,13 +92,28 @@ export async function createLabCaseAction(
     }
     const data = parsed.data;
 
-    const [patient, supplier] = await Promise.all([
+    const [patient, supplier, appointment] = await Promise.all([
       Patient.findById(data.patientId).select('name'),
       Supplier.findById(data.supplierId).select('name isLab active'),
+      data.appointmentId
+        ? Appointment.findById(data.appointmentId).select(
+            'patientId status startAt',
+          )
+        : Promise.resolve(null),
     ]);
     if (!patient) return { error: 'Paciente não encontrado.' };
     if (!supplier || !supplier.isLab || !supplier.active) {
       return { error: 'Laboratório inválido ou inativo.' };
+    }
+    // A marcação ligada tem de ser do MESMO paciente e estar ativa
+    if (data.appointmentId) {
+      if (!appointment) return { error: 'Marcação não encontrada.' };
+      if (String(appointment.patientId) !== data.patientId) {
+        return { error: 'A marcação não pertence a este paciente.' };
+      }
+      if (['cancelled', 'no-show'].includes(appointment.status)) {
+        return { error: 'A marcação está cancelada — escolha outra.' };
+      }
     }
 
     const created = await LabCase.create({
@@ -104,6 +121,7 @@ export async function createLabCaseAction(
       patientId: data.patientId,
       doctorId: data.doctorId,
       supplierId: supplier._id,
+      appointmentId: appointment ? appointment._id : null,
       labName: supplier.name, // snapshot
       workType: data.workType,
       toothNotes: data.toothNotes,
@@ -123,7 +141,7 @@ export async function createLabCaseAction(
       entityId: String(created._id),
       patientId: data.patientId,
       clinicId: data.clinicId,
-      summary: `Pedido ao laboratório: ${LAB_WORK_TYPE_LABEL[data.workType]} → ${supplier.name} (prevista ${data.dueDate})`,
+      summary: `Pedido ao laboratório: ${LAB_WORK_TYPE_LABEL[data.workType]} → ${supplier.name} (prevista ${data.dueDate})${appointment ? ' · ligado a marcação' : ''}`,
     });
 
     revalidateAll();

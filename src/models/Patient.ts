@@ -46,6 +46,7 @@ const PatientSchema = new Schema(
     birthDate: {
       type: Date,
       default: null,
+      index: true, // pesquisa por data de nascimento (apontamento 02)
     },
     // NIF — essencial: vai nas faturas Moloni para dedução IRS (despesas saúde)
     nif: {
@@ -53,6 +54,7 @@ const PatientSchema = new Schema(
       trim: true,
       match: [/^\d{9}$/, 'NIF deve ter 9 dígitos'],
       default: null,
+      index: true, // pesquisa por NIF (apontamento 02) + verificação de duplicados
     },
     // --- Fase 3 (ficha de anamnese / P10 / E12 / E11) ------------------------
     sex: { type: String, enum: [...SEXES, null], default: null },
@@ -62,6 +64,7 @@ const PatientSchema = new Schema(
       trim: true,
       match: [/^\d{9}$/, 'Nº de utente deve ter 9 dígitos'],
       default: null,
+      index: true, // pesquisa por nº de utente (apontamento 02)
     },
     homePhone: { type: String, trim: true, maxlength: 30, default: null },
     emergencyContact: {

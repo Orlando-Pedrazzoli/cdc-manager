@@ -41,6 +41,11 @@ export const createLabCaseSchema = z
     ),
     // E3: laboratório escolhido da lista de fornecedores (pisco laboratório)
     supplierId: z.string().regex(OBJECT_ID, 'Selecione o laboratório'),
+    // Apontamento 05: marcação de retorno a que o trabalho se destina
+    appointmentId: z.preprocess(
+      emptyToNull,
+      z.string().regex(OBJECT_ID, 'Marcação inválida').nullable(),
+    ),
     workType: z.enum(LAB_WORK_TYPES, { error: 'Selecione o tipo de trabalho' }),
     toothNotes: optionalShort(60, 'Campo dentes/zona'),
     shade: optionalShort(20, 'Cor'),

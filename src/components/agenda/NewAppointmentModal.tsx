@@ -24,6 +24,7 @@ import {
   type AppointmentFormState,
 } from '@/actions/appointments';
 import { usePatientSearch } from '@/components/agenda/usePatientSearch';
+import { PatientSearchResult } from '@/components/pacientes/PatientSearchResult';
 import { getFreeSlotsAction } from '@/actions/agenda';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
@@ -162,7 +163,7 @@ export function NewAppointmentModal({
               setPatient(null);
               setPatientQuery(e.target.value);
             }}
-            placeholder='Nome, telefone ou nº de processo…'
+            placeholder='Nome, telemóvel, NIF, utente, nascimento ou nº de processo…'
             autoComplete='off'
           />
           {patientResults.length > 0 && !patient && (
@@ -181,27 +182,13 @@ export function NewAppointmentModal({
                 overflow: 'hidden',
               }}
             >
-              {patientResults.map(r => (
-                <button
+              {patientResults.map((r, i) => (
+                <PatientSearchResult
                   key={r.id}
-                  type='button'
-                  onClick={() => {
-                    setPatient(r); // a lista some sozinha (derivada de `patient`)
-                  }}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '9px 12px',
-                    border: 'none',
-                    background: 'transparent',
-                    fontSize: '13px',
-                    color: '#1B2A6B',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {r.label}
-                </button>
+                  hit={r}
+                  first={i === 0}
+                  onSelect={() => setPatient(r)} // a lista some sozinha (derivada de `patient`)
+                />
               ))}
             </div>
           )}

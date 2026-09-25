@@ -22,7 +22,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { transitionAppointmentAction } from '@/actions/appointments';
+import {
+  transitionAppointmentAction,
+  updateAppointmentDurationAction,
+} from '@/actions/appointments';
 import type { AppointmentStatus } from '@/models/Appointment';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -32,6 +35,10 @@ import {
 } from '@/components/agenda/RescheduleForm';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
+import {
+  NewLabCaseModal,
+  type LabOption,
+} from '@/components/proteses/NewLabCaseModal';
 
 const PX_PER_MIN = 1.2;
 
@@ -79,6 +86,22 @@ const ACTIONS_BY_STATUS: Record<
 };
 
 const CANCELLABLE: string[] = ['pending', 'confirmed', 'checked-in'];
+// Apontamento 01 (2.ª reunião): estender/encurtar a marcação na própria
+// agenda. Em curso também — o médico pode estar a passar do tempo.
+const DURATION_EDITABLE: string[] = [
+  'pending',
+  'confirmed',
+  'checked-in',
+  'in-progress',
+];
+// Apontamento 05: ligar trabalho de laboratório à marcação de retorno
+const LAB_LINKABLE: string[] = ['pending', 'confirmed', 'checked-in'];
+const DURATION_STEPS: { delta: number; label: string }[] = [
+  { delta: -15, label: '−15' },
+  { delta: 15, label: '+15' },
+  { delta: 30, label: '+30' },
+  { delta: 60, label: '+60' },
+];
 
 /**
  * Sobreposições (ex.: urgência às 12:48 + marcação às 13:00): agrupa as
@@ -143,8 +166,11 @@ export interface AgendaAppointment {
   cancelReason: string | null;
   /** Remarcada → id/hora da nova marcação */
   rescheduledToLabel: string | null;
-  /** P2: trabalho de laboratório com retorno previsto NESTE dia */
+  /** P2 + apontamento 05: trabalhos de laboratório ligados a esta marcação
+   *  (explicitamente) ou com retorno previsto NESTE dia */
   labDue: { work: string; lab: string; status: string }[];
+  /** Apontamento 05: para ligar um novo pedido de laboratório à marcação */
+  patientId: string;
   /** P3: para o formulário de remarcação */
   clinicId: string;
   date: string; // YYYY-MM-DD
@@ -174,6 +200,7 @@ export function AgendaGrid({
   doctors,
   appointments,
   rescheduleClinics = [],
+  labOptions = [],
 }: {
   gridStart: number; // minutos (abertura da clínica)
   gridEnd: number; // minutos (fecho)
@@ -181,11 +208,15 @@ export function AgendaGrid({
   appointments: AgendaAppointment[];
   /** P3: clínicas + médicos para o formulário de remarcação */
   rescheduleClinics?: RescheduleClinic[];
+  /** Apontamento 05: laboratórios ativos — "Trabalho de laboratório" na
+   *  marcação. Sem lista, o botão não aparece. */
+  labOptions?: LabOption[];
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<AgendaAppointment | null>(null);
   const [cancelMode, setCancelMode] = useState(false);
   const [rescheduleMode, setRescheduleMode] = useState(false);
+  const [labFor, setLabFor] = useState<AgendaAppointment | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -223,6 +254,25 @@ export function AgendaGrid({
       setCancelReason('');
       router.refresh();
     }
+  };
+
+  const changeDuration = async (deltaMin: number) => {
+    if (!selected) return;
+    setBusy(true);
+    const res = await updateAppointmentDurationAction(selected.id, deltaMin);
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success(`Termina às ${res.end} (${res.durationMin} min).`);
+    // Reflete já no painel; a grelha atualiza no refresh
+    setSelected(s =>
+      s && res.end
+        ? { ...s, end: res.end, endMin: s.startMin + (res.durationMin ?? 0) }
+        : s,
+    );
+    router.refresh();
   };
 
   if (columns.length === 0) {
@@ -604,6 +654,66 @@ export function AgendaGrid({
               )}
             </div>
 
+            {/* Duração (apontamento 01): −15 / +15 / +30 / +60 sobre o fim */}
+            {DURATION_EDITABLE.includes(selected.status) &&
+              !rescheduleMode &&
+              !cancelMode && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: '#3D4257',
+                      marginRight: 2,
+                    }}
+                  >
+                    Duração{' '}
+                    <span style={{ color: '#6A7186', fontWeight: 500 }}>
+                      {selected.endMin - selected.startMin} min · até{' '}
+                      {selected.end}
+                    </span>
+                  </span>
+                  {DURATION_STEPS.map(st => (
+                    <button
+                      key={st.delta}
+                      type='button'
+                      disabled={
+                        busy ||
+                        selected.endMin - selected.startMin + st.delta < 15
+                      }
+                      onClick={() => changeDuration(st.delta)}
+                      title={
+                        st.delta > 0
+                          ? `Estender ${st.delta} min`
+                          : `Encurtar ${-st.delta} min`
+                      }
+                      style={{
+                        minWidth: 44,
+                        padding: '5px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid #D8DEEF',
+                        backgroundColor: '#FFFFFF',
+                        color: st.delta > 0 ? '#1B2A6B' : '#6A7186',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        fontVariantNumeric: 'tabular-nums',
+                        cursor: busy ? 'default' : 'pointer',
+                        opacity: busy ? 0.6 : 1,
+                      }}
+                    >
+                      {st.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
             {rescheduleMode ? (
               <RescheduleForm
                 appointmentId={selected.id}
@@ -640,6 +750,18 @@ export function AgendaGrid({
                       onClick={() => setRescheduleMode(true)}
                     >
                       Remarcar
+                    </Button>
+                  )}
+                {LAB_LINKABLE.includes(selected.status) &&
+                  labOptions.length > 0 && (
+                    <Button
+                      size='sm'
+                      variant='outline'
+                      disabled={busy}
+                      onClick={() => setLabFor(selected)}
+                      title='Registar um pedido ao laboratório ligado a esta marcação (ex.: coroa, prótese, moldeira para o retorno)'
+                    >
+                      Trabalho de laboratório
                     </Button>
                   )}
                 {CANCELLABLE.includes(selected.status) && (
@@ -695,6 +817,27 @@ export function AgendaGrid({
           </div>
         )}
       </Modal>
+
+      {/* Apontamento 05: pedido ao laboratório ligado à marcação */}
+      {labFor && (
+        <NewLabCaseModal
+          open
+          onClose={() => setLabFor(null)}
+          clinics={rescheduleClinics.map(c => ({ id: c.id, name: c.name }))}
+          doctors={
+            rescheduleClinics.find(c => c.id === labFor.clinicId)?.doctors ?? []
+          }
+          labs={labOptions}
+          lockedPatient={{ id: labFor.patientId, label: labFor.patientLabel }}
+          linkedAppointment={{
+            id: labFor.id,
+            clinicId: labFor.clinicId,
+            doctorId: labFor.doctorId,
+            date: labFor.date,
+            label: `${labFor.date.split('-').reverse().join('/')} · ${labFor.start} · ${labFor.treatmentName}`,
+          }}
+        />
+      )}
     </>
   );
 }

@@ -59,6 +59,12 @@ import {
   sendAppointmentConfirmationEmail,
   sendDoctorNewAppointmentEmail,
 } from '@/lib/resend';
+import {
+  PATIENT_SEARCH_SELECT,
+  patientSearchOr,
+  toPatientSearchHit,
+  type PatientSearchHit,
+} from '@/lib/patient-search';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
@@ -666,6 +672,132 @@ export async function rescheduleAppointmentAction(
 }
 
 // -----------------------------------------------------------------------------
+// ALTERAR DURAÇÃO (apontamento 01 da 2.ª reunião) — "depois de criada a
+// marcação, não é possível estender o horário do paciente na agenda".
+// Move só o endAt, em passos de 15 min; nunca toca no startAt (para isso há
+// a remarcação). Estender re-verifica sobreposição/capacidade APENAS na
+// janela acrescentada, dentro de transação, como as outras escritas.
+// Encurtar nunca conflitua. Não impõe o horário do médico: tal como o
+// walk-in, encaixar fora do horário é decisão da receção — o que se garante
+// é que não pisa outra marcação.
+// -----------------------------------------------------------------------------
+const DURATION_STEP_MIN = 15; // o cliente usa os mesmos passos (AgendaGrid)
+const DURATION_MIN_MIN = 15;
+const DURATION_MAX_MIN = 8 * 60;
+const DURATION_EDITABLE: AppointmentStatus[] = [
+  'pending',
+  'confirmed',
+  'checked-in',
+  'in-progress',
+];
+
+export async function updateAppointmentDurationAction(
+  appointmentId: string,
+  deltaMin: number,
+): Promise<{ error?: string; end?: string; durationMin?: number }> {
+  if (!isObjectId(appointmentId)) return { error: 'Marcação inválida.' };
+  if (
+    !Number.isInteger(deltaMin) ||
+    deltaMin === 0 ||
+    deltaMin % DURATION_STEP_MIN !== 0 ||
+    Math.abs(deltaMin) > 4 * 60
+  ) {
+    return { error: 'Alteração de duração inválida.' };
+  }
+
+  await dbConnect();
+  const appt = await Appointment.findById(appointmentId).select(
+    'status clinicId patientId doctorId startAt endAt',
+  );
+  if (!appt) return { error: 'Marcação não encontrada.' };
+  if (!DURATION_EDITABLE.includes(appt.status as AppointmentStatus)) {
+    return { error: 'Só marcações ativas podem mudar de duração.' };
+  }
+
+  let staff;
+  try {
+    staff = await requireStaffForClinic(String(appt.clinicId));
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+
+  const oldEnd = appt.endAt as Date;
+  const start = appt.startAt as Date;
+  const newEnd = new Date(oldEnd.getTime() + deltaMin * 60_000);
+  const newDuration = Math.round((newEnd.getTime() - start.getTime()) / 60_000);
+  if (newDuration < DURATION_MIN_MIN) {
+    return { error: `A marcação não pode ter menos de ${DURATION_MIN_MIN} min.` };
+  }
+  if (newDuration > DURATION_MAX_MIN) {
+    return { error: 'Duração demasiado longa — use uma nova marcação.' };
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      if (deltaMin > 0) {
+        // Só a janela acrescentada [oldEnd, newEnd) pode conflituar
+        const free = await isSlotAvailable({
+          clinicId: String(appt.clinicId),
+          doctorId: appt.doctorId ? String(appt.doctorId) : null,
+          startAt: oldEnd,
+          endAt: newEnd,
+          session,
+          excludeAppointmentId: appointmentId,
+        });
+        if (!free.ok) {
+          throw new Error(
+            free.reason === 'doctor-busy'
+              ? 'O médico já tem outra marcação a seguir — não é possível estender.'
+              : 'A clínica está com a capacidade cheia nesse horário.',
+          );
+        }
+      }
+      // Atualização condicionada: se entretanto alguém mudou o fim, abortar
+      const res = await Appointment.updateOne(
+        { _id: appt._id, endAt: oldEnd, status: { $in: DURATION_EDITABLE } },
+        { $set: { endAt: newEnd } },
+        { session },
+      );
+      if (res.modifiedCount !== 1) {
+        throw new Error('A marcação foi alterada entretanto — recarregue.');
+      }
+    });
+  } catch (e) {
+    return { error: (e as Error).message };
+  } finally {
+    await session.endSession();
+  }
+
+  const endLabel = lisbonHhmm(newEnd);
+  await logAudit({
+    userId: staff.id,
+    action: 'update',
+    entityType: 'Appointment',
+    entityId: appointmentId,
+    patientId: String(appt.patientId),
+    clinicId: String(appt.clinicId),
+    summary: `Duração ${deltaMin > 0 ? '+' : ''}${deltaMin} min → termina às ${endLabel} (${newDuration} min)`,
+    changedFields: ['endAt'],
+  });
+
+  revalidatePath('/admin/agenda');
+  revalidatePath('/doutor/agenda');
+  revalidatePath('/admin/sala-espera');
+  return { end: endLabel, durationMin: newDuration };
+}
+
+const lisbonHhmmFmt = new Intl.DateTimeFormat('pt-PT', {
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+  timeZone: 'Europe/Lisbon',
+});
+function lisbonHhmm(d: Date): string {
+  return lisbonHhmmFmt.format(d);
+}
+
+// -----------------------------------------------------------------------------
 // URGÊNCIA / WALK-IN (Fase 2, P5) — "pacientes que chegam à clínica sem
 // marcação". Cria a marcação AGORA, já em 'checked-in' (o paciente está na
 // sala de espera), sem validar disponibilidade: a receção decide encaixar.
@@ -780,40 +912,27 @@ export async function createWalkInAction(
 }
 
 // -----------------------------------------------------------------------------
-// PESQUISA DE PACIENTE para o picker da agenda (leve, top 8)
+// PESQUISA DE PACIENTE para os pickers (agenda, walk-in, laboratório) — top 8.
+// Mesmo filtro e mesmo resultado do header (lib/patient-search): foto, NIF,
+// utente, telemóvel e nascimento para distinguir homónimos (apontamento 02).
 // -----------------------------------------------------------------------------
 export async function findPatientsAction(
   q: string,
-): Promise<{ id: string; label: string }[]> {
+): Promise<PatientSearchHit[]> {
   const session = await auth();
   const role = session?.user?.role;
   if (!session?.user?.id || (role !== 'admin' && role !== 'receptionist')) {
     return [];
   }
-  const term = q.trim();
-  if (term.length < 2) return [];
+  const or = patientSearchOr(q);
+  if (or.length === 0) return [];
 
   await dbConnect();
-  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const digits = term.replace(/\D/g, '');
-  const or: Record<string, unknown>[] = [];
-  if (/^\d{1,6}$/.test(term)) or.push({ processNumber: Number(term) });
-  if (digits.length >= 6) or.push({ phone: { $regex: escape(digits) } });
-  const words = term
-    .split(/\s+/)
-    .filter(Boolean)
-    .map(w => ({ name: { $regex: escape(w), $options: 'i' } }));
-  if (words.length > 0) {
-    or.push(words.length === 1 ? words[0] : { $and: words });
-  }
-
   const patients = await Patient.find({ status: 'active', $or: or })
+    .sort({ processNumber: -1 })
     .limit(8)
-    .select('processNumber name phone')
+    .select(PATIENT_SEARCH_SELECT)
     .lean();
 
-  return patients.map(p => ({
-    id: String(p._id),
-    label: `${p.processNumber} · ${p.name}${p.phone ? ` · ${p.phone}` : ''}`,
-  }));
+  return patients.map(toPatientSearchHit);
 }

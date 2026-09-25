@@ -6,8 +6,10 @@
 // em QUALQUER página da área admin sem passar pela listagem.
 //
 // · Debounce 250ms, mínimo 2 caracteres; pesquisa via server action
-//   (quickSearchPatientsAction — mesmos 3 caminhos da listagem: processo,
-//   telefone, nome).
+//   (quickSearchPatientsAction — filtro único de lib/patient-search:
+//   processo, telemóvel, NIF, nº de utente, data de nascimento, nome).
+// · Cada resultado mostra foto, NIF, utente, telemóvel e nascimento
+//   (PatientSearchResult) — apontamento 02 da 2.ª reunião: homónimos.
 // · Teclado: Ctrl/Cmd+K foca de qualquer sítio · ↑/↓ navegam · Enter abre a
 //   ficha · Esc fecha. Rato: clique no resultado abre; clique fora fecha.
 // · Guarda de corridas: cada pedido leva um nº de sequência — respostas
@@ -25,6 +27,7 @@ import {
   quickSearchPatientsAction,
   type QuickSearchResult,
 } from '@/actions/patients';
+import { PatientSearchResult } from '@/components/pacientes/PatientSearchResult';
 
 export function QuickPatientSearch() {
   const router = useRouter();
@@ -156,7 +159,7 @@ export function QuickPatientSearch() {
           onFocus={() => {
             if (results.length > 0) setOpen(true);
           }}
-          placeholder='Pesquisar paciente — nome, telefone ou nº de processo'
+          placeholder='Paciente — nome, telemóvel, NIF, utente, nascimento ou processo'
           style={{
             flex: 1,
             minWidth: 0,
@@ -212,45 +215,14 @@ export function QuickPatientSearch() {
           ) : (
             <>
               {results.map((r, i) => (
-                <button
+                <PatientSearchResult
                   key={r.id}
-                  type='button'
-                  onClick={() => goTo(r.id)}
-                  onMouseEnter={() => setActive(i)}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: '10px 16px',
-                    backgroundColor: i === active ? '#F5F8FF' : '#FFFFFF',
-                    borderTop: i === 0 ? 'none' : '1px solid #F4F6FB',
-                  }}
-                >
-                  <span
-                    style={{
-                      display: 'block',
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      color: '#1C2233',
-                    }}
-                  >
-                    {r.name}
-                  </span>
-                  <span
-                    style={{
-                      display: 'block',
-                      marginTop: '1px',
-                      fontSize: '12px',
-                      color: '#6A7186',
-                    }}
-                  >
-                    Proc. {r.processNumber}
-                    {r.phone ? ` · ${r.phone}` : ''}
-                    {r.birth ? ` · ${r.birth}` : ''}
-                  </span>
-                </button>
+                  hit={r}
+                  active={i === active}
+                  first={i === 0}
+                  onSelect={() => goTo(r.id)}
+                  onHover={() => setActive(i)}
+                />
               ))}
               <Link
                 href={`/admin/pacientes?q=${encodeURIComponent(q.trim())}`}

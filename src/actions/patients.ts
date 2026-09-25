@@ -55,6 +55,12 @@ import {
   updatePatientSchema,
   type CreatePatientInput,
 } from '@/lib/validations/patient';
+import {
+  PATIENT_SEARCH_SELECT,
+  patientSearchOr,
+  toPatientSearchHit,
+  type PatientSearchHit,
+} from '@/lib/patient-search';
 
 // -----------------------------------------------------------------------------
 // Tipos de estado dos formulários
@@ -677,79 +683,36 @@ export async function removePatientPhotoAction(input: {
 }
 
 // -----------------------------------------------------------------------------
-// Pesquisa rápida (header) — os mesmos 3 caminhos da listagem, top 8
+// Pesquisa rápida (header) — filtro partilhado (lib/patient-search), top 8
 // -----------------------------------------------------------------------------
-export type QuickSearchResult = {
-  id: string;
-  processNumber: number;
-  name: string;
-  phone: string | null;
-  /** dd/mm/aaaa (Lisboa) — desambiguação de homónimos, já formatada */
-  birth: string | null;
-};
-
-const quickBirthFmt = new Intl.DateTimeFormat('pt-PT', {
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-  timeZone: 'Europe/Lisbon',
-});
-
-function escapeRegexQuick(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+export type QuickSearchResult = PatientSearchHit;
 
 /**
  * Pesquisa incremental para o header da área admin/receção.
- * Reutiliza a semântica da listagem (processo exato / cauda do telefone /
- * todas as palavras no nome) mas devolve só o top 8 — o dropdown não pagina;
- * para mais resultados o UI aponta para /admin/pacientes?q=.
- * Nunca devolve fichas anonimizadas (RGPD).
+ * Usa o filtro único de src/lib/patient-search.ts (processo, telemóvel,
+ * NIF, nº de utente, data de nascimento, nome) e devolve só o top 8 — o
+ * dropdown não pagina; para mais resultados o UI aponta para
+ * /admin/pacientes?q=. Nunca devolve fichas anonimizadas (RGPD).
  */
 export async function quickSearchPatientsAction(
   q: string,
 ): Promise<QuickSearchResult[]> {
   await requireStaff();
 
-  const term = q.trim();
-  if (term.length < 2) return [];
-
-  await dbConnect();
-
-  const digits = term.replace(/\D/g, '');
-  const or: Record<string, unknown>[] = [];
-
-  if (/^\d{1,6}$/.test(term)) {
-    or.push({ processNumber: Number(term) });
-  }
-  if (digits.length >= 6) {
-    or.push({ phone: { $regex: escapeRegexQuick(digits) } });
-  }
-  const words = term
-    .split(/\s+/)
-    .filter(Boolean)
-    .map(w => ({ name: { $regex: escapeRegexQuick(w), $options: 'i' } }));
-  if (words.length > 0) {
-    or.push(words.length === 1 ? words[0] : { $and: words });
-  }
+  const or = patientSearchOr(q);
   if (or.length === 0) return [];
 
+  await dbConnect();
   const rows = await Patient.find({
     status: { $ne: 'anonymized' },
     $or: or,
   })
     .sort({ processNumber: -1 })
     .limit(8)
-    .select('processNumber name phone birthDate')
+    .select(PATIENT_SEARCH_SELECT)
     .lean();
 
-  return rows.map(p => ({
-    id: String(p._id),
-    processNumber: p.processNumber as number,
-    name: p.name as string,
-    phone: (p.phone as string | null) ?? null,
-    birth: p.birthDate ? quickBirthFmt.format(p.birthDate as Date) : null,
-  }));
+  return rows.map(toPatientSearchHit);
 }
 
 // -----------------------------------------------------------------------------

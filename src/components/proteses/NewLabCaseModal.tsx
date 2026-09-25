@@ -7,7 +7,8 @@
 // escolhido da lista de Fornecedores com pisco "laboratório"; o prazo
 // habitual do laboratório pré-preenche a data prevista. Modo médico: sem
 // seletor de médico (o pedido é seu). Datas de envio (default hoje) e
-// prevista. Submissão MANUAL preventDefault +
+// prevista. Aberto a partir de uma marcação (agenda), liga o trabalho a
+// essa marcação (apontamento 05). Submissão MANUAL preventDefault +
 // startTransition — o padrão anti-reset (React 19 limparia o formulário
 // em erro de validação se usássemos action={}).
 // =============================================================================
@@ -27,6 +28,7 @@ import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { usePatientSearch } from '@/components/agenda/usePatientSearch';
+import { PatientSearchResult } from '@/components/pacientes/PatientSearchResult';
 
 export interface LabOption {
   id: string;
@@ -44,6 +46,16 @@ interface ModalProps {
   lockedPatient?: { id: string; label: string };
   /** Área do médico: sem seletor de médico */
   doctorMode?: boolean;
+  /** Apontamento 05: aberto a partir de uma marcação — o trabalho fica
+   *  ligado a ela (hidden appointmentId), a clínica/médico da marcação são
+   *  os defaults e o retorno previsto pré-preenche com o dia anterior. */
+  linkedAppointment?: {
+    id: string;
+    clinicId: string;
+    doctorId: string | null;
+    date: string; // YYYY-MM-DD
+    label: string; // "seg. 30/09 · 10:30 · Consulta"
+  };
 }
 
 function addDays(dateStr: string, days: number): string {
@@ -53,7 +65,7 @@ function addDays(dateStr: string, days: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
-function NewLabCaseModal({
+export function NewLabCaseModal({
   open,
   onClose,
   clinics,
@@ -61,11 +73,20 @@ function NewLabCaseModal({
   labs,
   lockedPatient,
   doctorMode = false,
+  linkedAppointment,
 }: ModalProps) {
   const router = useRouter();
   const todayStr = new Date().toISOString().slice(0, 10);
+  // Ligado a marcação: o trabalho tem de chegar ANTES da consulta — default
+  // = véspera (nunca antes de hoje)
+  const linkedDue = linkedAppointment
+    ? (() => {
+        const eve = addDays(linkedAppointment.date, -1);
+        return eve < todayStr ? todayStr : eve;
+      })()
+    : '';
   const [sentDate, setSentDate] = useState(todayStr);
-  const [dueDate, setDueDate] = useState('');
+  const [dueDate, setDueDate] = useState(linkedDue);
   const [labId, setLabId] = useState('');
   const onLabChange = (id: string) => {
     setLabId(id);
@@ -98,7 +119,7 @@ function NewLabCaseModal({
     onClose();
     resetPatient(); // volta ao paciente bloqueado, se houver
     setLabId('');
-    setDueDate('');
+    setDueDate(linkedDue);
     return result;
   }, undefined);
 
@@ -120,6 +141,28 @@ function NewLabCaseModal({
         style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
       >
         <input type='hidden' name='patientId' value={patient?.id ?? ''} />
+        <input
+          type='hidden'
+          name='appointmentId'
+          value={linkedAppointment?.id ?? ''}
+        />
+
+        {linkedAppointment && (
+          <div
+            style={{
+              borderRadius: '10px',
+              backgroundColor: '#EEF2FF',
+              border: '1px solid #C9D3F5',
+              padding: '8px 12px',
+              fontSize: '12px',
+              color: '#1B2A6B',
+            }}
+          >
+            <strong>Ligado à marcação:</strong> {linkedAppointment.label} — a
+            agenda mostra LAB nessa consulta e o dashboard avisa se o trabalho
+            não tiver chegado.
+          </div>
+        )}
 
         {/* Paciente */}
         <div style={{ position: 'relative' }}>
@@ -134,7 +177,7 @@ function NewLabCaseModal({
               setPatient(null);
               setPatientQuery(e.target.value);
             }}
-            placeholder='Nome, telefone ou nº de processo…'
+            placeholder='Nome, telemóvel, NIF, utente, nascimento ou nº de processo…'
             autoComplete='off'
           />
           {!lockedPatient && patientResults.length > 0 && !patient && (
@@ -153,27 +196,13 @@ function NewLabCaseModal({
                 overflow: 'hidden',
               }}
             >
-              {patientResults.map(r => (
-                <button
+              {patientResults.map((r, i) => (
+                <PatientSearchResult
                   key={r.id}
-                  type='button'
-                  onClick={() => {
-                    setPatient(r); // a lista some sozinha (derivada)
-                  }}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '9px 12px',
-                    border: 'none',
-                    background: 'transparent',
-                    fontSize: '13px',
-                    color: '#1B2A6B',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {r.label}
-                </button>
+                  hit={r}
+                  first={i === 0}
+                  onSelect={() => setPatient(r)} // a lista some sozinha (derivada)
+                />
               ))}
             </div>
           )}
@@ -183,7 +212,13 @@ function NewLabCaseModal({
         <div
           style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}
         >
-          <Select id='lc-clinic' name='clinicId' label='Clínica *' required>
+          <Select
+            id='lc-clinic'
+            name='clinicId'
+            label='Clínica *'
+            required
+            defaultValue={linkedAppointment?.clinicId}
+          >
             {clinics.map(c => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -193,7 +228,12 @@ function NewLabCaseModal({
           {doctorMode ? (
             <input type='hidden' name='doctorId' value='' />
           ) : (
-            <Select id='lc-doctor' name='doctorId' label='Médico (opcional)'>
+            <Select
+              id='lc-doctor'
+              name='doctorId'
+              label='Médico (opcional)'
+              defaultValue={linkedAppointment?.doctorId ?? ''}
+            >
               <option value=''>—</option>
               {doctors.map(d => (
                 <option key={d.id} value={d.id}>
@@ -296,7 +336,11 @@ function NewLabCaseModal({
             value={dueDate}
             onChange={e => setDueDate(e.target.value)}
             required
-            help='Aparece na agenda desse dia e no dashboard; o alerta de atraso dispara a partir daqui'
+            help={
+              linkedAppointment
+                ? `Consulta a ${linkedAppointment.date.split('-').reverse().join('/')} — o trabalho deve chegar antes`
+                : 'Aparece na agenda desse dia e no dashboard; o alerta de atraso dispara a partir daqui'
+            }
           />
         </div>
 

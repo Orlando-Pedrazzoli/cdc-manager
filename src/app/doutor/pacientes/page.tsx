@@ -18,12 +18,9 @@ import { dbConnect } from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Appointment from '@/models/Appointment';
 import Patient from '@/models/Patient';
+import { patientSearchOr } from '@/lib/patient-search';
 
 export const dynamic = 'force-dynamic';
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 function lisbonDate(d: Date): string {
   return new Intl.DateTimeFormat('pt-PT', {
@@ -71,10 +68,10 @@ export default async function DoctorPatientsPage({
   };
   const search = (q ?? '').trim();
   if (search) {
-    // Todas as palavras têm de aparecer no nome (padrão do projeto)
-    filter.$and = search
-      .split(/\s+/)
-      .map(w => ({ name: { $regex: escapeRegex(w), $options: 'i' } }));
+    // Filtro único do projeto (nome, processo, telemóvel, NIF, utente,
+    // nascimento) — apontamento 02 da 2.ª reunião
+    const or = patientSearchOr(search);
+    if (or.length > 0) filter.$or = or;
   }
 
   const patients = await Patient.find(filter)
