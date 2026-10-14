@@ -31,6 +31,7 @@ import {
 } from '@/components/configuracoes/UsersPanel';
 import { MoloniPanel } from '@/components/configuracoes/MoloniPanel';
 import { OrganizationForm } from '@/components/configuracoes/OrganizationForm';
+import { TabletLinkPanel } from '@/components/configuracoes/TabletLinkPanel';
 import { getOrganization } from '@/models/Organization';
 import { defaultClinic } from '@/lib/branding';
 import { isMoloniConfigured, isMoloniEmissionReady } from '@/lib/moloni';
@@ -102,6 +103,8 @@ export default async function ConfiguracoesPage({
   // ---------------------------------------------------------------------------
   let clinicPanels: ClinicSettings[] = [];
   let activeClinicSlug = '';
+  // Tablet de assinatura (3.ª reunião): data em que foi ligado, por clínica
+  const tabletLinkedAt = new Map<string, string>();
   let teamUsers: TeamUser[] = [];
 
   if (activeTab === 'utilizadores') {
@@ -130,6 +133,15 @@ export default async function ConfiguracoesPage({
   } else if (activeTab === 'clinicas') {
     // Todas as clínicas (incl. inativas — settings é o sítio para as ver)
     const docs = await Clinic.find({}).sort({ slug: 1 }).lean();
+    const stamp = new Intl.DateTimeFormat('pt-PT', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      timeZone: 'Europe/Lisbon',
+    });
+    for (const d of docs)
+      if (d.kioskTokenAt)
+        tabletLinkedAt.set(String(d._id), stamp.format(d.kioskTokenAt as Date));
     clinicPanels = docs.map(d => ({
       id: String(d._id),
       slug: d.slug,
@@ -283,7 +295,15 @@ export default async function ConfiguracoesPage({
 
           {activeClinic ? (
             // key remonta os forms (e o estado local dos horários) ao trocar
-            <ClinicSettingsForm key={activeClinic.id} clinic={activeClinic} />
+            <>
+              <ClinicSettingsForm key={activeClinic.id} clinic={activeClinic} />
+              <TabletLinkPanel
+                key={`tablet-${activeClinic.id}`}
+                clinicId={activeClinic.id}
+                clinicName={activeClinic.name}
+                linkedAtLabel={tabletLinkedAt.get(activeClinic.id) ?? null}
+              />
+            </>
           ) : (
             <p style={{ fontSize: '14px', color: '#6A7186' }}>
               Sem clínicas registadas.

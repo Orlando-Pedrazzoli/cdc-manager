@@ -8,11 +8,14 @@
 // 3. Texto já preenchido, EDITÁVEL — o médico escreve o que falta
 // 4. Assinatura no ecrã se o modelo exigir
 // 5. Gerar PDF → fica nos Documentos do paciente (e abre)
+// 3.ª reunião (out/2026): nos modelos com assinatura, "Enviar para o
+// tablet" manda o texto já revisto para o tablet da clínica; o PDF é gerado
+// quando o paciente assina lá (mesmo núcleo: src/lib/signing.ts).
 // =============================================================================
 
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { FilePlus2, FileCheck2 } from 'lucide-react';
@@ -25,6 +28,8 @@ import { Button } from '@/components/ui/Button';
 import { Checkbox, Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { SignaturePad } from '@/components/clinico/SignaturePad';
+import { TabletSignature } from '@/components/documentos/TabletSignature';
+import { createTemplateSignatureRequestAction } from '@/actions/signature-requests';
 
 export interface IssueTemplateOption {
   id: string;
@@ -131,6 +136,29 @@ export function IssueDocumentButton({
     setPrepared(null);
     setSignature(null);
   };
+
+  // Tablet: envia o texto JÁ REVISTO; o documento é gerado ao assinar lá
+  const sendToTablet = useCallback(
+    (tabletClinicId: string) =>
+      prepared
+        ? createTemplateSignatureRequestAction({
+            templateId: prepared.templateId,
+            patientId,
+            clinicId: tabletClinicId,
+            title,
+            body,
+            visibleToPatient: visible,
+          })
+        : Promise.resolve({ error: 'Prepare o documento primeiro.' }),
+    [prepared, patientId, title, body, visible],
+  );
+  const onTabletSigned = useCallback(() => {
+    toast.success('Documento assinado no tablet e guardado nos Documentos.');
+    setOpen(false);
+    setPrepared(null);
+    setSignature(null);
+    router.refresh();
+  }, [router]);
 
   return (
     <>
@@ -273,6 +301,13 @@ export function IssueDocumentButton({
                   Assinatura do paciente / representante legal *
                 </p>
                 <SignaturePad onChange={setSignature} height={140} />
+                <div style={{ marginTop: 10 }}>
+                  <TabletSignature
+                    onCreate={sendToTablet}
+                    onSigned={onTabletSigned}
+                    disabled={busy || title.trim().length < 3}
+                  />
+                </div>
               </div>
             )}
             <Checkbox

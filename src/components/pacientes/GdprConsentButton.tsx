@@ -7,11 +7,14 @@
 // RX). A action cria o Document 'consent' com o texto congelado e marca a
 // ficha como assinada. Se já estiver assinado, o botão mostra a data e
 // permite recolher nova assinatura (ex.: texto atualizado).
+// 3.ª reunião (out/2026): em alternativa, "Enviar para o tablet" — o
+// paciente assina no tablet da clínica (TabletSignature) com o mesmo
+// resultado (src/lib/signing.ts).
 // =============================================================================
 
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { ShieldCheck } from 'lucide-react';
@@ -19,6 +22,8 @@ import { signGdprConsentAction } from '@/actions/patients';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { SignaturePad } from '@/components/clinico/SignaturePad';
+import { TabletSignature } from '@/components/documentos/TabletSignature';
+import { createGdprSignatureRequestAction } from '@/actions/signature-requests';
 
 export function GdprConsentButton({
   patientId,
@@ -34,6 +39,19 @@ export function GdprConsentButton({
   const [open, setOpen] = useState(false);
   const [signature, setSignature] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Tablet: pedido criado → o modal fica à espera; assinado → fecha e atualiza
+  const sendToTablet = useCallback(
+    (clinicId: string) =>
+      createGdprSignatureRequestAction({ patientId, clinicId }),
+    [patientId],
+  );
+  const onTabletSigned = useCallback(() => {
+    toast.success('Consentimento RGPD assinado no tablet e guardado.');
+    setOpen(false);
+    setSignature(null);
+    router.refresh();
+  }, [router]);
 
   const submit = async () => {
     if (!signature) return;
@@ -110,6 +128,11 @@ export function GdprConsentButton({
             </p>
             <SignaturePad onChange={setSignature} height={150} />
           </div>
+          <TabletSignature
+            onCreate={sendToTablet}
+            onSigned={onTabletSigned}
+            disabled={busy}
+          />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <Button
               type='button'

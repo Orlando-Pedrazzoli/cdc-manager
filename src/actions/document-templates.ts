@@ -15,21 +15,18 @@
 
 'use server';
 
-import mongoose from 'mongoose';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import DocumentTemplate from '@/models/DocumentTemplate';
-import ClinicalDocument from '@/models/Document';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
 import Appointment from '@/models/Appointment';
 import { getActiveClinics } from '@/models/Clinic';
 import {
   TEMPLATE_KINDS,
-  TEMPLATE_KIND_DOC_CATEGORY,
   type TemplateKind,
 } from '@/lib/data/document-templates';
 import {
@@ -38,11 +35,7 @@ import {
   shortDatePt,
   timePt,
 } from '@/lib/document-merge';
-import { renderDocumentPdf } from '@/lib/document-pdf';
-import {
-  patientDocumentPublicId,
-  uploadAuthenticatedPdf,
-} from '@/lib/cloudinary';
+import { finalizeIssuedDocument } from '@/lib/signing';
 
 const OID = /^[0-9a-fA-F]{24}$/;
 
@@ -268,82 +261,31 @@ export async function issueDocumentAction(input: {
       return { error: 'Sem permissões.' };
     if (!OID.test(input.templateId) || !OID.test(input.patientId))
       return { error: 'Dados inválidos.' };
-    const title = input.title.trim().slice(0, 120);
-    const body = input.body.replace(/\r/g, '').trim();
-    if (title.length < 3 || body.length < 10)
-      return { error: 'Título ou texto em falta.' };
-    if (
-      input.signatureDataUrl &&
-      !/^data:image\/png;base64,/.test(input.signatureDataUrl)
-    )
-      return { error: 'Assinatura inválida.' };
     await dbConnect();
-    const t = await DocumentTemplate.findById(input.templateId).lean();
+    const t = await DocumentTemplate.findById(input.templateId)
+      .select('active allowStaff')
+      .lean();
     if (!t || !t.active) return { error: 'Modelo indisponível.' };
     if (role !== 'doctor' && !t.allowStaff)
       return { error: 'Este modelo só pode ser emitido pelo médico.' };
-    if (t.requiresSignature && !input.signatureDataUrl)
-      return { error: 'Este documento exige a assinatura do paciente.' };
 
-    const { patient, doctor, clinic } = await buildValues({
+    // Núcleo partilhado com o tablet (src/lib/signing.ts)
+    const res = await finalizeIssuedDocument({
+      templateId: input.templateId,
       patientId: input.patientId,
-      doctorId: role === 'doctor' ? (session.user.doctorId ?? null) : null,
       clinicId: input.clinicId ?? null,
-      appointmentId: null,
-      extra: {},
-    });
-    const now = new Date();
-    const pdf = await renderDocumentPdf({
-      clinic: {
-        name: clinic?.name ?? 'Centro Dentário Colombo',
-        legalName: clinic?.legalName ?? null,
-        nipc: clinic?.nipc ?? null,
-        address: clinic?.address ?? null,
-        phone: clinic?.phone ?? null,
-        email: clinic?.email ?? null,
-      },
-      title,
-      body,
-      doctorName: doctor?.name ?? null,
-      doctorLicense: doctor?.licenseNumber ?? null,
-      issuedAtLabel: `${clinic?.address?.split(',').pop()?.trim() || 'Lisboa'}, ${longDatePt(now)}`,
-      patientSignatureDataUrl: input.signatureDataUrl ?? null,
-      patientSignatureLabel:
-        t.requiresSignature || input.signatureDataUrl
-          ? 'O(a) paciente / representante legal'
-          : null,
-    });
-
-    const docId = new mongoose.Types.ObjectId();
-    const publicId = patientDocumentPublicId(String(docId));
-    const asset = await uploadAuthenticatedPdf(publicId, pdf);
-    const category =
-      TEMPLATE_KIND_DOC_CATEGORY[t.kind as TemplateKind] ?? 'other';
-    await ClinicalDocument.create({
-      _id: docId,
-      patientId: patient._id,
-      category,
-      title: `${title} — ${shortDatePt(now)}`,
-      publicId,
-      resourceType: 'image',
-      format: asset.format ?? 'pdf',
-      bytes: asset.bytes,
+      doctorId: role === 'doctor' ? (session.user.doctorId ?? null) : null,
+      title: input.title,
+      body: input.body,
+      signatureDataUrl: input.signatureDataUrl ?? null,
       visibleToPatient: input.visibleToPatient ?? true,
-      uploadedByUserId: session.user.id,
-      appointmentId: null,
-      note: `Emitido a partir do modelo «${t.title}»${doctor ? ` por ${doctor.name}` : ''}`,
-    });
-    await logAudit({
       userId: session.user.id,
-      action: 'create',
-      entityType: 'Document',
-      entityId: String(docId),
-      patientId: String(patient._id),
-      summary: `Documento emitido: ${title}${input.signatureDataUrl ? ' (assinado)' : ''}`,
+      via: 'balcao',
     });
+    if (res.error) return res;
     revalidatePath(`/admin/pacientes/${input.patientId}`);
     revalidatePath(`/doutor/pacientes/${input.patientId}`);
-    return { documentId: String(docId) };
+    return res;
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erro inesperado.' };
   }

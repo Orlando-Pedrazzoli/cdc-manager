@@ -128,6 +128,13 @@ const ClinicSchema = new Schema(
     // apurado por contagem. Campo mantido só para não partir documentos
     // existentes; nunca é lido.
     autoConsumeBom: { type: Boolean, default: false },
+    // --- Tablet de assinatura (3.ª reunião, out/2026) -----------------------
+    // Segredo do dispositivo desta clínica: a ligação /quiosque/ligar/{token}
+    // grava-o em cookie no tablet. Regenerar invalida o tablet anterior.
+    // null = sem tablet configurado (os botões "Enviar para o tablet" não
+    // aparecem para esta clínica).
+    kioskToken: { type: String, default: null, select: false },
+    kioskTokenAt: { type: Date, default: null },
     // --- Estado -------------------------------------------------------------
     // Soft-disable: clínica inativa desaparece de agendas/wizard mas todo o
     // histórico (marcações, faturas, stock) permanece íntegro
