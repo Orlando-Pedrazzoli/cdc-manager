@@ -11,6 +11,11 @@
 //     vê horários realmente livres (camada 1 da defesa anti-dupla-marcação)
 //   - SEM médico (fila de atribuição): hora livre em input time; a action
 //     valida a capacidade da clínica na transação (camada 2)
+//
+// 3.ª reunião/04 (Victor): "é fácil esquecer em que agenda se está a
+// marcar". O modal mostra a clínica em destaque, com a SUA cor, e o botão
+// de gravar diz onde vai marcar ("Criar marcação no Colombo"). A confirmação
+// é visual e permanente — um confirm() a mais seria ignorado ao 2.º dia.
 // =============================================================================
 
 'use client';
@@ -18,7 +23,8 @@
 import { useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Search } from 'lucide-react';
+import { MapPin, Search } from 'lucide-react';
+import { tint } from '@/lib/branding';
 import {
   createAppointmentAction,
   type AppointmentFormState,
@@ -35,6 +41,7 @@ export function NewAppointmentModal({
   open,
   onClose,
   clinicId,
+  clinic,
   initialDate,
   doctors,
   treatments,
@@ -43,6 +50,8 @@ export function NewAppointmentModal({
   open: boolean;
   onClose: () => void;
   clinicId: string;
+  /** 3.ª reunião/04: nome curto + cor da clínica onde se está a marcar */
+  clinic?: { label: string; color: string };
   initialDate: string; // 'YYYY-MM-DD' — dia atualmente aberto na agenda
   doctors: { id: string; name: string }[];
   /** Gabinetes ativos da clínica (Warehouse kind 'operatory') */
@@ -143,6 +152,8 @@ export function NewAppointmentModal({
     return result;
   }, undefined);
 
+  const clinicColor = clinic?.color ?? '#1B2A6B';
+
   return (
     <Modal open={open} onClose={onClose} title='Nova marcação' maxWidth={560}>
       <form
@@ -151,6 +162,32 @@ export function NewAppointmentModal({
       >
         <input type='hidden' name='clinicId' value={clinicId} />
         <input type='hidden' name='patientId' value={patient?.id ?? ''} />
+
+        {/* 3.ª reunião/04: a clínica em destaque, com a sua cor */}
+        {clinic && (
+          <div
+            role='status'
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '10px 14px',
+              borderRadius: '10px',
+              backgroundColor: tint(clinicColor, 0.1),
+              border: `1px solid ${tint(clinicColor, 0.35)}`,
+              borderLeft: `5px solid ${clinicColor}`,
+              color: clinicColor,
+            }}
+          >
+            <MapPin size={18} />
+            <span style={{ fontSize: '14px', fontWeight: 700 }}>
+              Vai marcar em {clinic.label}
+            </span>
+            <span style={{ fontSize: '12px', opacity: 0.8 }}>
+              — mude a clínica no topo da agenda se não for esta
+            </span>
+          </div>
+        )}
 
         {/* Paciente */}
         <div style={{ position: 'relative' }}>
@@ -385,8 +422,20 @@ export function NewAppointmentModal({
           >
             Cancelar
           </Button>
-          <Button type='submit' loading={pending} disabled={!patient}>
-            Criar marcação
+          <Button
+            type='submit'
+            loading={pending}
+            disabled={!patient}
+            style={
+              clinic
+                ? {
+                    backgroundColor: clinicColor,
+                    border: `1px solid ${clinicColor}`,
+                  }
+                : undefined
+            }
+          >
+            {clinic ? `Criar marcação em ${clinic.label}` : 'Criar marcação'}
           </Button>
         </div>
       </form>

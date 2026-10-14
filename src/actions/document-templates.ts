@@ -48,9 +48,7 @@ const OID = /^[0-9a-fA-F]{24}$/;
 
 // --- Admin: editar modelos ------------------------------------------------------
 export type TemplateFormState =
-  | { success: true }
-  | { error: string }
-  | undefined;
+  { success: true } | { error: string } | undefined;
 
 const templateSchema = z.object({
   id: z.string().regex(OID).nullable().default(null),
@@ -189,6 +187,9 @@ async function buildValues(params: {
     'medico.cedula': doctor?.licenseNumber ?? null,
     'clinica.nome': clinic?.name ?? null,
     'clinica.morada': clinic?.address ?? clinic?.name ?? null,
+    // 3.ª reunião (orientações 06–08): rodapé "Dúvidas ou emergências"
+    'clinica.telefone': clinic?.phone ?? null,
+    'clinica.email': clinic?.email ?? null,
     data: longDatePt(now),
     'data.curta': shortDatePt(now),
     'consulta.data': shortDatePt(consultaDate as Date),

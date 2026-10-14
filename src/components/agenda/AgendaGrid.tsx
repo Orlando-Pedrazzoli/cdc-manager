@@ -15,13 +15,23 @@
 // Fase 2 (paridade Dentoral): o painel mostra QUEM marcou, QUANDO e por que
 // canal (P1); urgências têm badge vermelho (P5); o cancelamento exige
 // motivo (P7) e as canceladas mostram quem/quando/porquê.
+//
+// 3.ª reunião (Victor, 09/10/2026):
+// · 01 ERRO — canceladas NÃO entram na grelha (cancelar e remarcar no mesmo
+//   horário sobrepunha os dois cartões). Ficam no Histórico e na vista
+//   Lista; a grelha mostra só um contador discreto com atalho.
+// · 02 — o nome do paciente no painel é link para a ficha → Consultas.
+// · 03 — a pastilha LAB diz QUE trabalho e de QUE laboratório; a
+//   observação da marcação aparece no próprio cartão.
 // =============================================================================
 
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import { ExternalLink, StickyNote } from 'lucide-react';
 import {
   transitionAppointmentAction,
   updateAppointmentDurationAction,
@@ -96,6 +106,21 @@ const DURATION_EDITABLE: string[] = [
 ];
 // Apontamento 05: ligar trabalho de laboratório à marcação de retorno
 const LAB_LINKABLE: string[] = ['pending', 'confirmed', 'checked-in'];
+// 3.ª reunião/03: pastilha de laboratório ("LAB · Coroa · MPR")
+const labPillStyle: React.CSSProperties = {
+  display: 'inline-block',
+  marginLeft: 5,
+  marginRight: 5,
+  padding: '0 5px',
+  borderRadius: '4px',
+  backgroundColor: '#2743A6',
+  color: '#FFFFFF',
+  fontSize: '9px',
+  fontWeight: 800,
+  letterSpacing: '0.5px',
+  verticalAlign: 'middle',
+  maxWidth: '100%',
+};
 const DURATION_STEPS: { delta: number; label: string }[] = [
   { delta: -15, label: '−15' },
   { delta: 15, label: '+15' },
@@ -201,6 +226,7 @@ export function AgendaGrid({
   appointments,
   rescheduleClinics = [],
   labOptions = [],
+  historyHref,
 }: {
   gridStart: number; // minutos (abertura da clínica)
   gridEnd: number; // minutos (fecho)
@@ -211,6 +237,8 @@ export function AgendaGrid({
   /** Apontamento 05: laboratórios ativos — "Trabalho de laboratório" na
    *  marcação. Sem lista, o botão não aparece. */
   labOptions?: LabOption[];
+  /** 3.ª reunião/01: atalho para o Histórico quando há canceladas no dia */
+  historyHref?: string;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<AgendaAppointment | null>(null);
@@ -223,7 +251,12 @@ export function AgendaGrid({
   const totalMin = gridEnd - gridStart;
   const height = totalMin * PX_PER_MIN;
 
-  const hasUnassigned = appointments.some(a => a.doctorId === null);
+  // 3.ª reunião/01: canceladas saem da grelha (ficam no Histórico/Lista).
+  // Faltas mantêm-se — são informação operacional do próprio dia.
+  const visible = appointments.filter(a => a.status !== 'cancelled');
+  const cancelledCount = appointments.length - visible.length;
+
+  const hasUnassigned = visible.some(a => a.doctorId === null);
   const columns: (AgendaDoctorColumn | { id: null; name: string })[] = [
     ...doctors,
     ...(hasUnassigned ? [{ id: null as null, name: 'Sem médico' }] : []),
@@ -303,6 +336,39 @@ export function AgendaGrid({
           overflowX: 'auto',
         }}
       >
+        {/* 3.ª reunião/01: as canceladas não se desenham; fica só o rasto */}
+        {cancelledCount > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 12px',
+              fontSize: '12px',
+              color: '#6A7186',
+              backgroundColor: '#FAFBFE',
+              borderBottom: '1px solid #EEF1F8',
+            }}
+          >
+            <span>
+              {cancelledCount === 1
+                ? '1 marcação cancelada neste dia — não aparece na grelha'
+                : `${cancelledCount} marcações canceladas neste dia — não aparecem na grelha`}
+            </span>
+            {historyHref && (
+              <Link
+                href={historyHref}
+                style={{
+                  color: '#2743A6',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                }}
+              >
+                Ver no Histórico
+              </Link>
+            )}
+          </div>
+        )}
         <div
           className='cdc-agenda-grid'
           style={{
@@ -390,14 +456,12 @@ export function AgendaGrid({
 
           {/* Colunas */}
           {columns.map(col => {
-            const colAppts = appointments.filter(a =>
+            const colAppts = visible.filter(a =>
               col.id === null ? a.doctorId === null : a.doctorId === col.id,
             );
-            // Canceladas/faltas não disputam espaço com as ativas
+            // Faltas não disputam espaço com as ativas
             const laneMap = packLanes(
-              colAppts.filter(
-                a => a.status !== 'cancelled' && a.status !== 'no-show',
-              ),
+              colAppts.filter(a => a.status !== 'no-show'),
             );
             const workRanges = 'ranges' in col ? col.ranges : [];
             return (
@@ -439,8 +503,7 @@ export function AgendaGrid({
                 ))}
                 {/* Marcações */}
                 {colAppts.map(a => {
-                  const cancelled =
-                    a.status === 'cancelled' || a.status === 'no-show';
+                  const cancelled = a.status === 'no-show';
                   const lp = laneMap.get(a.id) ?? { lane: 0, lanes: 1 };
                   const laneW = 100 / lp.lanes;
                   // Altura real do slot; cartões curtos (urgência de 20 min)
@@ -448,6 +511,16 @@ export function AgendaGrid({
                   const slotPx = (a.endMin - a.startMin) * PX_PER_MIN - 2;
                   const cardPx = Math.max(slotPx, 26);
                   const twoLines = cardPx >= 42;
+                  // 3.ª reunião/03: observação no cartão quando há altura
+                  // para uma 3.ª linha; senão, ícone com o texto no hover
+                  const threeLines = cardPx >= 58 && !!a.note;
+                  // 3.ª reunião/03: "LAB · Coroa · MPR" em vez de só "LAB"
+                  const labLabel =
+                    a.labDue.length === 1
+                      ? `LAB · ${a.labDue[0].work} · ${a.labDue[0].lab}`
+                      : a.labDue.length > 1
+                        ? `LAB ×${a.labDue.length}`
+                        : '';
                   return (
                     <button
                       key={a.id}
@@ -506,26 +579,27 @@ export function AgendaGrid({
                           </span>
                         )}
                         {a.start} · {a.patientLabel}
-                        {a.labDue.length > 0 && (
+                        {/* Cartão curto: pastilha compacta na 1.ª linha */}
+                        {a.labDue.length > 0 && !twoLines && (
                           <span
                             title={a.labDue
                               .map(l => `${l.work} · ${l.lab} (${l.status})`)
                               .join('\n')}
-                            style={{
-                              display: 'inline-block',
-                              marginLeft: 5,
-                              padding: '0 5px',
-                              borderRadius: '4px',
-                              backgroundColor: '#2743A6',
-                              color: '#FFFFFF',
-                              fontSize: '9px',
-                              fontWeight: 800,
-                              letterSpacing: '0.5px',
-                              verticalAlign: 'middle',
-                            }}
+                            style={labPillStyle}
                           >
                             LAB
                           </span>
+                        )}
+                        {a.note && !threeLines && (
+                          <StickyNote
+                            size={11}
+                            aria-label='Observação'
+                            style={{
+                              marginLeft: 5,
+                              verticalAlign: 'middle',
+                              color: '#9A6700',
+                            }}
+                          />
                         )}
                       </span>
                       {twoLines ? (
@@ -539,8 +613,33 @@ export function AgendaGrid({
                             textOverflow: 'ellipsis',
                           }}
                         >
+                          {labLabel && (
+                            <span
+                              title={a.labDue
+                                .map(l => `${l.work} · ${l.lab} (${l.status})`)
+                                .join('\n')}
+                              style={{ ...labPillStyle, marginLeft: 0 }}
+                            >
+                              {labLabel}
+                            </span>
+                          )}
                           {a.treatmentName} ·{' '}
                           {STATUS_LABEL[a.status] ?? a.status}
+                        </span>
+                      ) : null}
+                      {threeLines ? (
+                        <span
+                          style={{
+                            display: 'block',
+                            fontSize: '11px',
+                            fontStyle: 'italic',
+                            color: '#7A4B00',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {a.note}
                         </span>
                       ) : null}
                     </button>
@@ -568,16 +667,28 @@ export function AgendaGrid({
             style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
           >
             <div>
-              <p
+              {/* 3.ª reunião/02: o nome abre a ficha no separador Consultas
+                  (nova aba — a receção não perde a agenda) */}
+              <Link
+                href={`/admin/pacientes/${selected.patientId}?tab=consultas`}
+                target='_blank'
+                rel='noopener'
+                title='Abrir a ficha do paciente — marcações futuras e passadas'
                 style={{
-                  margin: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
                   fontSize: '15px',
                   fontWeight: 700,
                   color: '#1B2A6B',
+                  textDecoration: 'underline',
+                  textDecorationColor: '#C9D2EE',
+                  textUnderlineOffset: '3px',
                 }}
               >
                 {selected.patientLabel}
-              </p>
+                <ExternalLink size={13} style={{ color: '#2743A6' }} />
+              </Link>
               <p
                 style={{
                   margin: '4px 0 0',

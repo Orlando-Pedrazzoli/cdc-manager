@@ -65,6 +65,8 @@ export const PLACEHOLDERS: { key: string; label: string }[] = [
   { key: 'medico.cedula', label: 'Cédula profissional' },
   { key: 'clinica.nome', label: 'Nome da clínica' },
   { key: 'clinica.morada', label: 'Morada da clínica' },
+  { key: 'clinica.telefone', label: 'Telefone da clínica' },
+  { key: 'clinica.email', label: 'Email da clínica' },
   { key: 'data', label: 'Data de emissão (por extenso)' },
   { key: 'data.curta', label: 'Data de emissão (dd/mm/aaaa)' },
   { key: 'consulta.data', label: 'Data da consulta' },

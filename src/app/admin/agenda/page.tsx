@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { dbConnect } from '@/lib/mongodb';
 import { getActiveClinics } from '@/models/Clinic';
-import { clinicLabel, defaultClinic } from '@/lib/branding';
+import { clinicBadge, clinicLabel, defaultClinic } from '@/lib/branding';
 import Doctor from '@/models/Doctor';
 import Appointment, {
   BLOCKING_STATUS,
@@ -169,6 +169,10 @@ export default async function AgendaPage({
     return <p>Nenhuma clínica configurada — correr o seed.</p>;
   }
   const clinicId = String(clinic._id);
+  // 3.ª reunião/04: a cor da clínica ativa marca o seletor, o botão e o
+  // modal de nova marcação — "uma cor diferente por clínica"
+  const clinicIndex = clinics.findIndex(c => String(c._id) === clinicId);
+  const activeBadge = clinicBadge(clinic, Math.max(clinicIndex, 0));
 
   // Grelha: abertura ao fecho da clínica neste dia da semana
   const weekday = weekdayOf(date);
@@ -595,21 +599,34 @@ export default async function AgendaPage({
                 overflow: 'hidden',
               }}
             >
-              {clinics.map(c => {
+              {clinics.map((c, i) => {
                 const active = String(c._id) === clinicId;
+                const badge = clinicBadge(c, i);
                 return (
                   <Link
                     key={c.slug}
                     href={buildHref({ clinic: c.slug, medico: null })}
                     style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
                       padding: '8px 14px',
                       fontSize: '13px',
                       fontWeight: 700,
                       textDecoration: 'none',
-                      color: active ? '#FFFFFF' : '#1B2A6B',
-                      backgroundColor: active ? '#2743A6' : '#FFFFFF',
+                      color: active ? '#FFFFFF' : badge.fg,
+                      backgroundColor: active ? badge.fg : '#FFFFFF',
                     }}
                   >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '999px',
+                        backgroundColor: active ? '#FFFFFF' : badge.fg,
+                        flexShrink: 0,
+                      }}
+                    />
                     {clinicLabel(c)}
                   </Link>
                 );
@@ -733,6 +750,7 @@ export default async function AgendaPage({
             {/* Nova marcação (o modal tem seletor de data próprio) */}
             <AgendaToolbar
               clinicId={clinicId}
+              clinic={{ label: activeBadge.label, color: activeBadge.fg }}
               date={date}
               rooms={rooms.map(r => ({ id: String(r._id), name: r.name }))}
               doctors={doctorColumns.map(d => ({ id: d.id, name: d.name }))}
@@ -981,6 +999,7 @@ export default async function AgendaPage({
               appointments={gridAppointments}
               rescheduleClinics={rescheduleClinics}
               labOptions={labOptions}
+              historyHref={`/admin/agenda/historico?clinic=${clinic.slug}`}
             />
           </div>
           {/* P4: calendário com cores de ocupação */}
