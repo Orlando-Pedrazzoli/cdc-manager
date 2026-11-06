@@ -31,7 +31,7 @@ function hhmm(t: string): string | null {
   return t.slice(0, 5);
 }
 
-await runScript('02-doctors', async args => {
+void runScript('02-doctors', async args => {
   const { Doctor, Employee, Clinic } = await import('@/models');
   const clinic = await Clinic.findOne({ slug: 'colombo' }).lean();
   if (!clinic) throw new Error("Clínica 'colombo' em falta");

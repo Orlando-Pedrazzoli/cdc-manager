@@ -42,7 +42,7 @@ function kindFromName(name: string): string {
   return 'OTHER';
 }
 
-await runScript('08-legacy-invoices', async args => {
+void runScript('08-legacy-invoices', async args => {
   const { LegacyInvoice, Patient, Doctor, TreatmentType } = await import('@/models');
   const refs = await loadRefs();
   const patientMap = await loadLegacyMap(Patient);

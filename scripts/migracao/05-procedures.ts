@@ -33,7 +33,7 @@ function procStatus(sit: number, executedAt: Date | null): 'planned' | 'complete
 
 type Row = { AuxAuto: number; Pac: number; Dia: string; Trat: string; Time: string; Face: number; CdX: number; CdY: number; Especial: string; Entidade: number; Guia: string; Dente: string; SitFac: number; Clinico: number; CorMaterial: number; ValuePac: string; ValueEnt: string; ValueChanged: string; PlanoGeral: number; PlanoPage: number; Especialidade: number; Posto: number; CodTratInt: string | null; Episodio: number; Quadrante: number };
 
-await runScript('05-procedures', async args => {
+void runScript('05-procedures', async args => {
   const { Procedure, Patient, Doctor, TreatmentType, Appointment } = await import('@/models');
   const refs = await loadRefs();
   const patientMap = await loadLegacyMap(Patient);

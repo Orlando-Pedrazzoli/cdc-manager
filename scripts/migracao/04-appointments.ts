@@ -24,7 +24,7 @@ const SLOT_MIN = 30;
 type AgendaRow = { Medico: number; Dia: string; Hora: string; Conf: string; Marcacao: string | null; Mecano: number; Entidade: number; Operador: number; DiaMarcacao: string; Obs: string | null; AuxSMS: string; PacOptions: string; PacComment: string | null; ObsRemote: string | null };
 type FaltaRow = { Medico: number; Mecano: number; Dia: string; Hora: string; FaltaCancela: string; Marcacao: string; Obs: string; Tipo: string };
 
-await runScript('04-appointments', async args => {
+void runScript('04-appointments', async args => {
   const { Appointment, Patient, Doctor } = await import('@/models');
   const refs = await loadRefs();
   const patientMap = await loadLegacyMap(Patient);

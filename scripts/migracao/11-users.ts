@@ -26,7 +26,7 @@ type Entry = { name: string; email: string; title?: string; dentoralCode?: numbe
 
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z\s]/g, ' ').replace(/\b(dr|dra|doutor|doutora)\b/g, '').split(/\s+/).filter(t => t.length > 1);
 
-await runScript('11-users', async args => {
+void runScript('11-users', async args => {
   const { Doctor, User } = await import('@/models');
   const loose = process.argv.includes('--loose');
   const list: Entry[] = JSON.parse(readFileSync(resolve('scripts/migracao/data/medicos-ativos.json'), 'utf8'));

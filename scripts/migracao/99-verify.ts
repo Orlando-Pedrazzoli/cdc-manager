@@ -6,7 +6,7 @@
 
 import { runScript, q, log } from './lib/common';
 
-await runScript('99-verify', async () => {
+void runScript('99-verify', async () => {
   const M = await import('@/models');
   const one = async (sql: string) => Number((await q<any>(sql))[0]?.n ?? 0);
   const row = (label: string, mysql: number, mongo: number, note = '') => console.log(`${label.padEnd(34)} MySQL ${String(mysql).padStart(9)}   Mongo ${String(mongo).padStart(9)}   ${mongo === mysql ? '✓' : note || `Δ ${mongo - mysql}`}`);

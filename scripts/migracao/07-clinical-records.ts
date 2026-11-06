@@ -20,7 +20,7 @@ import { columns, tableExists, pick, selectAll, describeMapping } from './lib/dy
 
 type ObsGer = { Pac: number; Tipo: number; Dia: string; Dente: string; AuxAutoTrt: number; Vista: string; Obs: string | null; Operador: number; Aux: number };
 
-await runScript('07-clinical-records', async args => {
+void runScript('07-clinical-records', async args => {
   const { ClinicalRecord, Patient, Doctor } = await import('@/models');
   const refs = await loadRefs();
   const patientMap = await loadLegacyMap(Patient);

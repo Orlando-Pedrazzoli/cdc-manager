@@ -22,7 +22,7 @@ import { runScript, q, str, cents, tooth, lisbonDate, yn, log, progress, upsertB
 
 type Row = { NumGeral: number; Titulo: string | null; NumOrc: number; Pac: number; Dia: string; Trat: string; Dente: string; Valor: string; Situacao: string; Aprovado: string; AuxAutoTrt: number; Fase: number; Clinico: number; Total: string; FaseDesc: string | null; SeqNum: number; prognostico: string | null; grau_dificuldade: string | null };
 
-await runScript('06-treatment-plans', async args => {
+void runScript('06-treatment-plans', async args => {
   const { TreatmentPlan, Patient, Doctor, TreatmentType, Procedure } = await import('@/models');
   const refs = await loadRefs();
   const patientMap = await loadLegacyMap(Patient);

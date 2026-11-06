@@ -71,7 +71,7 @@ type Row = {
   Factura: string;
 };
 
-await runScript('01-treatment-types', async args => {
+void runScript('01-treatment-types', async args => {
   const { TreatmentType } = await import('@/models');
 
   // 1. tabela canónica (12) + códigos de outras tabelas que foram usados

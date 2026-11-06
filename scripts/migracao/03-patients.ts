@@ -20,7 +20,7 @@ type Pac = Record<string, any>;
 
 const MARITAL: Record<string, string> = { Casado: 'casado', Divorciado: 'divorciado', Viuvo: 'viuvo' };
 
-await runScript('03-patients', async args => {
+void runScript('03-patients', async args => {
   const { Patient, Doctor } = await import('@/models');
 
   const doctorMap = await loadLegacyMap(Doctor);

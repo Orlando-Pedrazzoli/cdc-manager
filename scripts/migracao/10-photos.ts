@@ -19,7 +19,7 @@ function sniff(buf: Buffer): string {
   return 'jpg';
 }
 
-await runScript('10-photos', async args => {
+void runScript('10-photos', async args => {
   const { Patient } = await import('@/models');
   const patientMap = await loadLegacyMap(Patient);
   const withPhoto = new Set<string>((await Patient.find({ photoPublicId: { $type: 'string' } }, { legacyId: 1 }).lean()).map(p => String(p.legacyId)));

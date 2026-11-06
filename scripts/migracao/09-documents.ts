@@ -26,7 +26,7 @@ function slugFile(name: string): string {
   return name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\.[a-z0-9]{1,5}$/i, '').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'ficheiro';
 }
 
-await runScript('09-documents', async args => {
+void runScript('09-documents', async args => {
   const { Document, Patient } = await import('@/models');
   const refs = await loadRefs();
   const patientMap = await loadLegacyMap(Patient);

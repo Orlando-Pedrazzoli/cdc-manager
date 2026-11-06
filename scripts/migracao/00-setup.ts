@@ -13,7 +13,7 @@
 
 import { runScript, q, log, SYSTEM_USER_EMAIL, PLACEHOLDER_DOCTOR_LEGACY, LEGACY_APPOINTMENT_TT_CODE, LEGACY_FREE_BUDGET_TT_CODE } from './lib/common';
 
-await runScript('00-setup', async args => {
+void runScript('00-setup', async args => {
   const { Clinic, User, Doctor, TreatmentType } = await import('@/models');
 
   // --- MySQL ----------------------------------------------------------------
