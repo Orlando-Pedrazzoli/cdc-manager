@@ -75,21 +75,19 @@ void runScript('01-treatment-types', async args => {
   const { TreatmentType } = await import('@/models');
 
   // 1. tabela canónica (12) + códigos de outras tabelas que foram usados
-  const rows = await q<Row>(`
+  // (MySQL 5.5 re-avalia subqueries IN(...) linha a linha → fazemos o filtro em JS)
+  const used = new Set<string>();
+  for (const [tbl, col] of [['tratexec', 'Trat'], ['doclin', 'CodTT'], ['planotrat', 'Trat']] as const) {
+    for (const r of await q<{ c: string }>(`SELECT ${col} AS c FROM ${tbl} GROUP BY ${col}`)) used.add(String(r.c).trim());
+    log(`códigos usados até ${tbl}: ${used.size}`);
+  }
+  const all = await q<Row>(`
     SELECT t.CodT, t.Entidade, t.Abrev, t.NomeT, t.Desactivar, t.TipoTrat, tt.DescTipoTT,
            t.ValEntid, t.ValBenef, t.Meses, t.AutorizaRX, t.TiraDente, t.CodE, t.Factura
     FROM tabelat t LEFT JOIN tipot tt ON tt.TipoTrat = t.TipoTrat
-    WHERE t.Entidade = 12
-    UNION ALL
-    SELECT t.CodT, t.Entidade, t.Abrev, t.NomeT, t.Desactivar, t.TipoTrat, tt.DescTipoTT,
-           t.ValEntid, t.ValBenef, t.Meses, t.AutorizaRX, t.TiraDente, t.CodE, t.Factura
-    FROM tabelat t LEFT JOIN tipot tt ON tt.TipoTrat = t.TipoTrat
-    WHERE t.Entidade <> 12
-      AND t.CodT NOT IN (SELECT CodT FROM tabelat WHERE Entidade = 12)
-      AND (t.CodT IN (SELECT DISTINCT Trat FROM tratexec)
-        OR t.CodT IN (SELECT DISTINCT CodTT FROM doclin)
-        OR t.CodT IN (SELECT DISTINCT Trat FROM planotrat))
-    ORDER BY CodT, Entidade DESC`);
+    ORDER BY t.CodT, t.Entidade DESC`);
+  const canonical = new Set(all.filter(r => Number(r.Entidade) === 12).map(r => String(r.CodT).trim()));
+  const rows = all.filter(r => Number(r.Entidade) === 12 || (!canonical.has(String(r.CodT).trim()) && used.has(String(r.CodT).trim())));
 
   // dedupe por CodT (prioridade: 12, depois a entidade mais alta)
   const byCode = new Map<string, Row>();
