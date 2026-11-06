@@ -12,7 +12,7 @@
 
 import { runScript, q, log, progress, loadLegacyMap } from './lib/common';
 import sharp from 'sharp';
-import { uploadBuffer, existsInCloudinary, withRetry, ROOT_FOLDER } from './lib/cloud';
+import { uploadBuffer, withRetry, errMsg, ROOT_FOLDER } from './lib/cloud';
 
 const ACTIVE_SINCE_DEFAULT = '2021-11-01';
 
@@ -98,20 +98,18 @@ void runScript('10-photos', async args => {
     if (args.dryRun) { progress('fotos', done, ids.length, t0); continue; }
     const publicId = `${ROOT_FOLDER()}/pacientes-foto/${String(patientId)}`;
     try {
-      let finalId = publicId;
-      if (!(await existsInCloudinary(publicId, 'image'))) {
-        const [row] = await q<{ PFoto: Buffer | null }>('SELECT PFoto FROM paciente WHERE PMecano = ?', [PMecano]);
-        if (!row?.PFoto?.length) { failed++; continue; }
-        const img = await prepare(row.PFoto);
-        if (img.repaired) repaired++;
-        const up = await withRetry(() => uploadBuffer(img.data, publicId, img.ext));
-        finalId = up.publicId;
-        uploaded++;
-      }
-      await Patient.updateOne({ _id: patientId, photoPublicId: null }, { $set: { photoPublicId: finalId } }, { timestamps: false });
+      // sem Admin API (limite 500/h): o upload com overwrite:false devolve o asset existente sem erro
+      const [row] = await q<{ PFoto: Buffer | null }>('SELECT PFoto FROM paciente WHERE PMecano = ?', [PMecano]);
+      if (!row?.PFoto?.length) { failed++; continue; }
+      const img = await prepare(row.PFoto);
+      if (img.repaired) repaired++;
+      const up = await withRetry(() => uploadBuffer(img.data, publicId, img.ext));
+      uploaded++;
+      await Patient.updateOne({ _id: patientId, photoPublicId: null }, { $set: { photoPublicId: up.publicId } }, { timestamps: false });
     } catch (e: any) {
       failed++;
-      log(`ERRO foto ${PMecano}: ${e?.message ?? e}`);
+      log(`ERRO foto ${PMecano}: ${errMsg(e)}`);
+      if (/rate limit|420/i.test(errMsg(e))) { log('Cloudinary em rate limit — a parar; relança mais tarde (retoma onde ficou)'); break; }
     }
     progress('fotos', done, ids.length, t0);
   }

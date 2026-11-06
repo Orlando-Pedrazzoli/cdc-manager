@@ -17,7 +17,7 @@
 
 import { runScript, q, str, lisbonDate, log, progress, loadLegacyMap, loadRefs } from './lib/common';
 import { Types } from 'mongoose';
-import { uploadBuffer, existsInCloudinary, extOf, resourceTypeFor, withRetry, ROOT_FOLDER } from './lib/cloud';
+import { uploadBuffer, extOf, withRetry, errMsg, ROOT_FOLDER } from './lib/cloud';
 
 type Meta = { FileName: string; FileSize: number; FileEspec: number; FileType: string; DatePost: string; OperatorPost: number };
 type Pac = { Espec: number; Pac: number; ItemNumber: number; FileName: string; SharePac: string; SharePacName: string | null; SharePacObs: string | null };
@@ -54,22 +54,16 @@ void runScript('09-documents', async args => {
     const ext = extOf(m.FileName, m.FileType);
     const docId = new Types.ObjectId();
     const publicId = `${ROOT_FOLDER()}/pacientes/${docId.toHexString()}`;
-    const resourceType = resourceTypeFor(ext);
     const category = link && Number(link.ItemNumber) === 4 ? 'consent' : 'other';
     const title = (link ? ITEM_LABEL[Number(link.ItemNumber)] : null) ?? str(m.FileName, 160) ?? 'Documento Dentoral';
     const note = [link?.SharePacName ? `Partilhado: ${str(link.SharePacName, 60)}` : null, str(link?.SharePacObs ?? null, 200)].filter(Boolean).join(' · ').slice(0, 300) || null;
 
     if (args.dryRun) { progress('documents', done, metas.length, t0); continue; }
     try {
-      let up: { publicId: string; resourceType: 'image' | 'raw'; format: string | null; bytes: number };
-      if (await existsInCloudinary(publicId, resourceType)) {
-        up = { publicId, resourceType, format: ext, bytes: Number(m.FileSize) || 0 };
-      } else {
-        const [row] = await q<{ Document: Buffer | null }>('SELECT Document FROM documents WHERE FileName = ? LIMIT 1', [m.FileName]);
-        if (!row?.Document?.length) { failed++; log(`BLOB vazio: ${m.FileName}`); continue; }
-        up = await withRetry(() => uploadBuffer(row.Document!, publicId, ext));
-        uploaded++;
-      }
+      const [row] = await q<{ Document: Buffer | null }>('SELECT Document FROM documents WHERE FileName = ? LIMIT 1', [m.FileName]);
+      if (!row?.Document?.length) { failed++; log(`BLOB vazio: ${m.FileName}`); continue; }
+      const up = await withRetry(() => uploadBuffer(row.Document!, publicId, ext));
+      uploaded++;
       await Document.updateOne(
         { publicId: up.publicId },
         { $setOnInsert: {
@@ -83,7 +77,8 @@ void runScript('09-documents', async args => {
       have.set(legacyId, up as any);
     } catch (e: any) {
       failed++;
-      log(`ERRO ${m.FileName}: ${e?.message ?? e}`);
+      log(`ERRO ${m.FileName}: ${errMsg(e)}`);
+      if (/rate limit|420/i.test(errMsg(e))) { log('Cloudinary em rate limit — a parar; relança mais tarde (retoma onde ficou)'); break; }
     }
     progress('documents', done, metas.length, t0);
   }
