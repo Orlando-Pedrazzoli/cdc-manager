@@ -14,6 +14,7 @@
 //   médico-placeholder.
 // =============================================================================
 
+import { createHash } from 'node:crypto';
 import { Types } from 'mongoose';
 import { runScript, q, str, tooth, lisbonDate, yn, log, progress, loadLegacyMap, loadRefs } from './lib/common';
 import { columns, tableExists, pick, selectAll, describeMapping } from './lib/dyn';
@@ -79,25 +80,31 @@ void runScript('07-clinical-records', async args => {
   // ---------------------------------------------------------------------------
   // 2) obsger
   // ---------------------------------------------------------------------------
-  let lastAux = 0, n = 0;
-  for (;;) {
+  // obsger.Aux NÃO é único (auto-increment por grupo no MyISAM) → pagina por paciente
+  // e usa chave obsger:<Pac>:<Dia>:<Aux>:<Tipo>:<hash do texto>.
+  // Limpeza da 1.ª tentativa (chave antiga 'obsger:<Aux>'), idempotente:
+  if (!args.dryRun) await ClinicalRecord.updateMany({ 'notes.legacyId': /^obsger:\d+$/ }, { $pull: { notes: { legacyId: /^obsger:\d+$/ } } }, { timestamps: false });
+  const h8 = (t: string) => createHash('sha1').update(t).digest('hex').slice(0, 8);
+  const obsPacs = await q<{ Pac: number }>('SELECT Pac FROM obsger GROUP BY Pac ORDER BY Pac');
+  let n = 0;
+  for (let i = 0; i < obsPacs.length; i += 500) {
     if (n >= args.limit) break;
-    const rows = await q<ObsGer>('SELECT Pac, Tipo, Dia, Dente, AuxAutoTrt, Vista, CONVERT(Obs USING latin1) AS Obs, Operador, Aux FROM obsger WHERE Aux > ? ORDER BY Aux LIMIT ?', [lastAux, args.batch]);
-    if (!rows.length) break;
+    const slice = obsPacs.slice(i, i + 500).map(p => Number(p.Pac));
+    const rows = await q<ObsGer>('SELECT Pac, Tipo, Dia, Dente, AuxAutoTrt, Vista, CONVERT(Obs USING latin1) AS Obs, Operador, Aux FROM obsger WHERE Pac IN (?) ORDER BY Pac, Dia, Aux', [slice]);
     for (const r of rows) {
-      lastAux = Number(r.Aux);
       n++;
       const d = tooth(r.Dente);
-      const prefix = [r.Tipo === 15 ? '[Alerta]' : null, d ? `[Dente ${d}]` : null].filter(Boolean).join(' ');
-      const text = [prefix, str(r.Obs)].filter(Boolean).join(' ');
-      addNote(Number(r.Pac), `obsger:${r.Aux}`, text, r.Dia, r.Operador, {});
+      const prefix = [Number(r.Tipo) === 15 ? '[Alerta]' : null, d ? `[Dente ${d}]` : null].filter(Boolean).join(' ');
+      const body = str(r.Obs) ?? '';
+      const text = [prefix, body].filter(Boolean).join(' ');
+      addNote(Number(r.Pac), `obsger:${Number(r.Pac)}:${r.Dia}:${Number(r.Aux)}:${Number(r.Tipo)}:${h8(body)}`, text, r.Dia, r.Operador, {});
     }
     if (pending.length >= args.batch) await flush();
     progress('obsger', n, null, t0);
   }
   await flush();
   console.log();
-  log('obsger → notes', { lidas: n, adicionadas: haveNote.size, semPaciente: skippedNoPatient });
+  log('obsger → notes', { lidas: n, adicionadas: [...haveNote].filter(k => k.startsWith('obsger:')).length, semPaciente: skippedNoPatient });
 
   // ---------------------------------------------------------------------------
   // 3) obsdent (esquema desconhecido → mapeamento dinâmico)
@@ -108,22 +115,23 @@ void runScript('07-clinical-records', async args => {
     const cDia = pick(cols, ['Dia', 'Data', /dia|data/i], /date/);
     const cDente = pick(cols, ['Dente', /dente|tooth/i]);
     const cObs = pick(cols, ['Obs', 'Texto', /obs|text|desc/i], /text|char/);
-    const cOp = pick(cols, ['Operador', 'Clinico', 'Medico', /oper|clin|medic/i]);
+    const cOp = pick(cols.filter(c => !/refclinica/i.test(c.name)), ['Operador', 'Clinico', 'Medico', /^oper|^clin|^medic/i]);
     const cKey = pick(cols, ['Aux', 'AuxAuto', 'AuxAutoInc', /^aux/i, /^id$/i]);
     describeMapping('obsdent', { pac: cPac, dia: cDia, dente: cDente, obs: cObs, operador: cOp, chave: cKey });
     if (cPac && cObs) {
       const rows = await q<any>(`SELECT ${selectAll('obsdent', cols)} FROM obsdent`);
-      let i = 0;
+      let i = 0, before = haveNote.size;
       for (const r of rows) {
         i++;
         const d = tooth(r[cDente ?? '']);
-        const legacyId = cKey ? `obsdent:${r[cKey]}` : `obsdent:${r[cPac]}:${r[cDente ?? ''] ?? ''}:${r[cDia ?? ''] ?? ''}:${i}`;
-        const text = [d ? `[Dente ${d}]` : null, str(r[cObs])].filter(Boolean).join(' ');
+        const body = str(r[cObs]) ?? '';
+        const legacyId = `obsdent:${r[cPac]}:${cDia ? r[cDia] : ''}:${cKey ? r[cKey] : i}:${h8(body)}`;
+        const text = [d ? `[Dente ${d}]` : null, body].filter(Boolean).join(' ');
         addNote(Number(r[cPac]), legacyId, text, cDia ? r[cDia] : null, cOp ? r[cOp] : 0, {});
         if (pending.length >= args.batch) await flush();
       }
       await flush();
-      log('obsdent → notes', { lidas: rows.length });
+      log('obsdent → notes', { lidas: rows.length, adicionadas: haveNote.size - before });
     } else log('obsdent: colunas essenciais não encontradas — ignorado (confirmar com Victor)');
   }
 
@@ -170,7 +178,7 @@ void runScript('07-clinical-records', async args => {
         if (!lines.length) continue;
         withContent++;
         const text = `Anamnese Dentoral (migrada; respostas positivas):\n${lines.join('\n')}`.slice(0, 3000);
-        ops.push({ updateOne: { filter: { _id: recId, $or: [{ anamnesisNotes: null }, { anamnesisNotes: '' }] }, update: { $set: { anamnesisNotes: text, anamnesisUpdatedAt: latest, 'legacyData.anamnese': raw } } } });
+        ops.push({ updateOne: { filter: { _id: recId, $or: [{ anamnesisNotes: null }, { anamnesisNotes: '' }] }, update: { $set: { anamnesisNotes: text, anamnesisUpdatedAt: latest, legacyData: { anamnese: raw } } } } });
       }
       if (!args.dryRun) for (let i = 0; i < ops.length; i += 500) await ClinicalRecord.bulkWrite(ops.slice(i, i + 500), { ordered: false, timestamps: false });
       log('anamnese → anamnesisNotes', { pacientes: byPac.size, comRespostasPositivas: withContent });
