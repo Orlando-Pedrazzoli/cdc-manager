@@ -2,14 +2,15 @@
 // =============================================================================
 // Passo 10 — paciente.PFoto (BLOB) → Cloudinary → Patient.photoPublicId
 //
-// · publicId: `cdc/legacy/photos/<PMecano>` (type private).
+// · publicId: `{CLOUDINARY_FOLDER}/pacientes-foto/<patientId>` (type authenticated) —
+//   a mesma convenção de src/actions/patients.ts, para a app ler/substituir a foto.
 // · Só pacientes migrados sem photoPublicId. Idempotente/retomável.
 // · 77 220 fotos — correr com --limit primeiro; demora.
 // · Deteta formato pelos magic bytes (JPEG/PNG/BMP/GIF); desconhecido → jpg.
 // =============================================================================
 
 import { runScript, q, log, progress, loadLegacyMap } from './lib/common';
-import { uploadBuffer, existsInCloudinary, withRetry } from './lib/cloud';
+import { uploadBuffer, existsInCloudinary, withRetry, ROOT_FOLDER } from './lib/cloud';
 
 function sniff(buf: Buffer): string {
   if (buf[0] === 0xff && buf[1] === 0xd8) return 'jpg';
@@ -34,7 +35,7 @@ void runScript('10-photos', async args => {
     const patientId = patientMap.get(legacyId);
     if (!patientId || withPhoto.has(legacyId)) { skipped++; continue; }
     if (args.dryRun) { progress('fotos', done, ids.length, t0); continue; }
-    const publicId = `cdc/legacy/photos/${Number(PMecano)}`;
+    const publicId = `${ROOT_FOLDER()}/pacientes-foto/${String(patientId)}`;
     try {
       let finalId = publicId;
       if (!(await existsInCloudinary(publicId, 'image'))) {

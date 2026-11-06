@@ -14,7 +14,7 @@ npm i mysql2   # cloudinary e tsx já estão no projeto
 
 ```
 DENTORAL_MYSQL_URL=mysql://root@127.0.0.1:3308/drdata
-CLOUDINARY_URL=cloudinary://<api_key>:<api_secret>@<cloud_name>
+# Cloudinary: usa as variáveis que a app já tem (CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, CLOUDINARY_FOLDER)
 ```
 
 `MONGODB_URI` já lá está (Atlas `cdc-manager`). **Aponta para o cluster certo antes de correr.**

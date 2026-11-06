@@ -5,9 +5,10 @@
 // · documentspac liga (Pac, ItemNumber, FileName) ao ficheiro em documents
 //   (FileName). ItemNumber: 3 = FICHA NOVA (ficha de paciente digitalizada),
 //   4 = RGPD (consentimento) — categoria 'consent'; resto → 'other'.
-// · Cada BLOB sobe para o Cloudinary com publicId
-//   `cdc/legacy/patients/<PMecano>/<slug-do-ficheiro>` (idempotente: se o
-//   asset já existe e há Document com esse publicId, salta).
+// · Cada BLOB sobe para o Cloudinary com a convenção da app:
+//   `{CLOUDINARY_FOLDER}/pacientes/<documentId>` (type authenticated), em que
+//   documentId é o _id do Document gerado antes do upload. Idempotente: se já
+//   há Document com este legacyId salta; se o asset já existir, reutiliza.
 // · legacyId = `documents:<FileName>` (FileName é único na tabela documents).
 // · Lento (2.2 GB) — corre com --limit primeiro; pode ser interrompido e
 //   retomado (salta o que já existe).
@@ -15,16 +16,13 @@
 // =============================================================================
 
 import { runScript, q, str, lisbonDate, log, progress, loadLegacyMap, loadRefs } from './lib/common';
-import { uploadBuffer, existsInCloudinary, extOf, resourceTypeFor, withRetry } from './lib/cloud';
+import { Types } from 'mongoose';
+import { uploadBuffer, existsInCloudinary, extOf, resourceTypeFor, withRetry, ROOT_FOLDER } from './lib/cloud';
 
 type Meta = { FileName: string; FileSize: number; FileEspec: number; FileType: string; DatePost: string; OperatorPost: number };
 type Pac = { Espec: number; Pac: number; ItemNumber: number; FileName: string; SharePac: string; SharePacName: string | null; SharePacObs: string | null };
 
 const ITEM_LABEL: Record<number, string> = { 3: 'Ficha de paciente (Dentoral)', 4: 'Consentimento RGPD (Dentoral)' };
-
-function slugFile(name: string): string {
-  return name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\.[a-z0-9]{1,5}$/i, '').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'ficheiro';
-}
 
 void runScript('09-documents', async args => {
   const { Document, Patient } = await import('@/models');
@@ -54,7 +52,8 @@ void runScript('09-documents', async args => {
     if (!patientId) { noPatient++; continue; }
 
     const ext = extOf(m.FileName, m.FileType);
-    const publicId = `cdc/legacy/patients/${pac}/${slugFile(m.FileName)}`;
+    const docId = new Types.ObjectId();
+    const publicId = `${ROOT_FOLDER()}/pacientes/${docId.toHexString()}`;
     const resourceType = resourceTypeFor(ext);
     const category = link && Number(link.ItemNumber) === 4 ? 'consent' : 'other';
     const title = (link ? ITEM_LABEL[Number(link.ItemNumber)] : null) ?? str(m.FileName, 160) ?? 'Documento Dentoral';
@@ -74,9 +73,9 @@ void runScript('09-documents', async args => {
       await Document.updateOne(
         { publicId: up.publicId },
         { $setOnInsert: {
-            legacyId, patientId, category, title, publicId: up.publicId, resourceType: up.resourceType, format: up.format, bytes: up.bytes,
+            _id: docId, legacyId, patientId, category, title, publicId: up.publicId, resourceType: up.resourceType, format: up.format, bytes: up.bytes,
             visibleToPatient: false, uploadedByUserId: refs.systemUserId, appointmentId: null, note, voidedAt: null, voidedByUserId: null, voidReason: null,
-            legacyData: { fileEspec: m.FileEspec, fileType: m.FileType, operatorPost: m.OperatorPost, itemNumber: link?.ItemNumber ?? null, espec: link?.Espec ?? null, sharePac: link?.SharePac ?? null },
+            legacyData: { fileName: m.FileName, fileEspec: m.FileEspec, fileType: m.FileType, operatorPost: m.OperatorPost, itemNumber: link?.ItemNumber ?? null, espec: link?.Espec ?? null, sharePac: link?.SharePac ?? null },
             createdAt: lisbonDate(m.DatePost) ?? new Date(), updatedAt: lisbonDate(m.DatePost) ?? new Date(),
         } },
         { upsert: true, timestamps: false },

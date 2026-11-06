@@ -1,7 +1,10 @@
 // 📄 scripts/migracao/lib/cloud.ts
 // =============================================================================
 // Upload de BLOBs do Dentoral para o Cloudinary (conta da clínica).
-// Requer CLOUDINARY_URL=cloudinary://<api_key>:<api_secret>@<cloud_name>
+// Usa as mesmas variáveis da app (CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET /
+// CLOUDINARY_FOLDER) e as mesmas convenções de src/lib/cloudinary.ts:
+//   · type 'authenticated' (a app assina as URLs de preview/download)
+//   · documentos: {root}/pacientes/{documentId}   · fotos: {root}/pacientes-foto/{patientId}
 // =============================================================================
 
 import { v2 as cloudinary, type UploadApiResponse } from 'cloudinary';
@@ -9,10 +12,16 @@ import { v2 as cloudinary, type UploadApiResponse } from 'cloudinary';
 let configured = false;
 export function ensureCloudinary(): void {
   if (configured) return;
-  if (!process.env.CLOUDINARY_URL) throw new Error('CLOUDINARY_URL em falta no .env.local');
-  cloudinary.config({ secure: true });
+  if (process.env.CLOUDINARY_URL) cloudinary.config({ secure: true });
+  else {
+    const { CLOUDINARY_CLOUD_NAME: cloud_name, CLOUDINARY_API_KEY: api_key, CLOUDINARY_API_SECRET: api_secret } = process.env;
+    if (!cloud_name || !api_key || !api_secret) throw new Error('CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET em falta no .env.local');
+    cloudinary.config({ cloud_name, api_key, api_secret, secure: true });
+  }
   configured = true;
 }
+
+export const ROOT_FOLDER = () => process.env.CLOUDINARY_FOLDER || 'cdc-manager';
 
 export type UploadResult = { publicId: string; resourceType: 'image' | 'raw'; format: string | null; bytes: number };
 
@@ -32,7 +41,7 @@ export function extOf(fileName: string | null, fileType: string | null): string 
 export async function existsInCloudinary(publicId: string, resourceType: 'image' | 'raw'): Promise<boolean> {
   ensureCloudinary();
   try {
-    await cloudinary.api.resource(publicId, { resource_type: resourceType });
+    await cloudinary.api.resource(publicId, { resource_type: resourceType, type: 'authenticated' });
     return true;
   } catch (e: any) {
     if (e?.error?.http_code === 404 || e?.http_code === 404) return false;
@@ -45,7 +54,7 @@ export async function uploadBuffer(buf: Buffer, publicId: string, ext: string | 
   const resourceType = resourceTypeFor(ext);
   const res = await new Promise<UploadApiResponse>((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { public_id: publicId, resource_type: resourceType, overwrite: false, invalidate: false, type: 'private', ...(opts.folder ? { folder: opts.folder } : {}) },
+      { public_id: publicId, resource_type: resourceType, overwrite: false, invalidate: false, type: 'authenticated', ...(opts.folder ? { folder: opts.folder } : {}) },
       (err, result) => (err || !result ? reject(err ?? new Error('upload sem resultado')) : resolve(result)),
     );
     stream.end(buf);

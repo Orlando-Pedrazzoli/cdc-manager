@@ -23,7 +23,7 @@ void runScript('99-verify', async () => {
   row('obsger', await one("SELECT COUNT(*) n FROM obsger WHERE Obs IS NOT NULL AND Obs <> ''"), notes[0]?.n ?? 0);
   row('faturação (ccorrentes)', await one('SELECT COUNT(*) n FROM ccorrentes'), await M.LegacyInvoice.countDocuments({}));
   row('documentos', await one('SELECT COUNT(*) n FROM documents'), await M.Document.countDocuments({ legacyId: /^documents:/ }), 'só ligados a paciente');
-  row('fotos', await one('SELECT COUNT(*) n FROM paciente WHERE PFoto IS NOT NULL AND LENGTH(PFoto) > 0'), await M.Patient.countDocuments({ photoPublicId: /^cdc\/legacy\/photos\// }));
+  row('fotos', await one('SELECT COUNT(*) n FROM paciente WHERE PFoto IS NOT NULL AND LENGTH(PFoto) > 0'), await M.Patient.countDocuments({ photoPublicId: { $type: 'string' }, legacyId: /^dentoral:/ }));
 
   console.log('\n=== Integridade ===');
   const orphanProc = await M.Procedure.countDocuments({ legacyId: /^tratexec:/, patientId: null });
