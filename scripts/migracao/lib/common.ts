@@ -343,6 +343,9 @@ export function progress(label: string, done: number, total: number | null, t0: 
 }
 
 export async function runScript(name: string, fn: (args: Args) => Promise<void>): Promise<void> {
+  process.on('unhandledRejection', e => { console.error('✖ unhandledRejection:', e); process.exitCode = 1; });
+  process.on('exit', code => { if (code === 0 && !finished) console.error(`✖ ${name}: processo terminou antes de concluir (event loop vazio)`); });
+  let finished = false;
   const args = parseArgs();
   const t0 = Date.now();
   log(`▶ ${name}`, { dryRun: args.dryRun, update: args.update, limit: args.limit === Infinity ? 'all' : args.limit });
@@ -350,9 +353,11 @@ export async function runScript(name: string, fn: (args: Args) => Promise<void>)
     await connectAll();
     await fn(args);
     log(`✔ ${name} concluído em ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+    finished = true;
   } catch (err) {
     console.error(`\n✖ ${name} falhou:`, err);
     process.exitCode = 1;
+    finished = true;
   } finally {
     await closeAll();
   }

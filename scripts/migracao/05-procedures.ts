@@ -34,6 +34,7 @@ function procStatus(sit: number, executedAt: Date | null): 'planned' | 'complete
 type Row = { AuxAuto: number; Pac: number; Dia: string; Trat: string; Time: string; Face: number; CdX: number; CdY: number; Especial: string; Entidade: number; Guia: string; Dente: string; SitFac: number; Clinico: number; CorMaterial: number; ValuePac: string; ValueEnt: string; ValueChanged: string; PlanoGeral: number; PlanoPage: number; Especialidade: number; Posto: number; CodTratInt: string | null; Episodio: number; Quadrante: number };
 
 void runScript('05-procedures', async args => {
+  const t00 = Date.now();
   const { Procedure, Patient, Doctor, TreatmentType, Appointment } = await import('@/models');
   const refs = await loadRefs();
   const patientMap = await loadLegacyMap(Patient);
@@ -47,13 +48,18 @@ void runScript('05-procedures', async args => {
   const legacyTT = await TreatmentType.findById(refs.legacyAppointmentTypeId).lean();
 
   // marcações por paciente+dia (para ligar appointmentId)
+  log(`mapas: ${patientMap.size} pacientes, ${doctorMap.size} médicos, ${ttById.size} atos — a carregar marcações…`);
   const apptByPatDay = new Map<string, any>();
-  const apptCursor = Appointment.find({ legacyId: { $regex: '^agenda:' } }, { patientId: 1, startAt: 1 }).lean().cursor();
+  const fmt = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Lisbon' }); // YYYY-MM-DD
+  const apptCursor = Appointment.find({ legacyId: { $regex: '^agenda:' } }, { patientId: 1, startAt: 1 }).lean().cursor({ batchSize: 5000 });
+  let nAppt = 0;
   for await (const a of apptCursor) {
-    const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Lisbon' }).format(a.startAt as Date); // YYYY-MM-DD
-    const key = `${a.patientId}|${day}`;
+    if (!(a.startAt instanceof Date)) continue;
+    const key = `${a.patientId}|${fmt.format(a.startAt)}`;
     if (!apptByPatDay.has(key)) apptByPatDay.set(key, a._id);
+    if (++nAppt % 50000 === 0) progress('marcações', nAppt, null, t00);
   }
+  if (nAppt >= 50000) console.log();
   log(`mapas: ${patientMap.size} pacientes, ${doctorMap.size} médicos, ${ttById.size} atos, ${apptByPatDay.size} marcações/dia`);
 
   const [{ n: total }] = await q<{ n: number }>(`SELECT COUNT(*) n FROM tratexec WHERE Inicial = 'Não'`);
