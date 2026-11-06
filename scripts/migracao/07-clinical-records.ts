@@ -83,7 +83,7 @@ void runScript('07-clinical-records', async args => {
   // obsger.Aux NÃO é único (auto-increment por grupo no MyISAM) → pagina por paciente
   // e usa chave obsger:<Pac>:<Dia>:<Aux>:<Tipo>:<hash do texto>.
   // Limpeza da 1.ª tentativa (chave antiga 'obsger:<Aux>'), idempotente:
-  if (!args.dryRun) await ClinicalRecord.updateMany({ 'notes.legacyId': /^obsger:\d+$/ }, { $pull: { notes: { legacyId: /^obsger:\d+$/ } } }, { timestamps: false });
+  if (!args.dryRun) await ClinicalRecord.updateMany({ 'notes.legacyId': /^(obsger|obsdent):\d+$/ }, { $pull: { notes: { legacyId: /^(obsger|obsdent):\d+$/ } } }, { timestamps: false });
   const h8 = (t: string) => createHash('sha1').update(t).digest('hex').slice(0, 8);
   const obsPacs = await q<{ Pac: number }>('SELECT Pac FROM obsger GROUP BY Pac ORDER BY Pac');
   let n = 0;
