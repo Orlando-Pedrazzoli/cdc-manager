@@ -15,7 +15,7 @@ void runScript('99-verify', async () => {
   row('pacientes', await one('SELECT COUNT(*) n FROM paciente'), await M.Patient.countDocuments({ legacyId: /^dentoral:/ }));
   row('médicos (medicos)', await one('SELECT COUNT(*) n FROM medicos'), (await M.Doctor.countDocuments({ legacyId: /^dentoral:[1-9]/ })) + (await M.Employee.countDocuments({ legacyId: /^dentoral:/ })), 'médicos + funcionários');
   row('agenda com paciente', await one('SELECT COUNT(*) n FROM agenda WHERE Mecano > 0'), await M.Appointment.countDocuments({ legacyId: /^agenda:/ }), 'ver 04 (duplicados de slot)');
-  row('faltas', await one('SELECT COUNT(*) n FROM faltas'), await M.Appointment.countDocuments({ legacyId: /^faltas:/ }));
+  row('faltas com paciente', await one('SELECT COUNT(*) n FROM faltas WHERE Mecano > 0'), await M.Appointment.countDocuments({ legacyId: /^faltas:/ }));
   row('tratexec (não inicial)', await one("SELECT COUNT(*) n FROM tratexec WHERE Inicial <> 'Sim'"), await M.Procedure.countDocuments({ legacyId: /^tratexec:/ }));
   row('planos (planotrat)', await one('SELECT COUNT(DISTINCT Pac, NumGeral) n FROM planotrat'), await M.TreatmentPlan.countDocuments({ legacyId: /^planotrat:/ }));
   row('orçamentos livres', await one('SELECT COUNT(*) n FROM orclivre'), await M.TreatmentPlan.countDocuments({ legacyId: /^orclivre:/ }));
@@ -33,15 +33,27 @@ void runScript('99-verify', async () => {
   const plansLinked = await M.Procedure.countDocuments({ legacyId: /^tratexec:/, treatmentPlanId: { $ne: null } });
   const invNoPatient = await M.LegacyInvoice.countDocuments({ patientId: null });
   const invVoided = await M.LegacyInvoice.countDocuments({ voided: true });
-  const sumInv = await M.LegacyInvoice.aggregate([{ $match: { voided: false, kind: { $in: ['FR', 'FT', 'TV', 'VD'] } } }, { $group: { _id: null, t: { $sum: '$totalCents' } } }]);
-  const sumMy = Number((await q<any>("SELECT ROUND(SUM(Valor)*100) n FROM ccorrentes WHERE Anulado='Não' AND TipDoc IN (120,121,122,126,127,128)"))[0]?.n ?? 0);
+  // soma por tipo de documento (não anulados): MySQL vs Mongo
+  const myByType = new Map<number, number>();
+  for (const r of await q<any>("SELECT TipDoc, ROUND(SUM(Valor)*100) AS c FROM ccorrentes WHERE Anulado='Não' GROUP BY TipDoc")) myByType.set(Number(r.TipDoc), Number(r.c));
+  const moByType = new Map<number, { t: number; name: string }>();
+  for (const r of await M.LegacyInvoice.aggregate([{ $match: { voided: false } }, { $group: { _id: '$docTypeCode', t: { $sum: '$totalCents' }, name: { $first: '$docTypeName' } } }])) moByType.set(Number(r._id), { t: r.t, name: r.name });
+  let sumOk = true;
+  for (const [code, c] of [...myByType.entries()].sort((a, b) => a[0] - b[0])) {
+    const m = moByType.get(code);
+    const ok = m && m.t === c;
+    if (!ok) sumOk = false;
+    console.log(`  tipo ${String(code).padStart(3)} ${(m?.name ?? '?').padEnd(36).slice(0, 36)} MySQL ${(c / 100).toFixed(2).padStart(14)} €   Mongo ${((m?.t ?? 0) / 100).toFixed(2).padStart(14)} €  ${ok ? '✓' : '✗'}`);
+  }
+  const sumMy = [...myByType.values()].reduce((a, b) => a + b, 0);
+  const sumMo = [...moByType.values()].reduce((a, b) => a + b.t, 0);
   const recsNoNotes = await M.ClinicalRecord.countDocuments({ notes: { $size: 0 }, anamnesisNotes: null });
   const patientsNoRecord = (await M.Patient.countDocuments({ legacyId: /^dentoral:/ })) - (await M.ClinicalRecord.countDocuments({}));
   log('procedures sem paciente', { n: orphanProc });
   log('procedures/consultas com médico placeholder', { procedures: procPlaceholder, consultas: apptPlaceholder });
   log('procedures ligados a plano', { n: plansLinked });
   log('faturas sem paciente / anuladas', { semPaciente: invNoPatient, anuladas: invVoided });
-  log('soma faturas válidas (FR/FT/TV) em cêntimos', { mysql: sumMy, mongo: sumInv[0]?.t ?? 0, ok: sumMy === (sumInv[0]?.t ?? 0) });
+  log('soma de todos os documentos não anulados', { mysql: (sumMy / 100).toFixed(2) + ' €', mongo: (sumMo / 100).toFixed(2) + ' €', ok: sumOk && sumMy === sumMo });
   log('clinicalrecords vazios / pacientes sem record', { vazios: recsNoNotes, semRecord: Math.max(0, patientsNoRecord) });
 
   console.log('\n=== Amostra (3 pacientes com mais histórico) ===');

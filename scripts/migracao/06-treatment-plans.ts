@@ -17,6 +17,7 @@
 // · legacyId = planotrat:<Pac>:<NumGeral> | orclivre:<Pac>:<NOrc>
 // =============================================================================
 
+import { createHash } from 'node:crypto';
 import { Types } from 'mongoose';
 import { runScript, q, str, cents, tooth, lisbonDate, yn, log, progress, upsertByLegacyId, loadLegacyMap, loadRefs, type UpsertStats } from './lib/common';
 
@@ -146,6 +147,8 @@ void runScript('06-treatment-plans', async args => {
   }
 
   // --- orclivre ---------------------------------------------------------------
+  // limpeza da 1.ª tentativa (chave antiga orclivre:<Pac>:<NOrc>, que perdia versões)
+  if (!args.dryRun) { const del = await TreatmentPlan.deleteMany({ legacyId: /^orclivre:\d+:\d+$/ }); if (del.deletedCount) log(`orclivre: removidos ${del.deletedCount} planos com chave antiga`); }
   const orc = await q<any>('SELECT Pac, NOrc, Dia, Valor, Aprovado, CONVERT(Texto USING latin1) AS Texto, CONVERT(Obs USING latin1) AS Obs FROM orclivre ORDER BY Pac, NOrc');
   const ostats: UpsertStats = { inserted: 0, updated: 0, skipped: 0 };
   const odocs: Record<string, any>[] = [];
@@ -156,7 +159,8 @@ void runScript('06-treatment-plans', async args => {
     const v = cents(r.Valor);
     const approved = yn(r.Aprovado);
     odocs.push({
-      legacyId: `orclivre:${Number(r.Pac)}:${Number(r.NOrc)}`,
+      // NOrc não é único por paciente (versões do mesmo orçamento) → inclui data e hash do texto
+      legacyId: `orclivre:${Number(r.Pac)}:${Number(r.NOrc)}:${r.Dia}:${createHash('sha1').update(String(r.Texto ?? '') + '|' + String(r.Valor ?? '')).digest('hex').slice(0, 8)}`,
       clinicId: refs.clinicId,
       patientId,
       doctorId: refs.placeholderDoctorId,
