@@ -212,6 +212,12 @@ const PatientSchema = new Schema(
       default: null,
       index: true,
     },
+    // Campos Dentoral sem lugar no modelo (profissão-código, nº beneficiário,
+    // indicado-por, autorizações de contacto…) — consulta/auditoria
+    legacyData: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
   },
   {
     timestamps: true,

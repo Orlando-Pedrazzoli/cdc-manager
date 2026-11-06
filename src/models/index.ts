@@ -20,6 +20,7 @@ export { default as ClinicalRecord } from './ClinicalRecord';
 export { default as Odontogram } from './Odontogram';
 export { default as Document } from './Document';
 export { default as Invoice } from './Invoice';
+export { default as LegacyInvoice } from './LegacyInvoice';
 export { default as Product } from './Product';
 export { default as Warehouse } from './Warehouse';
 export { default as StockMovement } from './StockMovement';

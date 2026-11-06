@@ -77,6 +77,18 @@ const DocumentSchema = new Schema(
       default: null,
     },
     voidReason: { type: String, trim: true, maxlength: 300, default: null },
+    // --- Migração Dentoral ---------------------------------------------------
+    // legacyId: chave idempotente do import (scripts/migracao). legacyData:
+    // campos originais sem lugar no modelo, guardados para consulta/auditoria.
+    legacyId: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    legacyData: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
   },
   { timestamps: true },
 );
