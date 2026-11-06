@@ -140,7 +140,10 @@ function lisbonOffsetMs(utcMs: number): number {
 }
 
 export function isValidDateStr(d: unknown): d is string {
-  return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d) && !d.startsWith('0000') && !d.startsWith('1900-01-01') && !d.startsWith('1899');
+  if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(d)) return false;
+  const y = Number(d.slice(0, 4));
+  // Dentoral usa 0000-00-00 / 1900-01-01 como vazio e 9900-01-01 / 3529-12-31 como "a realizar"
+  return y >= 1950 && y <= 2100;
 }
 
 /** 'YYYY-MM-DD' + 'HH:MM:SS' em hora de parede de Lisboa → instante UTC */

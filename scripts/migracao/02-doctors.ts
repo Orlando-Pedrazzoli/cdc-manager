@@ -16,7 +16,7 @@
 
 import { runScript, q, str, yn, nif, phoneE164, email, lisbonDate, cents, log, upsertByLegacyId, type UpsertStats } from './lib/common';
 
-const WEEKDAY_BASE: 'monday' | 'sunday' = 'monday';
+const WEEKDAY_BASE = 'sunday' as 'monday' | 'sunday'; // validado 6 nov 2026 (agdconf da Dra. Jerusa: 1 = domingo)
 
 type Medico = {
   Codigo: number; Activo: string; Nome: string; TipoAcesso: number; Espec: number;

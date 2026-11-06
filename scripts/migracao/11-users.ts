@@ -8,7 +8,8 @@
 //   normaliza acentos/maiúsculas e exige que TODOS os tokens do nome curto
 //   da lista existam no nome do Dentoral (ex.: "Jerusa Teixeira Levandoski"
 //   bate em "JERUSA TEIXEIRA LEVANDOSKI" ou "DRA JERUSA T. LEVANDOSKI" se
-//   --loose). Ambiguidades e não-encontrados são impressos para resolver à mão.
+//   --loose). `dentoralCode` no JSON força o match (ex.: Jerusa tem 2 fichas).
+//   Ambiguidades e não-encontrados são impressos para resolver à mão.
 // · Doctors migrados que NÃO estão na lista ficam active=false (histórico
 //   continua visível, mas não aparecem na agenda).
 // · User criado só se não existir um com o mesmo email; sem password
@@ -21,7 +22,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { runScript, log } from './lib/common';
 
-type Entry = { name: string; email: string; title?: string };
+type Entry = { name: string; email: string; title?: string; dentoralCode?: number };
 
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z\s]/g, ' ').replace(/\b(dr|dra|doutor|doutora)\b/g, '').split(/\s+/).filter(t => t.length > 1);
 
@@ -37,10 +38,12 @@ await runScript('11-users', async args => {
   for (const e of list) {
     const toks = norm(e.name);
     const need = loose ? Math.min(2, toks.length) : toks.length;
-    const hits = doctors.filter(d => {
-      const dn = norm(String(d.name));
-      return toks.filter(t => dn.includes(t)).length >= need;
-    });
+    const hits = e.dentoralCode
+      ? doctors.filter(d => d.legacyId === `dentoral:${e.dentoralCode}`)
+      : doctors.filter(d => {
+          const dn = norm(String(d.name));
+          return toks.filter(t => dn.includes(t)).length >= need;
+        });
     if (hits.length === 1) matched.set(String(hits[0]._id), { doctor: hits[0], entry: e });
     else {
       unmatched.push(e);

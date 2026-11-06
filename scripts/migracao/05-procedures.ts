@@ -18,6 +18,19 @@
 
 import { runScript, q, pageByKey, str, cents, tooth, facesText, lisbonDate, log, progress, upsertByLegacyId, loadLegacyMap, loadRefs, type UpsertStats } from './lib/common';
 
+// SitFac (validado 6 nov 2026 com contagens 2026): 0 por faturar · 1 faturado ·
+// 2 faturado parcial · 50 faturado (talão/consulta — a confirmar) · 99 anulado.
+// Atos sem data real (9900-01-01 / 3529-12-31 = "a realizar") → 'planned'.
+// Atos por faturar anteriores a UNBILLED_KEEP_SINCE → 'invoiced' + nota, para não
+// encher a fila de cobrança com histórico; os recentes ficam 'completed' (a cobrar).
+const UNBILLED_KEEP_SINCE = new Date('2025-01-01T00:00:00Z');
+function procStatus(sit: number, executedAt: Date | null): 'planned' | 'completed' | 'invoiced' | 'void' {
+  if (sit === 99) return 'void';
+  if (!executedAt) return 'planned';
+  if (sit === 1 || sit === 2 || sit === 50) return 'invoiced';
+  return executedAt < UNBILLED_KEEP_SINCE ? 'invoiced' : 'completed';
+}
+
 type Row = { AuxAuto: number; Pac: number; Dia: string; Trat: string; Time: string; Face: number; CdX: number; CdY: number; Especial: string; Entidade: number; Guia: string; Dente: string; SitFac: number; Clinico: number; CorMaterial: number; ValuePac: string; ValueEnt: string; ValueChanged: string; PlanoGeral: number; PlanoPage: number; Especialidade: number; Posto: number; CodTratInt: string | null; Episodio: number; Quadrante: number };
 
 await runScript('05-procedures', async args => {
@@ -68,7 +81,7 @@ await runScript('05-procedures', async args => {
       const price = cents(r.ValuePac) + cents(r.ValueEnt);
       const sit = Number(r.SitFac);
       const faces = facesText(r.Face);
-      const notes = [faces ? `Faces: ${faces}` : null, str(r.Guia) ? `Guia: ${str(r.Guia)}` : null, str(r.CodTratInt) ? `Cód. interno: ${str(r.CodTratInt)}` : null].filter(Boolean).join(' · ') || null;
+      const notes = [!executedAt ? 'Data Dentoral = a realizar' : null, sit === 0 && executedAt && executedAt < UNBILLED_KEEP_SINCE ? 'Sem faturação registada no Dentoral (histórico)' : null, faces ? `Faces: ${faces}` : null, str(r.Guia) ? `Guia: ${str(r.Guia)}` : null, str(r.CodTratInt) ? `Cód. interno: ${str(r.CodTratInt)}` : null].filter(Boolean).join(' · ') || null;
       const dc = Number(r.Clinico);
       docs.push({
         legacyId: `tratexec:${Number(r.AuxAuto)}`,
@@ -78,7 +91,7 @@ await runScript('05-procedures', async args => {
         treatmentTypeId: tt._id,
         appointmentId: day ? apptByPatDay.get(`${patientId}|${day}`) ?? null : null,
         treatmentPlanId: null,
-        status: sit === 1 ? 'invoiced' : sit === 99 ? 'void' : 'completed',
+        status: procStatus(sit, executedAt),
         nameSnapshot: tt.name,
         categorySnapshot: tt.category,
         listPriceCents: price,
