@@ -38,6 +38,7 @@ MySQL local tem de estar a correr (terminal 1):
 | 06 | `06-treatment-plans.ts` | `planotrat` + `orclivre` → `TreatmentPlan` (+ liga `Procedure.treatmentPlanId`) | 15k planos | 2–5 min |
 | 07 | `07-clinical-records.ts` | `obsger` + `obsdent` + `anmtexto/anmtitulo` → `ClinicalRecord` | 164k notas | 5–10 min |
 | 08 | `08-legacy-invoices.ts` | `ccorrentes` + `doclin` + `defdocs` + `ccconcilia` → `LegacyInvoice` | 329k | 10–20 min |
+| 8b | `08b-concilia.ts` | `ccconcilia` → `LegacyInvoice.relatedLegacyIds` (recibo ↔ fatura) | 11.7k | segundos |
 | 09 | `09-documents.ts` | `documents` + `documentspac` (BLOB) → Cloudinary + `Document` | 11k / 2.2 GB | horas (retomável) |
 | 10 | `10-photos.ts` | `paciente.PFoto` → Cloudinary + `Patient.photoPublicId` | 77k | horas (retomável) |
 | 11 | `11-users.ts` | `data/medicos-ativos.json` (lista do Victor) → `Doctor.active` + `User` (invited) | 22 | segundos |
@@ -63,6 +64,7 @@ npx tsx --env-file=.env.local scripts/migracao/05-procedures.ts
 npx tsx --env-file=.env.local scripts/migracao/06-treatment-plans.ts
 npx tsx --env-file=.env.local scripts/migracao/07-clinical-records.ts
 npx tsx --env-file=.env.local scripts/migracao/08-legacy-invoices.ts
+npx tsx --env-file=.env.local scripts/migracao/08b-concilia.ts
 npx tsx --env-file=.env.local scripts/migracao/11-users.ts
 npx tsx --env-file=.env.local scripts/migracao/99-verify.ts
 # BLOBs — só depois de ter a conta Cloudinary da clínica:
