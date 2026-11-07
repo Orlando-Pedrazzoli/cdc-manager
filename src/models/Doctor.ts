@@ -225,6 +225,10 @@ const DoctorSchema = new Schema(
       default: null,
       index: true,
     },
+    legacyData: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
     active: {
       type: Boolean,
       default: true,

@@ -222,6 +222,18 @@ const AppointmentSchema = new Schema(
     checkedInAt: { type: Date, default: null },
     startedAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },
+    // --- Migração Dentoral ---------------------------------------------------
+    // legacyId: chave idempotente do import (scripts/migracao). legacyData:
+    // campos originais sem lugar no modelo, guardados para consulta/auditoria.
+    legacyId: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    legacyData: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
   },
   {
     timestamps: true,

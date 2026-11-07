@@ -107,6 +107,9 @@ const EmployeeSchema = new Schema(
       ref: 'User',
       default: null,
     },
+    // Migração Dentoral (medicos.Codigo dos operadores não-clínicos)
+    legacyId: { type: String, default: null, index: true },
+    legacyData: { type: Schema.Types.Mixed, default: null },
   },
   { timestamps: true },
 );

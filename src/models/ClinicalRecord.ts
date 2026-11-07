@@ -43,6 +43,8 @@ const ClinicalNoteSchema = new Schema(
       default: null,
     },
     createdAt: { type: Date, default: Date.now },
+    // Migração Dentoral (obsger.Aux) — idempotência do import de notas
+    legacyId: { type: String, default: null },
   },
   { _id: true },
 );
@@ -139,11 +141,18 @@ const ClinicalRecordSchema = new Schema(
       maxlength: 3000,
       default: null,
     },
+    // Migração Dentoral — respostas brutas da anamnese (anmtexto) e afins
+    legacyData: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
   },
   {
     timestamps: true,
   },
 );
+
+ClinicalRecordSchema.index({ 'notes.legacyId': 1 });
 
 export type ClinicalRecordDoc = InferSchemaType<typeof ClinicalRecordSchema> & {
   _id: mongoose.Types.ObjectId;
