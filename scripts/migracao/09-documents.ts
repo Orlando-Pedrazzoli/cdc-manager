@@ -116,13 +116,20 @@ void runScript('09-documents', async args => {
 
     if (distinctMd5.size === 1) {
       // 1 conteúdo (1 BLOB ou cópias idênticas) → todas as ligações
-      const [row] = await q<Blob>('SELECT CONVERT(FileName USING latin1) AS FileName, FileSize, FileType, DatePost, OperatorPost, MD5(Document) AS md5, Document FROM documents WHERE FileName = ? LIMIT 1', [name]);
+      const [row] = await q<Blob>('SELECT CONVERT(FileName USING latin1) AS FileName, FileSize, FileType, DatePost, OperatorPost, MD5(Document) AS md5, Document FROM documents WHERE BINARY FileName = ? LIMIT 1', [name]);
       if (!row?.Document?.length) { stats.falhas++; log(`BLOB vazio: ${name}`); continue; }
       if (ls.length > 1) stats.partilhados += ls.length;
       for (let k = 0; k < ls.length; k++) await migrateOne(row, ls[k], k, ls.length > 1 ? { sharedBlob: true } : {});
     } else if (ms.length === ls.length) {
       // N BLOBs distintos ↔ N ligações → ordem física (auditável)
-      const rows = await q<Blob>('SELECT CONVERT(FileName USING latin1) AS FileName, FileSize, FileType, DatePost, OperatorPost, MD5(Document) AS md5, Document FROM documents WHERE FileName = ?', [name]);
+      const rows = await q<Blob>('SELECT CONVERT(FileName USING latin1) AS FileName, FileSize, FileType, DatePost, OperatorPost, MD5(Document) AS md5, Document FROM documents WHERE BINARY FileName = ?', [name]);
+      if (rows.length !== ls.length) {
+        // MySQL (latin1) ignora maiúsculas/espaços finais — se mesmo com BINARY não bater, é ambíguo
+        stats.ambiguos += rows.length;
+        ambiguous.push(`${name};${rows.length};${ls.length};${[...new Set(ls.map(l => l.Pac))].join(' ')};${rows.map(m => m.FileSize).join(' ')}`);
+        progress('grupos', stats.grupos, names.length, t0);
+        continue;
+      }
       stats.porOrdem += rows.length;
       for (let k = 0; k < rows.length; k++) await migrateOne(rows[k], ls[k], k, { pairedByOrder: true });
     } else {
