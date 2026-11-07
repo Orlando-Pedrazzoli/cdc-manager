@@ -104,6 +104,16 @@ void runScript('09-documents', async args => {
     const pendingKeys = ls.map((l, k) => `documents:${name}:${Number(l.Pac)}:${k}`).filter(key => !have.has(key));
     if (!pendingKeys.length) { stats.jaExistiam += ls.length; progress('grupos', stats.grupos, names.length, t0); continue; }
 
+    if (args.dryRun) {
+      // só classifica, sem ler BLOBs
+      if (distinctMd5.size === 1) { if (ls.length > 1) stats.partilhados += ls.length; }
+      else if (ms.length === ls.length) stats.porOrdem += ms.length;
+      else { stats.ambiguos += ms.length; ambiguous.push(`${name};${ms.length};${ls.length};${[...new Set(ls.map(l => l.Pac))].join(' ')};${ms.map(m => m.FileSize).join(' ')}`); }
+      for (const l of ls) if (!patientMap.has(`dentoral:${Number(l.Pac)}`)) stats.semPaciente++;
+      progress('grupos', stats.grupos, names.length, t0);
+      continue;
+    }
+
     if (distinctMd5.size === 1) {
       // 1 conteúdo (1 BLOB ou cópias idênticas) → todas as ligações
       const [row] = await q<Blob>('SELECT CONVERT(FileName USING latin1) AS FileName, FileSize, FileType, DatePost, OperatorPost, MD5(Document) AS md5, Document FROM documents WHERE FileName = ? LIMIT 1', [name]);
