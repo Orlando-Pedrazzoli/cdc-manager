@@ -120,7 +120,8 @@ void runScript('07-clinical-records', async args => {
     describeMapping('obsdent', { pac: cPac, dia: cDia, dente: cDente, obs: cObs, operador: cOp, chave: cKey });
     if (cPac && cObs) {
       const rows = await q<any>(`SELECT ${selectAll('obsdent', cols)} FROM obsdent`);
-      let i = 0, before = haveNote.size;
+      let i = 0;
+      const before = haveNote.size;
       for (const r of rows) {
         i++;
         const d = tooth(r[cDente ?? '']);

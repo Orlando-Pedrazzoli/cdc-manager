@@ -43,6 +43,8 @@ MySQL local tem de estar a correr (terminal 1):
 | 10 | `10-photos.ts` | `paciente.PFoto` → Cloudinary + `Patient.photoPublicId` | 77k | horas (retomável) |
 | 11 | `11-users.ts` | `data/medicos-ativos.json` (lista do Victor) → `Doctor.active` + `User` (invited) | 22 | segundos |
 | 12 | `12-fix-nif.ts` | anula NIFs placeholder/inválidos nos pacientes (original em legacyData) | — | segundos |
+| 13 | `13-chart-effects.ts` | infere `TreatmentType.chartEffect` (como o ato pinta o odontograma) + CSV para revisão | 1 290 | segundos |
+| 14 | `14-odontogram.ts` | `tratexec` (estado inicial + atos por dente) → `Odontogram` v1 por paciente | ~60k pacientes | 5–10 min |
 | 99 | `99-verify.ts` | contagens MySQL vs Mongo, integridade, amostra | — | 1 min |
 
 Correr sempre pela ordem. Primeiro **a seco e com limite**:
@@ -67,6 +69,9 @@ npx tsx --env-file=.env.local scripts/migracao/07-clinical-records.ts
 npx tsx --env-file=.env.local scripts/migracao/08-legacy-invoices.ts
 npx tsx --env-file=.env.local scripts/migracao/08b-concilia.ts
 npx tsx --env-file=.env.local scripts/migracao/11-users.ts
+npx tsx --env-file=.env.local scripts/migracao/12-fix-nif.ts
+npx tsx --env-file=.env.local scripts/migracao/13-chart-effects.ts
+npx tsx --env-file=.env.local scripts/migracao/14-odontogram.ts --faces "1=O,2=M,4=D,16=V,32=L"
 npx tsx --env-file=.env.local scripts/migracao/99-verify.ts
 # BLOBs — só depois de ter a conta Cloudinary da clínica:
 npx tsx --env-file=.env.local scripts/migracao/09-documents.ts --limit 50     # teste

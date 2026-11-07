@@ -23,6 +23,7 @@ import {
   SLOT_GRANULARITY_MIN,
   type DurationSource,
 } from '@/lib/domain';
+import { CHART_EFFECTS } from '@/lib/odontogram-chart';
 
 // Canónicos em lib/domain.ts (client precisa em runtime) — re-export para o
 // código server continuar a poder importar do model, como sempre
@@ -102,6 +103,14 @@ const TreatmentTypeSchema = new Schema(
       trim: true,
       maxlength: 60,
       default: null,
+      index: true,
+    },
+    // Como o ato pinta o odontograma (ver lib/odontogram-chart.ts). Inferido
+    // por palavras-chave na migração; a clínica corrige no catálogo.
+    chartEffect: {
+      type: String,
+      enum: CHART_EFFECTS,
+      default: 'none',
       index: true,
     },
     // Flag 'Controla Dente' do Dentoral: o ato EXIGE nº de dente ao registar
