@@ -52,9 +52,10 @@ export async function existsInCloudinary(publicId: string, resourceType: 'image'
 export async function uploadBuffer(buf: Buffer, publicId: string, ext: string | null, opts: { folder?: string } = {}): Promise<UploadResult> {
   ensureCloudinary();
   const resourceType = resourceTypeFor(ext);
+  // upload em pedaços de 5 MB + timeout de 3 min: tolera ligações lentas / Cloudinary a abrandar
   const res = await new Promise<UploadApiResponse>((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      { public_id: publicId, resource_type: resourceType, overwrite: false, invalidate: false, type: 'authenticated', ...(opts.folder ? { folder: opts.folder } : {}) },
+    const stream = cloudinary.uploader.upload_chunked_stream(
+      { public_id: publicId, resource_type: resourceType, overwrite: false, invalidate: false, type: 'authenticated', chunk_size: 5 * 1024 * 1024, timeout: 180000, ...(opts.folder ? { folder: opts.folder } : {}) },
       (err, result) => (err || !result ? reject(err ?? new Error('upload sem resultado')) : resolve(result)),
     );
     stream.end(buf);
@@ -66,10 +67,10 @@ export function errMsg(e: any): string {
   return e?.error?.message ?? e?.message ?? (typeof e === 'string' ? e : JSON.stringify(e));
 }
 
-export async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>, tries = 4): Promise<T> {
   let last: unknown;
   for (let i = 0; i < tries; i++) {
-    try { return await fn(); } catch (e) { last = e; if (/rate limit|420/i.test(errMsg(e))) throw e; await new Promise(r => setTimeout(r, 1500 * (i + 1))); }
+    try { return await fn(); } catch (e) { last = e; if (/rate limit|420/i.test(errMsg(e))) throw e; await new Promise(r => setTimeout(r, 5000 * (i + 1))); }
   }
   throw last;
 }
