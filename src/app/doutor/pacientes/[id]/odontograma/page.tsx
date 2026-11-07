@@ -18,6 +18,7 @@ import Doctor from '@/models/Doctor';
 import Odontogram from '@/models/Odontogram';
 import Procedure from '@/models/Procedure';
 import { Odontograma } from '@/components/clinico/Odontograma';
+import { loadChartEvents } from '@/lib/odontogram-events';
 import type {
   ToothEntry,
   ToothProcedure,
@@ -126,7 +127,11 @@ export default async function OdontogramPage({
       ? requested
       : latestVersion;
   const readOnly = latestVersion > 0 && showVersion < latestVersion;
-  const proceduresByTooth = await loadProceduresByTooth(id);
+  const [proceduresByTooth, chartEvents] = await Promise.all([
+    loadProceduresByTooth(id),
+    // executado/planeado derivados dos atos e planos (sem 'initial': vem de initialTeeth)
+    loadChartEvents(id, { odontogramVersion: null }),
+  ]);
 
   const doc =
     showVersion > 0
@@ -267,6 +272,7 @@ export default async function OdontogramPage({
         key={showVersion}
         patientId={id}
         initialTeeth={initialTeeth}
+        events={chartEvents}
         versionLabel={versionLabel}
         readOnly={readOnly}
         proceduresByTooth={proceduresByTooth}

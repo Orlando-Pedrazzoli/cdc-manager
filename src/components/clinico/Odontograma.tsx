@@ -2,22 +2,23 @@
 // =============================================================================
 // CDC Manager — Clínico: Odontograma interativo (Client Component)
 // -----------------------------------------------------------------------------
-// Mapa das 2 arcadas da dentição definitiva (32 dentes, notação FDI) em SVG:
-// cada dente é um diagrama de 5 faces (O central, M/D/V/L em trapézios) —
-// a representação clássica que os médicos conhecem do papel e do Dentoral.
+// Mapa das 2 arcadas da dentição definitiva (32 dentes, FDI) em SVG: cada
+// dente é um diagrama de 5 faces (O central, M/D/V/L em trapézios) + zona
+// radicular (endodontia / espigão) — a representação que os médicos conhecem
+// do papel e do Dentoral.
 //
-//   · Clicar num dente seleciona-o → painel ToothDetail à direita
-//   · Cores por condição de face (cárie vermelho, restauração azul…)
-//   · Estados de dente inteiro com marca central (✕ ausente, I implante,
-//     C coroa, P pôntico, R resto radicular, E a extrair) + legenda
-//   · Orientação anatómica: MESIAL aponta para a linha média (Q1/Q4 →
-//     direita; Q2/Q3 → esquerda); VESTIBULAR para fora da boca (arcada
-//     superior → cima; inferior → baixo) — como num odontograma real
+// O MAPA É DERIVADO, não desenhado à mão (Open Dental / CareStack / Curve):
+//   · EXISTENTE  (verde)  — registo manual do médico: estado inicial, achados
+//                           (cárie, fratura, desgaste), trabalho feito noutro lado
+//   · EXECUTADO  (azul)   — atos completados/faturados na clínica (Procedures)
+//   · PLANEADO   (laranja, contorno) — itens de plano / atos planeados
+// Camadas comutáveis; LINHA TEMPORAL para ver "como estava em…".
+// Só a camada EXISTENTE é editável aqui (painel ToothDetail) e grava uma
+// NOVA VERSÃO (snapshot imutável). Executado/planeado mudam ao registar atos
+// e planos — nunca há dupla entrada.
 //
-// A gravação cria uma NOVA VERSÃO (snapshot completo, imutável). Só os
-// dentes com algo assinalado viajam. Ao ver uma versão antiga (?v=) tudo
-// fica read-only. Dentição decídua fica para uma iteração futura
-// (odontopediatria) — o modelo e as validações já a suportam.
+// Orientação anatómica: MESIAL para a linha média (Q1/Q4 → direita; Q2/Q3 →
+// esquerda); VESTIBULAR para fora da boca (superior → cima; inferior → baixo).
 // =============================================================================
 
 'use client';
@@ -25,7 +26,7 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Save } from 'lucide-react';
+import { Save, Layers, CalendarClock } from 'lucide-react';
 import {
   saveOdontogramAction,
   type ConsultationActionState,
@@ -35,11 +36,18 @@ import {
   LOWER_TEETH,
   TOOTH_STATUS_LABEL,
   FACE_CONDITION_LABEL,
-  FACE_CONDITIONS,
   type FaceCondition,
   type ToothFace,
   type ToothStatus,
 } from '@/lib/domain';
+import {
+  deriveToothStates,
+  type ChartEvent,
+  type ChartLayer,
+  type ToothChartState,
+  type FaceConditionKey,
+} from '@/lib/odontogram-chart';
+import type { SerializedChartEvent } from '@/lib/odontogram-events';
 import {
   ToothDetail,
   emptyTooth,
@@ -51,31 +59,35 @@ import { Button } from '@/components/ui/Button';
 import { OdontogramaArcada } from '@/components/clinico/OdontogramaArcada';
 
 // --- Cores (inline SEMPRE — convenção do projeto) -----------------------------
-const CONDITION_COLOR: Record<FaceCondition, string> = {
+/** Cor por camada para TRABALHO (restauração, selante, coroa, implante…) */
+export const LAYER_COLOR: Record<ChartLayer, string> = {
+  existing: '#0F7B4D', // verde — já existia
+  completed: '#2743A6', // azul — feito na clínica
+  planned: '#E0A100', // laranja — a fazer
+};
+export const LAYER_LABEL: Record<ChartLayer, string> = {
+  existing: 'Existente',
+  completed: 'Executado',
+  planned: 'Planeado',
+};
+/** ACHADOS (sempre camada existente) têm cor própria, independente da camada */
+const FINDING_COLOR: Partial<Record<FaceConditionKey, string>> = {
   caries: '#B3261E',
-  restoration: '#2743A6',
   fracture: '#C2620A',
-  sealant: '#0F7B4D',
   wear: '#7A4FB0',
 };
-
-const STATUS_MARK: Partial<
-  Record<ToothStatus, { char: string; color: string }>
-> = {
-  missing: { char: '✕', color: '#9AA1B4' },
-  implant: { char: 'I', color: '#0F7B4D' },
-  crown: { char: 'C', color: '#2743A6' },
-  'bridge-pontic': { char: 'P', color: '#7A4FB0' },
-  'root-only': { char: 'R', color: '#C2620A' },
-  'to-extract': { char: 'E', color: '#B3261E' },
-};
-
 const FACE_EMPTY = '#F4F6FB';
 const FACE_STROKE = '#C7CEE0';
 
-// --- Geometria de um dente (viewBox 40×40, 5 faces) ---------------------------
-// top/bottom/left/right/center são posições VISUAIS; o mapeamento para
-// M/D/V/L depende do quadrante (ver visualFaceMap)
+const STATUS_CHAR: Partial<Record<ToothStatus, string>> = {
+  missing: '✕',
+  implant: 'I',
+  crown: 'C',
+  'bridge-pontic': 'P',
+  'root-only': 'R',
+  'to-extract': 'E',
+};
+
 const FACE_PATHS: Record<'top' | 'bottom' | 'left' | 'right', string> = {
   top: 'M2,2 L38,2 L27,13 L13,13 Z',
   bottom: 'M2,38 L38,38 L27,27 L13,27 Z',
@@ -89,7 +101,6 @@ function visualFaceMap(
 ): Record<'top' | 'bottom' | 'left' | 'right' | 'center', ToothFace> {
   const quadrant = toothNumber[0];
   const isUpper = quadrant === '1' || quadrant === '2';
-  // Mesial aponta à linha média: Q1/Q4 estão à ESQUERDA do ecrã → M à direita
   const mesialRight = quadrant === '1' || quadrant === '4';
   return {
     center: 'O',
@@ -100,28 +111,73 @@ function visualFaceMap(
   };
 }
 
+function faceStyle(f: ToothChartState['faces'][ToothFace] | undefined): {
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+  dash?: string;
+} {
+  if (!f) return { fill: FACE_EMPTY, stroke: FACE_STROKE, strokeWidth: 1 };
+  const finding = FINDING_COLOR[f.condition];
+  if (finding) return { fill: finding, stroke: FACE_STROKE, strokeWidth: 1 };
+  const color = LAYER_COLOR[f.layer];
+  if (f.layer === 'planned')
+    return { fill: `${color}33`, stroke: color, strokeWidth: 2, dash: '3 2' };
+  if (f.condition === 'sealant')
+    return { fill: `${color}99`, stroke: color, strokeWidth: 1 };
+  return { fill: color, stroke: FACE_STROKE, strokeWidth: 1 };
+}
+
+const EMPTY_STATE = (n: string): ToothChartState => ({
+  number: n,
+  status: 'present',
+  statusLayer: null,
+  endo: null,
+  post: null,
+  veneer: null,
+  faces: {},
+  events: [],
+});
+
+// --- Dente (SVG 40×50: 40×40 faces + 10 de zona radicular) -------------------
 function ToothSvg({
-  tooth,
+  state,
+  note,
   selected,
+  upper,
   onSelect,
 }: {
-  tooth: ToothEntry;
+  state: ToothChartState;
+  note: string | null;
   selected: boolean;
+  upper: boolean;
   onSelect: () => void;
 }) {
-  const map = visualFaceMap(tooth.number);
-  const colorOf = (face: ToothFace): string => {
-    const c = tooth.faces.find(f => f.face === face)?.condition;
-    return c ? CONDITION_COLOR[c] : FACE_EMPTY;
-  };
-  const mark = STATUS_MARK[tooth.status];
-  const dimmed = tooth.status === 'missing';
+  const map = visualFaceMap(state.number);
+  const mark = STATUS_CHAR[state.status];
+  const markColor = state.statusLayer
+    ? LAYER_COLOR[state.statusLayer]
+    : '#9AA1B4';
+  const dimmed = state.status === 'missing';
+  const rootColor = state.endo ? LAYER_COLOR[state.endo] : null;
+  const postColor = state.post ? LAYER_COLOR[state.post] : null;
+  const veneerColor = state.veneer ? LAYER_COLOR[state.veneer] : null;
+  // raiz desenhada do lado oposto à vestibular… simplificação: raiz "para fora" da arcada
+  const rootY = upper ? 0 : 40;
+  const faceOffset = upper ? 10 : 0;
+  const titleBits = [
+    `Dente ${state.number}`,
+    mark ? TOOTH_STATUS_LABEL[state.status] : null,
+    state.endo ? `Endodontia (${LAYER_LABEL[state.endo]})` : null,
+    state.post ? 'Espigão' : null,
+    state.veneer ? 'Faceta' : null,
+  ].filter(Boolean);
 
   return (
     <button
       type='button'
       onClick={onSelect}
-      title={`Dente ${tooth.number}${mark ? ` · ${TOOTH_STATUS_LABEL[tooth.status]}` : ''}`}
+      title={titleBits.join(' · ')}
       style={{
         border: 'none',
         background: 'transparent',
@@ -130,54 +186,98 @@ function ToothSvg({
         lineHeight: 0,
       }}
     >
-      <svg width={40} height={40} viewBox='0 0 40 40'>
-        <g opacity={dimmed ? 0.35 : 1}>
-          {(['top', 'bottom', 'left', 'right'] as const).map(pos => (
-            <path
-              key={pos}
-              d={FACE_PATHS[pos]}
-              fill={colorOf(map[pos])}
-              stroke={FACE_STROKE}
-              strokeWidth={1}
-            />
-          ))}
-          <rect
-            x={13}
-            y={13}
-            width={14}
-            height={14}
-            fill={colorOf('O')}
-            stroke={FACE_STROKE}
-            strokeWidth={1}
+      <svg width={40} height={50} viewBox='0 0 40 50'>
+        {/* zona radicular */}
+        <g transform={`translate(0 ${rootY})`}>
+          <path
+            d={
+              upper
+                ? 'M12,10 L16,1 L24,1 L28,10 Z'
+                : 'M12,0 L16,9 L24,9 L28,0 Z'
+            }
+            fill={rootColor ?? '#FFFFFF'}
+            stroke={rootColor ?? FACE_STROKE}
+            strokeWidth={rootColor ? 1.5 : 1}
+            opacity={dimmed ? 0.3 : 1}
           />
+          {postColor && (
+            <rect
+              x={18.5}
+              y={upper ? 2 : 2}
+              width={3}
+              height={6}
+              fill={postColor}
+            />
+          )}
         </g>
-        {mark && (
-          <text
-            x={20}
-            y={20}
-            textAnchor='middle'
-            dominantBaseline='central'
-            fontSize={tooth.status === 'missing' ? 22 : 15}
-            fontWeight={800}
-            fill={mark.color}
-            style={{ pointerEvents: 'none' }}
-          >
-            {mark.char}
-          </text>
-        )}
+        <g transform={`translate(0 ${faceOffset})`} opacity={dimmed ? 0.35 : 1}>
+          {(['top', 'bottom', 'left', 'right'] as const).map(pos => {
+            const st = faceStyle(state.faces[map[pos]]);
+            return (
+              <path
+                key={pos}
+                d={FACE_PATHS[pos]}
+                fill={st.fill}
+                stroke={st.stroke}
+                strokeWidth={st.strokeWidth}
+                strokeDasharray={st.dash}
+              />
+            );
+          })}
+          {(() => {
+            const st = faceStyle(state.faces.O);
+            return (
+              <rect
+                x={13}
+                y={13}
+                width={14}
+                height={14}
+                fill={st.fill}
+                stroke={st.stroke}
+                strokeWidth={st.strokeWidth}
+                strokeDasharray={st.dash}
+              />
+            );
+          })()}
+          {veneerColor && (
+            <path
+              d={FACE_PATHS[upper ? 'top' : 'bottom']}
+              fill='none'
+              stroke={veneerColor}
+              strokeWidth={3}
+            />
+          )}
+          {mark && (
+            <text
+              x={20}
+              y={20}
+              textAnchor='middle'
+              dominantBaseline='central'
+              fontSize={state.status === 'missing' ? 22 : 15}
+              fontWeight={800}
+              fill={markColor}
+              stroke='#FFFFFF'
+              strokeWidth={state.status === 'missing' ? 0 : 2}
+              paintOrder='stroke'
+              style={{ pointerEvents: 'none' }}
+            >
+              {mark}
+            </text>
+          )}
+          {note && <circle cx={35} cy={5} r={3.5} fill='#C2620A' />}
+        </g>
         {selected && (
           <rect
             x={0.5}
             y={0.5}
             width={39}
-            height={39}
+            height={49}
             fill='none'
             stroke='#2743A6'
             strokeWidth={2.5}
             rx={4}
           />
         )}
-        {tooth.note && <circle cx={35} cy={5} r={3.5} fill='#C2620A' />}
       </svg>
     </button>
   );
@@ -186,16 +286,18 @@ function ToothSvg({
 // --- Arcada -------------------------------------------------------------------
 function Arch({
   teethNumbers,
-  teeth,
+  states,
+  notes,
   selected,
   onSelect,
-  numbersOnTop,
+  upper,
 }: {
   teethNumbers: readonly string[];
-  teeth: Map<string, ToothEntry>;
+  states: Map<string, ToothChartState>;
+  notes: Map<string, string | null>;
   selected: string | null;
   onSelect: (n: string) => void;
-  numbersOnTop: boolean;
+  upper: boolean;
 }) {
   return (
     <div style={{ display: 'flex', gap: '3px', justifyContent: 'center' }}>
@@ -207,26 +309,23 @@ function Arch({
             flexDirection: 'column',
             alignItems: 'center',
             gap: '2px',
-            // separador visual da linha média (entre 11|21 e 41|31)
-            marginLeft: idx === 8 ? '12px' : 0,
+            marginLeft: idx === 8 ? '12px' : 0, // linha média
           }}
         >
-          {numbersOnTop && (
-            <span
-              style={{ fontSize: '10px', fontWeight: 700, color: '#6A7186' }}
-            >
+          {upper && (
+            <span style={{ fontSize: '10px', fontWeight: 700, color: '#6A7186' }}>
               {n}
             </span>
           )}
           <ToothSvg
-            tooth={teeth.get(n) ?? emptyTooth(n)}
+            state={states.get(n) ?? EMPTY_STATE(n)}
+            note={notes.get(n) ?? null}
             selected={selected === n}
+            upper={upper}
             onSelect={() => onSelect(n)}
           />
-          {!numbersOnTop && (
-            <span
-              style={{ fontSize: '10px', fontWeight: 700, color: '#6A7186' }}
-            >
+          {!upper && (
+            <span style={{ fontSize: '10px', fontWeight: 700, color: '#6A7186' }}>
               {n}
             </span>
           )}
@@ -236,23 +335,50 @@ function Arch({
   );
 }
 
+// --- Helpers -------------------------------------------------------------------
+/** Registo manual (ToothEntry) → eventos da camada EXISTENTE */
+function manualToEvents(teeth: Map<string, ToothEntry>): ChartEvent[] {
+  const out: ChartEvent[] = [];
+  for (const t of teeth.values()) {
+    if (t.status !== 'present') {
+      const effect =
+        t.status === 'missing' ? 'extraction'
+        : t.status === 'implant' ? 'implant'
+        : t.status === 'crown' ? 'crown'
+        : t.status === 'bridge-pontic' ? 'bridge'
+        : t.status === 'root-only' ? 'root-only'
+        : 'to-extract';
+      out.push({ layer: 'existing', effect, tooth: t.number, at: null, label: `Registo: ${TOOTH_STATUS_LABEL[t.status]}`, ref: { kind: 'initial', id: t.number } });
+    }
+    for (const f of t.faces) {
+      out.push({ layer: 'existing', effect: f.condition === 'sealant' ? 'sealant' : 'restoration', condition: f.condition, tooth: t.number, faces: [f.face], at: null, label: `Registo: ${FACE_CONDITION_LABEL[f.condition]} (${f.face})`, ref: { kind: 'initial', id: `${t.number}:${f.face}` } });
+    }
+  }
+  return out;
+}
+
+function fmtDate(d: Date): string {
+  return new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Europe/Lisbon' }).format(d);
+}
+
 // --- Componente principal -----------------------------------------------------
 export function Odontograma({
   patientId,
   initialTeeth,
+  events = [],
   versionLabel,
   readOnly,
   proceduresByTooth = {},
   planBaseHref = null,
 }: {
   patientId: string;
+  /** Registo manual (camada existente) da versão em vista */
   initialTeeth: ToothEntry[];
-  /** ex.: "Versão 3 · 03/08/2026 16:20 · Dr. João Teste" ou null (sem versões) */
+  /** Eventos executados/planeados (lib/odontogram-events) — sem os 'initial' */
+  events?: SerializedChartEvent[];
   versionLabel: string | null;
   readOnly: boolean;
-  /** Fase 4C: atos por dente (planeados/executados) */
   proceduresByTooth?: Record<string, ToothProcedure[]>;
-  /** Fase 4C: base do link "Planear tratamento" (recebe &dentes=NN) */
   planBaseHref?: string | null;
 }) {
   const router = useRouter();
@@ -261,20 +387,57 @@ export function Odontograma({
   );
   const [selected, setSelected] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [layers, setLayers] = useState<Record<ChartLayer, boolean>>({ existing: true, completed: true, planned: true });
 
-  const [state, action, pending] = useActionState<
-    ConsultationActionState,
-    FormData
-  >(saveOdontogramAction, undefined);
+  // eventos externos (executado/planeado), já com Date
+  const external = useMemo<ChartEvent[]>(
+    () =>
+      events
+        .filter(e => e.refKind !== 'initial')
+        .map(e => ({ layer: e.layer, effect: e.effect, tooth: e.tooth, faces: e.faces, condition: e.condition, at: e.at ? new Date(e.at) : null, label: e.label, ref: { kind: e.refKind, id: e.refId } })),
+    [events],
+  );
+
+  // linha temporal: datas distintas (mês) dos eventos executados
+  const timeline = useMemo(() => {
+    const months = new Set<number>();
+    for (const e of external) if (e.at && e.layer === 'completed') months.add(new Date(e.at.getFullYear(), e.at.getMonth() + 1, 0, 23, 59, 59).getTime());
+    return [...months].sort((a, b) => a - b).map(t => new Date(t));
+  }, [external]);
+  const [timeIdx, setTimeIdx] = useState<number | null>(null); // null = hoje
+  const cutoff = timeIdx === null ? null : timeline[timeIdx];
+
+  const states = useMemo(() => {
+    const evs = [
+      ...(layers.existing ? manualToEvents(teeth) : []),
+      // a ver o passado: planeado some; executado só até à data
+      ...external.filter(e => layers[e.layer] && (cutoff ? e.layer !== 'planned' && !!e.at && e.at <= cutoff : true)),
+    ];
+    return deriveToothStates(evs);
+  }, [teeth, external, layers, cutoff]);
+
+  const notes = useMemo(() => new Map([...teeth.values()].map(t => [t.number, t.note])), [teeth]);
+
+  // entradas para a arcada anatómica (mesma fonte)
+  const archEntries = useMemo<ToothEntry[]>(
+    () =>
+      [...states.values()].map(s => ({
+        number: s.number,
+        status: s.status,
+        faces: Object.entries(s.faces).map(([face, f]) => ({ face: face as ToothFace, condition: f.condition as FaceCondition })),
+        note: notes.get(s.number) ?? null,
+      })),
+    [states, notes],
+  );
+
+  const [state, action, pending] = useActionState<ConsultationActionState, FormData>(saveOdontogramAction, undefined);
   const handled = useRef<ConsultationActionState>(undefined);
-
   useEffect(() => {
     if (!state || handled.current === state) return;
     handled.current = state;
     if ('error' in state) toast.error(state.error);
     if ('success' in state) {
       toast.success('Odontograma gravado (nova versão)');
-      // Form de página inteira: gravar = fechar → voltar à ficha
       router.push(`/doutor/pacientes/${patientId}`);
     }
   }, [state, router, patientId]);
@@ -289,39 +452,74 @@ export function Odontograma({
     setDirty(true);
   };
 
-  // Só dentes com algo assinalado viajam
-  const teethJson = useMemo(
-    () => JSON.stringify([...teeth.values()].filter(t => !isToothEmpty(t))),
-    [teeth],
-  );
+  const teethJson = useMemo(() => JSON.stringify([...teeth.values()].filter(t => !isToothEmpty(t))), [teeth]);
+  const selectedTooth = selected ? (teeth.get(selected) ?? emptyTooth(selected)) : null;
+  const selectedState = selected ? (states.get(selected) ?? EMPTY_STATE(selected)) : null;
 
-  const selectedTooth = selected
-    ? (teeth.get(selected) ?? emptyTooth(selected))
-    : null;
+  const toggle = (l: ChartLayer) => setLayers(prev => ({ ...prev, [l]: !prev[l] }));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* Vista anatómica das arcadas — mesma fonte de dados, mesma seleção */}
-      <OdontogramaArcada
-        entries={[...teeth.values()]}
-        selected={selected}
-        onSelect={setSelected}
-        plannedTeeth={
-          new Set(
-            Object.entries(proceduresByTooth)
-              .filter(([, ps]) => ps.some(p => p.status === 'planned'))
-              .map(([n]) => n),
-          )
-        }
-      />
+      {/* Barra: camadas + linha temporal */}
       <div
         style={{
           display: 'flex',
-          gap: '16px',
-          alignItems: 'flex-start',
+          alignItems: 'center',
+          gap: '18px',
           flexWrap: 'wrap',
+          backgroundColor: '#FFFFFF',
+          border: '1px solid #EEF1F8',
+          borderRadius: '14px',
+          padding: '10px 16px',
         }}
       >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '12px', fontWeight: 700, color: '#6A7186' }}>
+          <Layers size={14} /> Camadas
+        </span>
+        {(['existing', 'completed', 'planned'] as ChartLayer[]).map(l => (
+          <label key={l} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '13px', color: '#1C2233', cursor: 'pointer' }}>
+            <input type='checkbox' checked={layers[l]} onChange={() => toggle(l)} />
+            <span
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 3,
+                backgroundColor: l === 'planned' ? `${LAYER_COLOR[l]}33` : LAYER_COLOR[l],
+                border: `2px ${l === 'planned' ? 'dashed' : 'solid'} ${LAYER_COLOR[l]}`,
+                display: 'inline-block',
+              }}
+            />
+            {LAYER_LABEL[l]}
+          </label>
+        ))}
+        {timeline.length > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', minWidth: 280, flex: '1 1 280px' }}>
+            <CalendarClock size={14} style={{ color: '#6A7186' }} />
+            <input
+              type='range'
+              min={0}
+              max={timeline.length}
+              value={timeIdx === null ? timeline.length : timeIdx}
+              onChange={e => { const v = Number(e.target.value); setTimeIdx(v >= timeline.length ? null : v); }}
+              style={{ flex: 1 }}
+              aria-label='Linha temporal do odontograma'
+            />
+            <span style={{ fontSize: '12px', fontWeight: 700, color: cutoff ? '#8A5A00' : '#1B2A6B', whiteSpace: 'nowrap', minWidth: 92, textAlign: 'right' }}>
+              {cutoff ? `até ${fmtDate(cutoff)}` : 'Hoje'}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Vista anatómica das arcadas — mesma fonte de dados, mesma seleção */}
+      <OdontogramaArcada
+        entries={archEntries}
+        selected={selected}
+        onSelect={setSelected}
+        plannedTeeth={new Set([...states.values()].filter(s => s.statusLayer === 'planned' || Object.values(s.faces).some(f => f.layer === 'planned')).map(s => s.number))}
+      />
+
+      <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         {/* Mapa das arcadas */}
         <div
           style={{
@@ -337,97 +535,35 @@ export function Odontograma({
             overflowX: 'auto',
           }}
         >
-          <p
-            style={{
-              margin: '0 0 4px',
-              fontSize: '11px',
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.6px',
-              color: '#6A7186',
-              textAlign: 'center',
-            }}
-          >
+          <p style={{ margin: '0 0 4px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#6A7186', textAlign: 'center' }}>
             Arcada superior
           </p>
-          <Arch
-            teethNumbers={UPPER_TEETH}
-            teeth={teeth}
-            selected={selected}
-            onSelect={setSelected}
-            numbersOnTop
-          />
+          <Arch teethNumbers={UPPER_TEETH} states={states} notes={notes} selected={selected} onSelect={setSelected} upper />
           <div style={{ height: 10 }} />
-          <Arch
-            teethNumbers={LOWER_TEETH}
-            teeth={teeth}
-            selected={selected}
-            onSelect={setSelected}
-            numbersOnTop={false}
-          />
-          <p
-            style={{
-              margin: '4px 0 0',
-              fontSize: '11px',
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.6px',
-              color: '#6A7186',
-              textAlign: 'center',
-            }}
-          >
+          <Arch teethNumbers={LOWER_TEETH} states={states} notes={notes} selected={selected} onSelect={setSelected} upper={false} />
+          <p style={{ margin: '4px 0 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#6A7186', textAlign: 'center' }}>
             Arcada inferior
           </p>
 
           {/* Legenda */}
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '8px 16px',
-              marginTop: '14px',
-              paddingTop: '12px',
-              borderTop: '1px solid #F4F6FB',
-              justifyContent: 'center',
-            }}
-          >
-            {FACE_CONDITIONS.map(c => (
-              <span
-                key={c}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  fontSize: '11px',
-                  color: '#3D4257',
-                }}
-              >
-                <span
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 2,
-                    backgroundColor: CONDITION_COLOR[c],
-                    display: 'inline-block',
-                  }}
-                />
-                {FACE_CONDITION_LABEL[c]}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #F4F6FB', justifyContent: 'center' }}>
+            {(Object.entries(FINDING_COLOR) as [FaceConditionKey, string][]).map(([c, color]) => (
+              <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#3D4257' }}>
+                <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: color, display: 'inline-block' }} />
+                {FACE_CONDITION_LABEL[c as FaceCondition]}
               </span>
             ))}
-            {Object.entries(STATUS_MARK).map(([st, m]) => (
-              <span
-                key={st}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  fontSize: '11px',
-                  color: '#3D4257',
-                }}
-              >
-                <span style={{ fontWeight: 800, color: m.color }}>
-                  {m.char}
-                </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#3D4257' }}>
+              <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: LAYER_COLOR.completed, display: 'inline-block' }} />
+              Restauração / selante (cor da camada)
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#3D4257' }}>
+              <span style={{ width: 10, height: 6, borderRadius: 1, backgroundColor: LAYER_COLOR.completed, display: 'inline-block' }} />
+              Raiz pintada = endodontia
+            </span>
+            {Object.entries(STATUS_CHAR).map(([st, ch]) => (
+              <span key={st} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#3D4257' }}>
+                <span style={{ fontWeight: 800, color: '#3D4257' }}>{ch}</span>
                 {TOOTH_STATUS_LABEL[st as ToothStatus]}
               </span>
             ))}
@@ -436,48 +572,29 @@ export function Odontograma({
 
         {/* Painel do dente */}
         <div style={{ flex: '0 1 340px', minWidth: 300 }}>
-          {selectedTooth ? (
+          {selectedTooth && selectedState ? (
             <ToothDetail
               tooth={selectedTooth}
+              derived={selectedState}
               onChange={updateTooth}
               readOnly={readOnly}
               procedures={proceduresByTooth[selectedTooth.number] ?? []}
-              planHref={
-                planBaseHref
-                  ? `${planBaseHref}&dentes=${selectedTooth.number}`
-                  : null
-              }
+              planHref={planBaseHref ? `${planBaseHref}&dentes=${selectedTooth.number}` : null}
             />
           ) : (
-            <div
-              style={{
-                backgroundColor: '#FFFFFF',
-                border: '1px dashed #C7CEE0',
-                borderRadius: '14px',
-                padding: '24px 18px',
-                fontSize: '13px',
-                color: '#6A7186',
-                textAlign: 'center',
-              }}
-            >
-              Clique num dente para {readOnly ? 'ver o detalhe' : 'editar'}.
+            <div style={{ backgroundColor: '#FFFFFF', border: '1px dashed #C7CEE0', borderRadius: '14px', padding: '24px 18px', fontSize: '13px', color: '#6A7186', textAlign: 'center' }}>
+              Clique num dente para {readOnly ? 'ver o detalhe' : 'ver o historial e editar o registo'}.
             </div>
           )}
         </div>
       </div>
 
       {/* Rodapé: versão + gravação */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '12px',
-          flexWrap: 'wrap',
-        }}
-      >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '12px', color: '#9AA1B4' }}>
-          {versionLabel ?? 'Sem registos anteriores — esta será a versão 1.'}
+          {versionLabel ?? 'Sem registo manual anterior — esta será a versão 1.'}
+          {' · '}
+          Executado e planeado vêm dos atos e planos; só o registo manual (camada existente) se grava aqui.
         </span>
         {!readOnly && (
           <form action={action}>
@@ -485,7 +602,7 @@ export function Odontograma({
             <input type='hidden' name='teeth' value={teethJson} />
             <Button type='submit' disabled={pending || !dirty}>
               <Save size={15} style={{ marginRight: 6 }} />
-              {pending ? 'A gravar…' : 'Gravar odontograma'}
+              {pending ? 'A gravar…' : 'Gravar registo (nova versão)'}
             </Button>
           </form>
         )}
