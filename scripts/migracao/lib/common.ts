@@ -184,9 +184,14 @@ export function yn(v: unknown): boolean {
   return String(v ?? '').trim().toLowerCase() === 'sim';
 }
 
+/** NIF português válido (9 dígitos + dígito de controlo mod 11); rejeita placeholders
+ *  do Dentoral (999999990 "consumidor final", dígitos repetidos). */
 export function nif(v: unknown): string | null {
   const s = String(v ?? '').replace(/\D/g, '');
-  return /^\d{9}$/.test(s) ? s : null;
+  if (!/^\d{9}$/.test(s) || /^(\d)\1{8}$/.test(s) || s === '999999990' || s === '123456789') return null;
+  const sum = s.slice(0, 8).split('').reduce((a, d, i) => a + Number(d) * (9 - i), 0);
+  const check = 11 - (sum % 11);
+  return (check >= 10 ? 0 : check) === Number(s[8]) ? s : null;
 }
 
 export function postalCode(v: unknown): string | null {

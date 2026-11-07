@@ -42,6 +42,7 @@ MySQL local tem de estar a correr (terminal 1):
 | 09 | `09-documents.ts` | `documents` + `documentspac` (BLOB) → Cloudinary + `Document` | 11k / 2.2 GB | horas (retomável) |
 | 10 | `10-photos.ts` | `paciente.PFoto` → Cloudinary + `Patient.photoPublicId` | 77k | horas (retomável) |
 | 11 | `11-users.ts` | `data/medicos-ativos.json` (lista do Victor) → `Doctor.active` + `User` (invited) | 22 | segundos |
+| 12 | `12-fix-nif.ts` | anula NIFs placeholder/inválidos nos pacientes (original em legacyData) | — | segundos |
 | 99 | `99-verify.ts` | contagens MySQL vs Mongo, integridade, amostra | — | 1 min |
 
 Correr sempre pela ordem. Primeiro **a seco e com limite**:
