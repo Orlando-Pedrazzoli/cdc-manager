@@ -84,7 +84,8 @@ void runScript('14-odontogram', async args => {
           number: s.number,
           status: s.status === 'to-extract' ? 'present' : s.status,
           faces: Object.entries(s.faces).map(([face, f]) => ({ face, condition: f.condition })),
-          note: [s.endo ? 'Endodontia' : null, s.post ? 'Espigão' : null, s.veneer ? 'Faceta' : null, `Dentoral: ${s.events.length} registo(s)`].filter(Boolean).join(' · ').slice(0, 200),
+          // sem nota automática: endo/espigão/faceta já são derivados ao vivo dos atos; a nota é só para o médico
+          note: null,
         }));
       if (!teeth.length) { noEvents++; continue; }
       if (args.update && hasOdo.has(String(patientId)) && !args.dryRun) await Odontogram.deleteMany({ patientId, version: 1 });
