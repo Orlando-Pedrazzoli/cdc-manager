@@ -88,11 +88,15 @@ export function inferChartEffect(name: string, category: string | null | undefin
 export type ChartLayer = 'existing' | 'completed' | 'planned';
 export type ToothFaceKey = 'O' | 'M' | 'D' | 'V' | 'L';
 
+export type FaceConditionKey = 'restoration' | 'sealant' | 'caries' | 'fracture' | 'wear';
+
 export type ChartEvent = {
   layer: ChartLayer;
-  effect: ChartEffect;
+  effect: ChartEffect | 'root-only' | 'to-extract';
   tooth: string; // FDI
   faces?: ToothFaceKey[];
+  /** condição explícita da face (achados registados à mão: cárie, fratura, desgaste) */
+  condition?: FaceConditionKey;
   at: Date | null; // data do ato / do plano
   label: string; // nome do ato (tooltip)
   ref?: { kind: 'procedure' | 'plan-item' | 'initial'; id: string };
@@ -105,7 +109,7 @@ export type ToothChartState = {
   endo: ChartLayer | null; // tratamento endodôntico (existente/executado/planeado)
   post: ChartLayer | null;
   veneer: ChartLayer | null;
-  faces: Partial<Record<ToothFaceKey, { layer: ChartLayer; condition: 'restoration' | 'sealant' | 'caries' | 'fracture' | 'wear' }>>;
+  faces: Partial<Record<ToothFaceKey, { layer: ChartLayer; condition: FaceConditionKey }>>;
   events: ChartEvent[]; // historial do dente, mais recente primeiro
 };
 
@@ -150,13 +154,20 @@ export function deriveToothStates(events: ChartEvent[]): Map<string, ToothChartS
       case 'veneer':
         if (ev.layer !== 'planned' || !t.veneer) t.veneer = ev.layer;
         break;
+      case 'root-only':
+        if (canSetStatus) { t.status = 'root-only'; t.statusLayer = ev.layer; }
+        break;
+      case 'to-extract':
+        if (canSetStatus) { t.status = 'to-extract'; t.statusLayer = ev.layer; }
+        break;
       case 'restoration':
       case 'sealant': {
         const faces = ev.faces?.length ? ev.faces : ev.effect === 'sealant' ? (['O'] as ToothFaceKey[]) : [];
+        const condition: FaceConditionKey = ev.condition ?? (ev.effect === 'sealant' ? 'sealant' : 'restoration');
         for (const f of faces) {
           const cur = t.faces[f];
           if (ev.layer === 'planned' && cur && cur.layer !== 'planned') continue;
-          t.faces[f] = { layer: ev.layer, condition: ev.effect === 'sealant' ? 'sealant' : 'restoration' };
+          t.faces[f] = { layer: ev.layer, condition };
         }
         break;
       }

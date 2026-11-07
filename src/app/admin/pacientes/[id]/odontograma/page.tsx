@@ -19,6 +19,7 @@ import Doctor from '@/models/Doctor';
 import Odontogram from '@/models/Odontogram';
 import Procedure from '@/models/Procedure';
 import { Odontograma } from '@/components/clinico/Odontograma';
+import { loadChartEvents } from '@/lib/odontogram-events';
 import type {
   ToothEntry,
   ToothProcedure,
@@ -134,7 +135,11 @@ export default async function AdminOdontogramPage({
     : [];
   const updaterName = new Map(updaters.map(d => [String(d._id), d.name]));
 
-  const proceduresByTooth = await loadProceduresByTooth(id);
+  const [proceduresByTooth, chartEvents] = await Promise.all([
+    loadProceduresByTooth(id),
+    // executado/planeado derivados dos atos e planos (sem 'initial': vem de initialTeeth)
+    loadChartEvents(id, { odontogramVersion: null }),
+  ]);
   const initialTeeth: ToothEntry[] = (doc?.teeth ?? []).map(t => ({
     number: t.number,
     status: (t.status ?? 'present') as ToothStatus,
@@ -276,6 +281,7 @@ export default async function AdminOdontogramPage({
           key={showVersion}
           patientId={id}
           initialTeeth={initialTeeth}
+        events={chartEvents}
           versionLabel={versionLabel}
           readOnly
           proceduresByTooth={proceduresByTooth}

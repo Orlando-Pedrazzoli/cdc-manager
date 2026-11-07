@@ -167,6 +167,13 @@ const ProcedureSchema = new Schema(
       ],
       default: [],
     },
+    // Faces tratadas (restaurações, selantes, facetas) — pintam o odontograma.
+    // Vazio = ato sem faces (ou faces não registadas). Legacy Dentoral: as
+    // faces vêm no texto das notas ("Faces: O, M") e são lidas daí.
+    faces: {
+      type: [{ type: String, enum: ['O', 'M', 'D', 'V', 'L'] }],
+      default: [],
+    },
     // Observações do médico sobre a execução (visíveis à receção na cobrança)
     notes: {
       type: String,
