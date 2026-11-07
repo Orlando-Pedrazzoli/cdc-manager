@@ -36,6 +36,16 @@ export const eurosToCentsField = z.preprocess(
     .max(10_000_000, 'Preço demasiado alto'), // teto sanidade: 100 000 €
 );
 
+/** "O,M,D" / "" → ['O','M','D'] (faces tratadas; vazio = sem faces) */
+export const facesField = z.preprocess(
+  v => {
+    if (Array.isArray(v)) return v;
+    if (typeof v !== 'string') return [];
+    return [...new Set(v.toUpperCase().split(/[\s,;]+/).filter(t => t !== ''))];
+  },
+  z.array(z.enum(['O', 'M', 'D', 'V', 'L'], { message: 'Face inválida (O, M, D, V, L)' })).max(5),
+);
+
 /** "11, 26" / "11 26" / "" → ['11','26'] validados FDI (vazio = sem dentes) */
 export const toothNumbersField = z.preprocess(
   v => {
@@ -107,6 +117,7 @@ export const addProcedureSchema = z
     discountEuros: optionalEurosToCentsField.default(null),
     costEuros: optionalEurosToCentsField.default(null), // null = custo do catálogo
     toothNumbers: toothNumbersField,
+    faces: facesField.default([]),
     notes: optionalText(1000),
   })
   .superRefine((d, ctx) => {

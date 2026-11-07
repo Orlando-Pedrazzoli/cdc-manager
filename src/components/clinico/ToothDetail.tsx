@@ -11,7 +11,8 @@
 'use client';
 
 import Link from 'next/link';
-import { Eraser, ClipboardPlus } from 'lucide-react';
+import { useState } from 'react';
+import { Eraser, ClipboardPlus, Stethoscope } from 'lucide-react';
 import {
   TOOTH_STATUS,
   TOOTH_STATUS_LABEL,
@@ -95,6 +96,7 @@ export function ToothDetail({
   readOnly,
   procedures = [],
   planHref,
+  consultationHref = null,
 }: {
   tooth: ToothEntry;
   /** Estado derivado (camadas) mostrado no mapa — só leitura */
@@ -105,7 +107,12 @@ export function ToothDetail({
   procedures?: ToothProcedure[];
   /** Link "Planear tratamento neste dente" (só na área do médico) */
   planHref?: string | null;
+  /** Consulta em curso deste médico com o paciente: base para "Registar ato" (?dente=&faces=) */
+  consultationHref?: string | null;
 }) {
+  const [regFaces, setRegFaces] = useState<ToothFace[]>([]);
+  const toggleRegFace = (f: ToothFace) => setRegFaces(prev => (prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]));
+  const registerHref = consultationHref ? `${consultationHref}?dente=${tooth.number}${regFaces.length ? `&faces=${regFaces.join(',')}` : ''}` : null;
   const conditionOf = (face: ToothFace): FaceCondition | '' =>
     tooth.faces.find(f => f.face === face)?.condition ?? '';
 
@@ -228,6 +235,35 @@ export function ToothDetail({
         placeholder='ex.: sensibilidade ao frio'
         onChange={e => onChange({ ...tooth, note: e.target.value || null })}
       />
+
+      {/* Registar ato NESTE dente, na consulta em curso (faces opcionais) */}
+      {registerHref && (
+        <div style={{ borderTop: '1px solid #EEF1F8', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#1B2A6B' }}>Registar ato no dente {tooth.number}</span>
+          <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', color: '#6A7186', marginRight: 2 }}>Faces:</span>
+            {TOOTH_FACES.map(f => {
+              const on = regFaces.includes(f);
+              return (
+                <button key={f} type='button' title={TOOTH_FACE_LABEL[f]} onClick={() => toggleRegFace(f)}
+                  style={{ width: 30, height: 30, borderRadius: 8, border: `2px solid ${on ? '#2743A6' : '#D8DEEF'}`, backgroundColor: on ? '#2743A6' : '#FFFFFF', color: on ? '#FFFFFF' : '#1B2A6B', fontWeight: 800, fontSize: 12, cursor: 'pointer' }}>
+                  {f}
+                </button>
+              );
+            })}
+            <Link href={registerHref} style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '12px', fontWeight: 700, color: '#FFFFFF', backgroundColor: '#0F7B4D', borderRadius: '8px', padding: '6px 10px', textDecoration: 'none' }}>
+              <Stethoscope size={13} />
+              Registar ato
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {!registerHref && planHref && (
+        <p style={{ margin: 0, fontSize: '12px', color: '#9AA1B4', borderTop: '1px solid #EEF1F8', paddingTop: 10 }}>
+          Para registar um ato neste dente, inicie a consulta do paciente na agenda.
+        </p>
+      )}
 
       {/* Fase 4C: tratamentos deste dente + orçamento a partir daqui */}
       <div
