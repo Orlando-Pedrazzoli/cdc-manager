@@ -26,6 +26,9 @@ import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import Clinic from '@/models/Clinic';
 import Patient from '@/models/Patient';
+import Appointment from '@/models/Appointment';
+import Doctor from '@/models/Doctor';
+import User from '@/models/User';
 import DocumentTemplate from '@/models/DocumentTemplate';
 import SignatureRequest, {
   SIGNATURE_REQUEST_TTL_MS,
@@ -48,6 +51,7 @@ async function requireStaff(): Promise<{
   userId: string;
   role: StaffRole;
   doctorId: string | null;
+  clinicIds: string[];
 } | null> {
   const session = await auth();
   const role = session?.user?.role;
@@ -56,11 +60,43 @@ async function requireStaff(): Promise<{
     (role !== 'admin' && role !== 'receptionist' && role !== 'doctor')
   )
     return null;
+
+  await dbConnect();
+  const user = await User.findById(session.user.id)
+    .select('role status doctorId clinicIds')
+    .lean();
+  if (!user || user.status !== 'active' || user.role !== role) return null;
+
   return {
-    userId: session.user.id,
+    userId: String(user._id),
     role,
-    doctorId: session.user.doctorId ?? null,
+    doctorId: user.doctorId ? String(user.doctorId) : null,
+    clinicIds: (user.clinicIds ?? []).map(id => String(id)),
   };
+}
+
+async function canAccessSignatureClinic(
+  staff: NonNullable<Awaited<ReturnType<typeof requireStaff>>>,
+  clinicId: string,
+  patientId?: string,
+): Promise<boolean> {
+  if (staff.role === 'admin') return true;
+  if (staff.role === 'receptionist') {
+    return staff.clinicIds.length === 0 || staff.clinicIds.includes(clinicId);
+  }
+  if (!staff.doctorId) return false;
+  const doctorWorksHere = await Doctor.exists({
+    _id: staff.doctorId,
+    active: true,
+    'clinicSchedules.clinicId': clinicId,
+  });
+  if (!doctorWorksHere) return false;
+  if (!patientId) return true;
+  return Boolean(await Appointment.exists({
+    doctorId: staff.doctorId,
+    clinicId,
+    patientId,
+  }));
 }
 
 /** Pendentes cuja validade passou → 'expired' (chamado antes de ler filas) */
@@ -87,11 +123,24 @@ export interface TabletOption {
 
 /** Clínicas ativas com tablet ligado — alimenta o botão "Enviar para o tablet" */
 export async function listTabletsAction(): Promise<TabletOption[]> {
-  if (!(await requireStaff())) return [];
-  await dbConnect();
+  const staff = await requireStaff();
+  if (!staff) return [];
+  const clinicFilter: Record<string, unknown> = {};
+  if (staff.role === 'receptionist' && staff.clinicIds.length > 0) {
+    clinicFilter._id = { $in: staff.clinicIds };
+  } else if (staff.role === 'doctor') {
+    if (!staff.doctorId) return [];
+    const doctor = await Doctor.findOne({ _id: staff.doctorId, active: true })
+      .select('clinicSchedules.clinicId')
+      .lean();
+    const ids = (doctor?.clinicSchedules ?? []).map(s => String(s.clinicId));
+    if (ids.length === 0) return [];
+    clinicFilter._id = { $in: ids };
+  }
   const clinics = await Clinic.find({
     isActive: true,
     kioskToken: { $ne: null },
+    ...clinicFilter,
   })
     .select('slug name shortName color')
     .sort({ slug: 1 })
@@ -130,10 +179,12 @@ export async function createGdprSignatureRequestAction(input: {
       return { error: 'Paciente não encontrado ou inativo.' };
     if (!clinic?.kioskToken)
       return { error: 'Esta clínica não tem tablet ligado.' };
+    if (!(await canAccessSignatureClinic(staff, input.clinicId)))
+      return { error: 'Sem permissões para esta clínica.' };
 
-    // Um pedido pendente por paciente+tipo: reenviar substitui o anterior
+    // Um pedido pendente por paciente+tipo nesta clínica: reenviar substitui o anterior
     await SignatureRequest.updateMany(
-      { patientId: patient._id, kind: 'gdpr', status: 'pending' },
+      { clinicId: clinic._id, patientId: patient._id, kind: 'gdpr', status: 'pending' },
       { $set: { status: 'cancelled', cancelledAt: new Date() } },
     );
     const req = await SignatureRequest.create({
@@ -194,6 +245,8 @@ export async function createTemplateSignatureRequestAction(input: {
       return { error: 'Paciente não encontrado ou inativo.' };
     if (!clinic?.kioskToken)
       return { error: 'Esta clínica não tem tablet ligado.' };
+    if (!(await canAccessSignatureClinic(staff, input.clinicId, input.patientId)))
+      return { error: 'Sem permissões para este paciente nesta clínica.' };
     if (!t || !t.active) return { error: 'Modelo indisponível.' };
     if (staff.role !== 'doctor' && !t.allowStaff)
       return { error: 'Este modelo só pode ser emitido pelo médico.' };
@@ -233,11 +286,15 @@ export async function getSignatureRequestStatusAction(
     if (!staff) return { error: 'Sem permissões.' };
     if (!OID.test(id)) return { error: 'Pedido inválido.' };
     await dbConnect();
-    await sweepExpired();
     const r = await SignatureRequest.findById(id)
-      .select('status documentId lastError patientId')
+      .select('status documentId lastError patientId clinicId doctorId')
       .lean();
     if (!r) return { error: 'Pedido não encontrado.' };
+    if (!(await canAccessSignatureClinic(staff, String(r.clinicId), String(r.patientId))))
+      return { error: 'Pedido não encontrado.' };
+    if (staff.role === 'doctor' && String(r.doctorId ?? '') !== staff.doctorId)
+      return { error: 'Pedido não encontrado.' };
+    await sweepExpired(String(r.clinicId));
     if (r.status === 'signed') {
       // A ficha do paciente mostra o novo documento sem F5
       revalidatePath(`/admin/pacientes/${String(r.patientId)}`);
@@ -264,8 +321,16 @@ export async function cancelSignatureRequestAction(
     if (!staff) return { error: 'Sem permissões.' };
     if (!OID.test(id)) return { error: 'Pedido inválido.' };
     await dbConnect();
+    const request = await SignatureRequest.findById(id)
+      .select('clinicId patientId doctorId')
+      .lean();
+    if (!request) return { error: 'Pedido não encontrado.' };
+    if (!(await canAccessSignatureClinic(staff, String(request.clinicId), String(request.patientId))))
+      return { error: 'Pedido não encontrado.' };
+    if (staff.role === 'doctor' && String(request.doctorId ?? '') !== staff.doctorId)
+      return { error: 'Pedido não encontrado.' };
     await SignatureRequest.updateOne(
-      { _id: id, status: 'pending' },
+      { _id: id, status: 'pending', clinicId: request.clinicId },
       { $set: { status: 'cancelled', cancelledAt: new Date() } },
     );
     return {};
