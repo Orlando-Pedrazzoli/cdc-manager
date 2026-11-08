@@ -924,6 +924,7 @@ export default async function AgendaPage({
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           <Link
             href={buildHref({ medico: null })}
+            aria-current={!medicoParam ? 'true' : undefined}
             style={doctorPillStyle(!medicoParam, '#2743A6')}
           >
             Todos
