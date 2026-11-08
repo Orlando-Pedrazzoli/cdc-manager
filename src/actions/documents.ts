@@ -41,6 +41,7 @@ import {
 } from '@/lib/cloudinary';
 import ClinicalDocument from '@/models/Document';
 import Patient from '@/models/Patient';
+import Appointment from '@/models/Appointment';
 
 const STAFF_ROLES = ['admin', 'receptionist', 'doctor'] as const;
 
@@ -58,6 +59,25 @@ async function requireStaff(): Promise<
     return { ok: false, error: 'Sem permissões.' };
   }
   return { ok: true, userId: session.user.id, role };
+}
+
+async function doctorCanAccessPatient(
+  gate: { role: string; userId: string },
+  patientId: string,
+): Promise<boolean> {
+  if (gate.role !== 'doctor') return true;
+
+  const user = await (await import('@/models/User')).default.findById(gate.userId)
+    .select('status doctorId')
+    .lean();
+  if (!user || user.status !== 'active' || !user.doctorId) return false;
+
+  return Boolean(
+    await Appointment.exists({
+      doctorId: user.doctorId,
+      patientId,
+    }),
+  );
 }
 
 function revalidatePatientPaths(patientId: string): void {
@@ -89,6 +109,9 @@ export async function createDocumentUploadTicketAction(input: {
     .select('_id')
     .lean();
   if (!patient) return { ok: false, error: 'Paciente não encontrado.' };
+  if (!(await doctorCanAccessPatient(gate, parsed.data.patientId))) {
+    return { ok: false, error: 'Paciente não encontrado.' };
+  }
 
   const documentId = new mongoose.Types.ObjectId();
   const publicId = patientDocumentPublicId(String(documentId));
@@ -129,12 +152,23 @@ export async function registerDocumentAction(
 
   // Idempotência: re-submissão do mesmo ticket não duplica nem falha
   const existing = await ClinicalDocument.findById(data.documentId)
-    .select('_id')
+    .select('_id patientId')
     .lean();
-  if (existing) return { ok: true, documentId: data.documentId };
+  if (existing) {
+    if (
+      String(existing.patientId) !== data.patientId ||
+      !(await doctorCanAccessPatient(gate, String(existing.patientId)))
+    ) {
+      return { ok: false, error: 'Documento não encontrado.' };
+    }
+    return { ok: true, documentId: data.documentId };
+  }
 
   const patient = await Patient.findById(data.patientId).select('_id').lean();
   if (!patient) return { ok: false, error: 'Paciente não encontrado.' };
+  if (!(await doctorCanAccessPatient(gate, data.patientId))) {
+    return { ok: false, error: 'Paciente não encontrado.' };
+  }
 
   // Fonte de verdade: o asset TEM de existir no Cloudinary com o public_id
   // que NÓS emitimos no ticket (o client nunca escolhe o caminho)
@@ -195,7 +229,11 @@ export async function getDocumentDownloadUrlAction(input: {
 
   await dbConnect();
   const doc = await ClinicalDocument.findById(input.documentId).lean();
-  if (!doc || doc.voidedAt) {
+  if (
+    !doc ||
+    doc.voidedAt ||
+    !(await doctorCanAccessPatient(gate, String(doc.patientId)))
+  ) {
     return { ok: false, error: 'Documento não encontrado.' };
   }
 
@@ -238,7 +276,11 @@ export async function voidDocumentAction(
 
   await dbConnect();
   const doc = await ClinicalDocument.findById(parsed.data.documentId);
-  if (!doc || doc.voidedAt) {
+  if (
+    !doc ||
+    doc.voidedAt ||
+    !(await doctorCanAccessPatient(gate, String(doc.patientId)))
+  ) {
     return { ok: false, error: 'Documento não encontrado.' };
   }
 
