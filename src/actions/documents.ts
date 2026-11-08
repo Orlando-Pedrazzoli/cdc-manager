@@ -41,6 +41,7 @@ import {
 } from '@/lib/cloudinary';
 import ClinicalDocument from '@/models/Document';
 import Patient from '@/models/Patient';
+import User from '@/models/User';
 import Appointment from '@/models/Appointment';
 
 const STAFF_ROLES = ['admin', 'receptionist', 'doctor'] as const;
@@ -67,7 +68,7 @@ async function doctorCanAccessPatient(
 ): Promise<boolean> {
   if (gate.role !== 'doctor') return true;
 
-  const user = await (await import('@/models/User')).default.findById(gate.userId)
+  const user = await User.findById(gate.userId)
     .select('status doctorId')
     .lean();
   if (!user || user.status !== 'active' || !user.doctorId) return false;
