@@ -279,6 +279,7 @@ export default async function SalaEsperaPage({
                   ? { backgroundColor: '#2743A6', color: '#FFFFFF' }
                   : {}),
               }}
+              aria-current={c.slug === clinic.slug ? 'page' : undefined}
             >
               {c.name}
             </Link>
@@ -293,6 +294,7 @@ export default async function SalaEsperaPage({
           </Link>
           <Link
             href={href({ date: todayLisbon() })}
+            aria-current={isToday ? 'date' : undefined}
             style={{
               ...navBtn,
               backgroundColor: isToday ? '#2743A6' : '#FFFFFF',
@@ -330,21 +332,37 @@ export default async function SalaEsperaPage({
       <div style={card}>
         <div style={{ overflowX: 'auto' }}>
           <table
+            aria-label={`Atendimentos de ${clinic.name} em ${dateLabel}`}
             style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980 }}
           >
+            <caption
+              style={{
+                position: 'absolute',
+                width: 1,
+                height: 1,
+                padding: 0,
+                margin: -1,
+                overflow: 'hidden',
+                clip: 'rect(0, 0, 0, 0)',
+                whiteSpace: 'nowrap',
+                border: 0,
+              }}
+            >
+              Atendimentos da sala de espera
+            </caption>
             <thead>
               <tr>
-                <th style={th}>#</th>
-                <th style={th}>Agenda</th>
-                <th style={th}>Deu entrada</th>
-                <th style={th}>Início</th>
-                <th style={th}>Esperou</th>
-                <th style={th}>Fim</th>
-                <th style={th}>Tempo</th>
-                <th style={th}>Paciente</th>
-                <th style={th}>Ato</th>
-                <th style={th}>Médico</th>
-                <th style={th}>Estado</th>
+                <th scope="col" style={th}>#</th>
+                <th scope="col" style={th}>Agenda</th>
+                <th scope="col" style={th}>Deu entrada</th>
+                <th scope="col" style={th}>Início</th>
+                <th scope="col" style={th}>Esperou</th>
+                <th scope="col" style={th}>Fim</th>
+                <th scope="col" style={th}>Tempo</th>
+                <th scope="col" style={th}>Paciente</th>
+                <th scope="col" style={th}>Ato</th>
+                <th scope="col" style={th}>Médico</th>
+                <th scope="col" style={th}>Estado</th>
               </tr>
             </thead>
             <tbody>
@@ -383,6 +401,11 @@ export default async function SalaEsperaPage({
                   >
                     {dur(r.waitMs)}
                     {r.waitLive ? ' …' : ''}
+                    {r.waitMs != null && r.waitMs > 20 * 60_000 && (
+                      <span style={{ marginLeft: 6 }}>
+                        <Badge variant="danger">Atraso</Badge>
+                      </span>
+                    )}
                   </td>
                   <td style={tdNum}>{r.completed}</td>
                   <td
@@ -393,25 +416,37 @@ export default async function SalaEsperaPage({
                   </td>
                   <td style={td}>
                     {r.isUrgent && (
-                      <Siren
-                        size={13}
+                      <span
                         style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          marginRight: 6,
                           color: '#B3261E',
-                          marginRight: 5,
-                          verticalAlign: -2,
+                          fontSize: 11,
+                          fontWeight: 700,
                         }}
-                      />
+                      >
+                        <Siren size={13} aria-hidden="true" />
+                        Urgente
+                      </span>
                     )}
-                    <Link
-                      href={`/admin/pacientes/${r.patient ? String(r.patient._id) : ''}`}
-                      style={{
-                        color: '#1B2A6B',
-                        textDecoration: 'none',
-                        fontWeight: 600,
-                      }}
-                    >
-                      {r.patient?.name ?? '(paciente removido)'}
-                    </Link>
+                    {r.patient ? (
+                      <Link
+                        href={`/admin/pacientes/${String(r.patient._id)}`}
+                        style={{
+                          color: '#1B2A6B',
+                          textDecoration: 'none',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {r.patient.name}
+                      </Link>
+                    ) : (
+                      <span style={{ color: '#6A7186' }}>
+                        Paciente não disponível
+                      </span>
+                    )}
                     {r.patient && (
                       <span style={{ color: '#9AA1B4', fontSize: '11px' }}>
                         {' '}
@@ -426,6 +461,7 @@ export default async function SalaEsperaPage({
                     {r.doctor ? (
                       <>
                         <span
+                          aria-hidden="true"
                           style={{
                             display: 'inline-block',
                             width: 8,
