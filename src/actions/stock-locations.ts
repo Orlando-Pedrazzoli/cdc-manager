@@ -49,6 +49,7 @@ import StockMovement from '@/models/StockMovement';
 import StockLevel from '@/models/StockLevel';
 import StockCount from '@/models/StockCount';
 import Warehouse from '@/models/Warehouse';
+import User from '@/models/User';
 
 export type StockLocationActionState =
   | { error: string }
@@ -67,6 +68,12 @@ async function requireAdmin(): Promise<
     return { ok: false, error: 'Só o administrador pode fazer esta operação.' };
   }
   await dbConnect();
+  const user = await User.findById(session.user.id)
+    .select('role status')
+    .lean();
+  if (!user || user.status !== 'active' || user.role !== 'admin') {
+    return { ok: false, error: 'Conta inativa ou permissões alteradas.' };
+  }
   return { ok: true, userId: session.user.id };
 }
 
