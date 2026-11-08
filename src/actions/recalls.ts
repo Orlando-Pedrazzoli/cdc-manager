@@ -63,9 +63,14 @@ async function applyRecallAction(
 
     // Receção: só nas clínicas onde opera (mesma regra da Cobrança)
     const user = await User.findById(session.user.id)
-      .select('role clinicIds')
+      .select('role status clinicIds')
       .lean();
-    if (!user || !canOperateClinic(user, String(recall.clinicId))) {
+    if (
+      !user ||
+      user.status !== 'active' ||
+      user.role !== session.user.role ||
+      !canOperateClinic(user, String(recall.clinicId))
+    ) {
       return { error: 'Sem permissões nesta clínica.' };
     }
 
