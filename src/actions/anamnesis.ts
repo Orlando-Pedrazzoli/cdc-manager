@@ -18,6 +18,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
+import { getVerifiedSession } from '@/lib/get-verified-session';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import ClinicalRecord from '@/models/ClinicalRecord';
@@ -41,6 +42,10 @@ async function doctorCanAccessPatient(
   patientId: string,
 ): Promise<boolean> {
   if (!doctorId || !OID.test(doctorId)) return false;
+  const session = await getVerifiedSession(['doctor']);
+  if (!session?.user?.doctorId || session.user.doctorId !== doctorId) {
+    return false;
+  }
   return Boolean(
     await Appointment.exists({
       doctorId,
@@ -169,9 +174,9 @@ export async function savePortalQuestionnaireAction(
   formData: FormData,
 ): Promise<AnamnesisActionState> {
   try {
-    const session = await auth();
+    const session = await getVerifiedSession(['patient']);
     const patientId = session?.user?.patientId;
-    if (!session?.user?.id || session.user.role !== 'patient' || !patientId) {
+    if (!session?.user?.id || !patientId) {
       return { error: 'Sessão inválida.' };
     }
     await dbConnect();
