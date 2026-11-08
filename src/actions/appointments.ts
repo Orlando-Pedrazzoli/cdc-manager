@@ -937,6 +937,13 @@ export async function findPatientsAction(
   if (or.length === 0) return [];
 
   await dbConnect();
+  const user = await User.findById(session.user.id)
+    .select('role status')
+    .lean();
+  if (!user || user.status !== 'active' || user.role !== role) {
+    return [];
+  }
+
   const patients = await Patient.find({ status: 'active', $or: or })
     .sort({ processNumber: -1 })
     .limit(8)
