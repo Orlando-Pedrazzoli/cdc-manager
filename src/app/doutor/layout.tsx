@@ -12,7 +12,7 @@
 // =============================================================================
 
 import type { ReactNode } from 'react';
-import { auth } from '@/lib/auth';
+import { requireActiveSession } from '@/lib/require-active-session';
 import { logoutAction } from '@/actions/auth';
 import { AppShell } from '@/components/layout/AppShell';
 import { getOrganization } from '@/models/Organization';
@@ -22,7 +22,10 @@ export default async function DoctorLayout({
 }: {
   children: ReactNode;
 }) {
-  const [session, org] = await Promise.all([auth(), getOrganization()]);
+  const [session, org] = await Promise.all([
+    requireActiveSession(['doctor'] as const),
+    getOrganization(),
+  ]);
   const name = session?.user?.name ?? '';
 
   const brand = {
