@@ -36,8 +36,91 @@ import {
   timePt,
 } from '@/lib/document-merge';
 import { finalizeIssuedDocument } from '@/lib/signing';
+import User from '@/models/User';
 
 const OID = /^[0-9a-fA-F]{24}$/;
+
+const EXTRA_PLACEHOLDERS = new Set([
+  'acompanhante.nome',
+  'dias',
+  'tratamento',
+]);
+
+async function authorizeDocumentContext(params: {
+  userId: string;
+  role: string;
+  patientId: string;
+  clinicId: string | null;
+  appointmentId: string | null;
+}): Promise<{ doctorId: string | null; clinicId: string } | { error: string }> {
+  const user = await User.findById(params.userId)
+    .select('role status doctorId clinicIds')
+    .lean();
+  if (
+    !user ||
+    user.status !== 'active' ||
+    user.role !== params.role ||
+    !['admin', 'receptionist', 'doctor'].includes(user.role)
+  ) return { error: 'Conta inativa ou permissões alteradas.' };
+
+  const patient = await Patient.findById(params.patientId)
+    .select('status')
+    .lean();
+  if (!patient || patient.status !== 'active')
+    return { error: 'Paciente não encontrado ou inativo.' };
+
+  const appointment = params.appointmentId
+    ? await Appointment.findOne({
+        _id: params.appointmentId,
+        patientId: params.patientId,
+      }).select('clinicId doctorId').lean()
+    : null;
+  if (params.appointmentId && !appointment)
+    return { error: 'Consulta não encontrada para este paciente.' };
+
+  if (
+    appointment &&
+    params.clinicId &&
+    String(appointment.clinicId) !== params.clinicId
+  ) return { error: 'A consulta não pertence à clínica indicada.' };
+
+  const clinics = await getActiveClinics();
+  const clinicId =
+    params.clinicId ??
+    (appointment ? String(appointment.clinicId) : '') ??
+    '';
+  const resolvedClinicId = clinicId || (user.role === 'admin' ? String(clinics[0]?._id ?? '') : '');
+  const clinic = clinics.find(item => String(item._id) === resolvedClinicId);
+  if (!clinic) return { error: 'Clínica inválida ou inativa.' };
+
+  if (user.role === 'receptionist') {
+    const allowed = (user.clinicIds ?? []).map(id => String(id));
+    if (allowed.length > 0 && !allowed.includes(resolvedClinicId))
+      return { error: 'Sem permissões para esta clínica.' };
+  }
+
+  let doctorId: string | null = null;
+  if (user.role === 'doctor') {
+    if (!user.doctorId) return { error: 'Perfil médico não associado.' };
+    doctorId = String(user.doctorId);
+    const doctor = await Doctor.findOne({
+      _id: user.doctorId,
+      active: true,
+      'clinicSchedules.clinicId': resolvedClinicId,
+    }).select('_id').lean();
+    if (!doctor) return { error: 'Sem permissões para esta clínica.' };
+    const relation = await Appointment.exists({
+      patientId: params.patientId,
+      doctorId: user.doctorId,
+      clinicId: resolvedClinicId,
+    });
+    if (!relation) return { error: 'Paciente não encontrado.' };
+    if (appointment && String(appointment.doctorId) !== doctorId)
+      return { error: 'A consulta não pertence ao seu perfil médico.' };
+  }
+
+  return { doctorId, clinicId: resolvedClinicId };
+}
 
 // --- Admin: editar modelos ------------------------------------------------------
 export type TemplateFormState =
@@ -72,6 +155,9 @@ export async function saveTemplateAction(
       return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
     const d = parsed.data;
     await dbConnect();
+    const admin = await User.findById(session.user.id).select('role status').lean();
+    if (!admin || admin.status !== 'active' || admin.role !== 'admin')
+      return { error: 'Conta inativa ou permissões alteradas.' };
     if (d.id) {
       await DocumentTemplate.updateOne(
         { _id: d.id },
@@ -120,6 +206,9 @@ export async function toggleTemplateAction(
     return { error: 'Sem permissões.' };
   if (!OID.test(id)) return { error: 'Modelo inválido.' };
   await dbConnect();
+  const admin = await User.findById(session.user.id).select('role status').lean();
+  if (!admin || admin.status !== 'active' || admin.role !== 'admin')
+    return { error: 'Conta inativa ou permissões alteradas.' };
   const t = await DocumentTemplate.findById(id).select('active title');
   if (!t) return { error: 'Modelo não encontrado.' };
   t.set('active', !t.active);
@@ -192,7 +281,11 @@ async function buildValues(params: {
     'consulta.fim': appt
       ? timePt((appt.completedAt ?? appt.endAt) as Date)
       : null,
-    ...params.extra,
+    ...Object.fromEntries(
+      Object.entries(params.extra).filter(([key, value]) =>
+        EXTRA_PLACEHOLDERS.has(key) && typeof value === 'string' && value.length <= 500,
+      ),
+    ),
   };
   return { values, patient, doctor, clinic };
 }
@@ -212,14 +305,22 @@ export async function prepareDocumentAction(input: {
     if (!OID.test(input.templateId) || !OID.test(input.patientId))
       return { error: 'Dados inválidos.' };
     await dbConnect();
+    const access = await authorizeDocumentContext({
+      userId: session.user.id,
+      role,
+      patientId: input.patientId,
+      clinicId: input.clinicId ?? null,
+      appointmentId: input.appointmentId ?? null,
+    });
+    if ('error' in access) return { error: access.error };
     const t = await DocumentTemplate.findById(input.templateId).lean();
     if (!t || !t.active) return { error: 'Modelo indisponível.' };
     if (role !== 'doctor' && !t.allowStaff)
       return { error: 'Este modelo só pode ser emitido pelo médico.' };
     const { values } = await buildValues({
       patientId: input.patientId,
-      doctorId: role === 'doctor' ? (session.user.doctorId ?? null) : null,
-      clinicId: input.clinicId ?? null,
+      doctorId: access.doctorId,
+      clinicId: access.clinicId,
       appointmentId: input.appointmentId ?? null,
       extra: input.extra ?? {},
     });
@@ -262,6 +363,14 @@ export async function issueDocumentAction(input: {
     if (!OID.test(input.templateId) || !OID.test(input.patientId))
       return { error: 'Dados inválidos.' };
     await dbConnect();
+    const access = await authorizeDocumentContext({
+      userId: session.user.id,
+      role,
+      patientId: input.patientId,
+      clinicId: input.clinicId ?? null,
+      appointmentId: null,
+    });
+    if ('error' in access) return { error: access.error };
     const t = await DocumentTemplate.findById(input.templateId)
       .select('active allowStaff')
       .lean();
@@ -273,8 +382,8 @@ export async function issueDocumentAction(input: {
     const res = await finalizeIssuedDocument({
       templateId: input.templateId,
       patientId: input.patientId,
-      clinicId: input.clinicId ?? null,
-      doctorId: role === 'doctor' ? (session.user.doctorId ?? null) : null,
+      clinicId: access.clinicId,
+      doctorId: access.doctorId,
       title: input.title,
       body: input.body,
       signatureDataUrl: input.signatureDataUrl ?? null,
