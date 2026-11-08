@@ -20,6 +20,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
+import { getVerifiedSession } from '@/lib/get-verified-session';
 import { dbConnect } from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
 import User, { canOperateClinic } from '@/models/User';
@@ -55,8 +56,8 @@ export type DoctorFormState =
 // RBAC
 // -----------------------------------------------------------------------------
 async function requireAdmin() {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== 'admin') {
+  const session = await getVerifiedSession(['admin']);
+  if (!session?.user?.id) {
     throw new Error('Apenas a administração pode gerir médicos.');
   }
   return session.user;
