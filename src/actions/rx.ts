@@ -52,17 +52,31 @@ function fail(e: unknown): { error: string } {
 // -----------------------------------------------------------------------------
 async function requireOwnAppointment(appointmentId: string) {
   const session = await auth();
-  if (session?.user?.role !== 'doctor' || !session.user.doctorId) {
+  if (session?.user?.role !== 'doctor' || !session.user.id || !session.user.doctorId) {
     throw new Error('Sem permissões.');
   }
   if (!OBJECT_ID.test(appointmentId)) throw new Error('Marcação inválida.');
   await dbConnect();
 
+  const user = await User.findById(session.user.id)
+    .select('role status doctorId')
+    .lean();
+  if (
+    !user ||
+    user.status !== 'active' ||
+    user.role !== 'doctor' ||
+    !user.doctorId ||
+    String(user.doctorId) !== session.user.doctorId
+  ) {
+    throw new Error('Sem permissões.');
+  }
+
+  const doctorId = String(user.doctorId);
   const appt = await Appointment.findById(appointmentId).lean();
-  if (!appt || String(appt.doctorId) !== session.user.doctorId) {
+  if (!appt || String(appt.doctorId) !== doctorId) {
     throw new Error('Marcação não encontrada.'); // não vazar existência
   }
-  return { userId: session.user.id, doctorId: session.user.doctorId, appt };
+  return { userId: session.user.id, doctorId, appt };
 }
 
 async function requireStaff() {
