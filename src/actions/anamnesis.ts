@@ -37,7 +37,7 @@ const OID = /^[0-9a-fA-F]{24}$/;
 // A página do médico limita a ficha aos pacientes com uma consulta associada.
 // Repetir a mesma regra nas Server Actions impede acesso direto por patientId.
 async function doctorCanAccessPatient(
-  doctorId: string | undefined,
+  doctorId: string | null | undefined,
   patientId: string,
 ): Promise<boolean> {
   if (!doctorId || !OID.test(doctorId)) return false;
