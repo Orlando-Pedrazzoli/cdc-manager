@@ -14,6 +14,7 @@ import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import Supplier from '@/models/Supplier';
+import User from '@/models/User';
 import { supplierSchema, supplierIdSchema } from '@/lib/validations/supplier';
 
 export type SupplierFormState =
@@ -28,6 +29,12 @@ async function requireStaff() {
     throw new Error('Sem permissões para gerir fornecedores.');
   }
   await dbConnect();
+  const user = await User.findById(session.user.id)
+    .select('role status')
+    .lean();
+  if (!user || user.status !== 'active' || user.role !== role) {
+    throw new Error('Conta inativa ou permissões alteradas. Inicie sessão novamente.');
+  }
   return session.user;
 }
 

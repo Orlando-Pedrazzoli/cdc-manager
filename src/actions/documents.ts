@@ -41,6 +41,9 @@ import {
 } from '@/lib/cloudinary';
 import ClinicalDocument from '@/models/Document';
 import Patient from '@/models/Patient';
+import User from '@/models/User';
+import Doctor from '@/models/Doctor';
+import Appointment from '@/models/Appointment';
 
 const STAFF_ROLES = ['admin', 'receptionist', 'doctor'] as const;
 
@@ -50,14 +53,57 @@ type ActionError = { ok: false; error: string };
 // RBAC comum
 // -----------------------------------------------------------------------------
 async function requireStaff(): Promise<
-  { ok: true; userId: string; role: string } | ActionError
+  { ok: true; userId: string; role: string; clinicIds: string[] } | ActionError
 > {
   const session = await auth();
   const role = session?.user?.role ?? '';
   if (!session?.user?.id || !STAFF_ROLES.includes(role as never)) {
     return { ok: false, error: 'Sem permissões.' };
   }
-  return { ok: true, userId: session.user.id, role };
+
+  await dbConnect();
+  const user = await User.findById(session.user.id).select('role status clinicIds').lean();
+  if (
+    !user ||
+    user.status !== 'active' ||
+    user.role !== role
+  ) {
+    return { ok: false, error: 'Conta inativa ou permissões alteradas. Inicie sessão novamente.' };
+  }
+  return {
+    ok: true,
+    userId: session.user.id,
+    role,
+    clinicIds: (user.clinicIds ?? []).map(id => String(id)),
+  };
+}
+
+async function doctorCanAccessPatient(
+  gate: { role: string; userId: string },
+  patientId: string,
+): Promise<boolean> {
+  if (gate.role !== 'doctor') return true;
+
+  const user = await User.findById(gate.userId)
+    .select('status doctorId')
+    .lean();
+  if (!user || user.status !== 'active' || !user.doctorId) return false;
+
+  // A conta ativa não basta: o perfil clínico também tem de estar ativo.
+  const doctor = await Doctor.findOne({
+    _id: user.doctorId,
+    active: true,
+  })
+    .select('_id')
+    .lean();
+  if (!doctor) return false;
+
+  return Boolean(
+    await Appointment.exists({
+      doctorId: doctor._id,
+      patientId,
+    }),
+  );
 }
 
 function revalidatePatientPaths(patientId: string): void {
@@ -89,6 +135,9 @@ export async function createDocumentUploadTicketAction(input: {
     .select('_id')
     .lean();
   if (!patient) return { ok: false, error: 'Paciente não encontrado.' };
+  if (!(await doctorCanAccessPatient(gate, parsed.data.patientId))) {
+    return { ok: false, error: 'Paciente não encontrado.' };
+  }
 
   const documentId = new mongoose.Types.ObjectId();
   const publicId = patientDocumentPublicId(String(documentId));
@@ -129,12 +178,46 @@ export async function registerDocumentAction(
 
   // Idempotência: re-submissão do mesmo ticket não duplica nem falha
   const existing = await ClinicalDocument.findById(data.documentId)
-    .select('_id')
+    .select('_id patientId')
     .lean();
-  if (existing) return { ok: true, documentId: data.documentId };
+  if (existing) {
+    if (
+      String(existing.patientId) !== data.patientId ||
+      !(await doctorCanAccessPatient(gate, String(existing.patientId)))
+    ) {
+      return { ok: false, error: 'Documento não encontrado.' };
+    }
+    return { ok: true, documentId: data.documentId };
+  }
 
   const patient = await Patient.findById(data.patientId).select('_id').lean();
   if (!patient) return { ok: false, error: 'Paciente não encontrado.' };
+  if (!(await doctorCanAccessPatient(gate, data.patientId))) {
+    return { ok: false, error: 'Paciente não encontrado.' };
+  }
+
+  // Uma associação a consulta tem de pertencer ao mesmo paciente e à clínica autorizada.
+  if (data.appointmentId) {
+    const appointment = await Appointment.findById(data.appointmentId)
+      .select('patientId clinicId doctorId')
+      .lean();
+    if (!appointment || String(appointment.patientId) !== data.patientId) {
+      return { ok: false, error: 'Consulta não encontrada para este paciente.' };
+    }
+    if (
+      gate.role === 'receptionist' &&
+      gate.clinicIds.length > 0 &&
+      !gate.clinicIds.includes(String(appointment.clinicId))
+    ) {
+      return { ok: false, error: 'Sem permissões para esta clínica.' };
+    }
+    if (gate.role === 'doctor') {
+      const user = await User.findById(gate.userId).select('doctorId').lean();
+      if (!user?.doctorId || String(appointment.doctorId) !== String(user.doctorId)) {
+        return { ok: false, error: 'Sem permissões para esta consulta.' };
+      }
+    }
+  }
 
   // Fonte de verdade: o asset TEM de existir no Cloudinary com o public_id
   // que NÓS emitimos no ticket (o client nunca escolhe o caminho)
@@ -195,7 +278,11 @@ export async function getDocumentDownloadUrlAction(input: {
 
   await dbConnect();
   const doc = await ClinicalDocument.findById(input.documentId).lean();
-  if (!doc || doc.voidedAt) {
+  if (
+    !doc ||
+    doc.voidedAt ||
+    !(await doctorCanAccessPatient(gate, String(doc.patientId)))
+  ) {
     return { ok: false, error: 'Documento não encontrado.' };
   }
 
@@ -238,7 +325,11 @@ export async function voidDocumentAction(
 
   await dbConnect();
   const doc = await ClinicalDocument.findById(parsed.data.documentId);
-  if (!doc || doc.voidedAt) {
+  if (
+    !doc ||
+    doc.voidedAt ||
+    !(await doctorCanAccessPatient(gate, String(doc.patientId)))
+  ) {
     return { ok: false, error: 'Documento não encontrado.' };
   }
 

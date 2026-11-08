@@ -10,7 +10,7 @@
 // =============================================================================
 
 import type { ReactNode } from 'react';
-import { auth } from '@/lib/auth';
+import { requireActiveSession } from '@/lib/require-active-session';
 import { logoutAction } from '@/actions/auth';
 import { AppShell } from '@/components/layout/AppShell';
 import { QuickPatientSearch } from '@/components/layout/QuickPatientSearch';
@@ -26,7 +26,10 @@ export default async function AdminLayout({
 }: {
   children: ReactNode;
 }) {
-  const [session, org] = await Promise.all([auth(), getOrganization()]);
+  const [session, org] = await Promise.all([
+    requireActiveSession(['admin', 'receptionist'] as const),
+    getOrganization(),
+  ]);
   const brand = {
     appName: org.appName,
     logoUrl: org.logoUrl,

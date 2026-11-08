@@ -85,6 +85,12 @@ async function requireStaff() {
   if (!session?.user?.id || (role !== 'admin' && role !== 'receptionist')) {
     throw new Error('Sem permissões para gerir pacientes.');
   }
+
+  await dbConnect();
+  const user = await User.findById(session.user.id).select('role status').lean();
+  if (!user || user.status !== 'active' || user.role !== role) {
+    throw new Error('Conta inativa ou permissões alteradas. Inicie sessão novamente.');
+  }
   return session.user;
 }
 
@@ -728,6 +734,12 @@ export async function signGdprConsentAction(input: {
       return { error: 'Sem permissões.' };
     }
     await dbConnect();
+    const user = await User.findById(session.user.id)
+      .select('role status')
+      .lean();
+    if (!user || user.status !== 'active' || user.role !== role) {
+      return { error: 'Conta inativa ou permissões alteradas. Inicie sessão novamente.' };
+    }
     // Núcleo partilhado com o tablet (src/lib/signing.ts)
     const res = await finalizeGdprConsent({
       patientId: input.patientId,

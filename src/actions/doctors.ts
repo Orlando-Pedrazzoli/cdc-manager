@@ -20,9 +20,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
+import { getVerifiedSession } from '@/lib/get-verified-session';
 import { dbConnect } from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
-import User from '@/models/User';
+import User, { canOperateClinic } from '@/models/User';
 import Clinic from '@/models/Clinic';
 import Appointment, { BLOCKING_STATUS } from '@/models/Appointment';
 import TreatmentType from '@/models/TreatmentType';
@@ -55,8 +56,8 @@ export type DoctorFormState =
 // RBAC
 // -----------------------------------------------------------------------------
 async function requireAdmin() {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role !== 'admin') {
+  const session = await getVerifiedSession(['admin']);
+  if (!session?.user?.id) {
     throw new Error('Apenas a administração pode gerir médicos.');
   }
   return session.user;
@@ -717,6 +718,21 @@ export async function extendDoctorDayAction(input: {
     return { error: 'Hora inválida.' };
   }
   await dbConnect();
+
+  // A sessão pode estar desatualizada. Confirmar o estado, o perfil e
+  // o âmbito de clínicas diretamente na BD antes de alterar o horário.
+  const actor = await User.findById(session.user.id)
+    .select('role status clinicIds')
+    .lean();
+  if (
+    !actor ||
+    actor.status !== 'active' ||
+    actor.role !== role ||
+    !canOperateClinic(actor, input.clinicId)
+  ) {
+    return { error: 'Sem permissões para esta clínica.' };
+  }
+
   const [doctor, clinic] = await Promise.all([
     Doctor.findById(input.doctorId),
     Clinic.findById(input.clinicId),

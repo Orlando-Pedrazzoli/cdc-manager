@@ -79,13 +79,18 @@ async function requireOperator(
     return { ok: false, error: 'Sem permissões.' };
   }
   await dbConnect();
-  if (clinicId) {
-    const user = await User.findById(session.user.id)
-      .select('role clinicIds')
-      .lean();
-    if (!user || !canOperateClinic(user, clinicId)) {
-      return { ok: false, error: 'Sem permissões nesta clínica.' };
-    }
+  const user = await User.findById(session.user.id)
+    .select('role status clinicIds')
+    .lean();
+  if (
+    !user ||
+    user.status !== 'active' ||
+    user.role !== session.user.role
+  ) {
+    return { ok: false, error: 'Conta inativa ou permissões alteradas.' };
+  }
+  if (clinicId && !canOperateClinic(user, clinicId)) {
+    return { ok: false, error: 'Sem permissões nesta clínica.' };
   }
   return { ok: true, userId: session.user.id };
 }

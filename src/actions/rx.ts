@@ -20,6 +20,7 @@ import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import Appointment from '@/models/Appointment';
+import User, { canOperateClinic } from '@/models/User';
 import RxRequest from '@/models/RxRequest';
 import ClinicalDocument from '@/models/Document';
 import {
@@ -52,17 +53,31 @@ function fail(e: unknown): { error: string } {
 // -----------------------------------------------------------------------------
 async function requireOwnAppointment(appointmentId: string) {
   const session = await auth();
-  if (session?.user?.role !== 'doctor' || !session.user.doctorId) {
+  if (session?.user?.role !== 'doctor' || !session.user.id || !session.user.doctorId) {
     throw new Error('Sem permissões.');
   }
   if (!OBJECT_ID.test(appointmentId)) throw new Error('Marcação inválida.');
   await dbConnect();
 
+  const user = await User.findById(session.user.id)
+    .select('role status doctorId')
+    .lean();
+  if (
+    !user ||
+    user.status !== 'active' ||
+    user.role !== 'doctor' ||
+    !user.doctorId ||
+    String(user.doctorId) !== session.user.doctorId
+  ) {
+    throw new Error('Sem permissões.');
+  }
+
+  const doctorId = String(user.doctorId);
   const appt = await Appointment.findById(appointmentId).lean();
-  if (!appt || String(appt.doctorId) !== session.user.doctorId) {
+  if (!appt || String(appt.doctorId) !== doctorId) {
     throw new Error('Marcação não encontrada.'); // não vazar existência
   }
-  return { userId: session.user.id, doctorId: session.user.doctorId, appt };
+  return { userId: session.user.id, doctorId, appt };
 }
 
 async function requireStaff() {
@@ -72,7 +87,24 @@ async function requireStaff() {
     throw new Error('Sem permissões para operar a sala de RX.');
   }
   await dbConnect();
+  const user = await User.findById(session.user.id).select('role status').lean();
+  if (!user || user.status !== 'active' || user.role !== role) {
+    throw new Error('Conta inativa ou permissões alteradas. Inicie sessão novamente.');
+  }
   return session.user;
+}
+
+async function requireStaffForClinic(userId: string, clinicId: string) {
+  const user = await User.findById(userId)
+    .select('role status clinicIds')
+    .lean();
+  if (
+    !user ||
+    user.status !== 'active' ||
+    !canOperateClinic(user, clinicId)
+  ) {
+    throw new Error('Sem permissões para esta clínica.');
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -198,6 +230,7 @@ export async function advanceRxRequestAction(
 
     const req = await RxRequest.findById(requestId);
     if (!req) return { error: 'Pedido não encontrado.' };
+    await requireStaffForClinic(user.id, String(req.clinicId));
 
     if (!canTransitionRx(req.status as RxStatus, to)) {
       return {
@@ -337,6 +370,7 @@ export async function registerRxImageAction(
 
     const req = await RxRequest.findById(requestId);
     if (!req) return { error: 'Pedido não encontrado.' };
+    await requireStaffForClinic(user.id, String(req.clinicId));
     if (req.status === 'cancelled') {
       return { error: 'Pedido cancelado — não é possível anexar imagens.' };
     }

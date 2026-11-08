@@ -17,6 +17,7 @@ import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import mongoose from 'mongoose';
 import TreatmentType from '@/models/TreatmentType';
+import User from '@/models/User';
 import {
   priceUpdateSchema,
   type PriceUpdateInput,
@@ -99,6 +100,10 @@ export async function previewPriceUpdateAction(
     if (!parsed.success)
       return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
     await dbConnect();
+    const admin = await User.findById(session.user.id).select('role status').lean();
+    if (!admin || admin.status !== 'active' || admin.role !== 'admin') {
+      return { error: 'Conta inativa ou permissões alteradas.' };
+    }
     const rows = await computeRows(parsed.data);
     return {
       rows,
@@ -124,6 +129,10 @@ export async function applyPriceUpdateAction(
     if (!parsed.success)
       return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
     await dbConnect();
+    const admin = await User.findById(session.user.id).select('role status').lean();
+    if (!admin || admin.status !== 'active' || admin.role !== 'admin') {
+      return { error: 'Conta inativa ou permissões alteradas.' };
+    }
     const rows = (await computeRows(parsed.data)).filter(
       r => r.toCents !== r.fromCents,
     );

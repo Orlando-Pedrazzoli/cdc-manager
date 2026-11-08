@@ -11,6 +11,7 @@ import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import Employee from '@/models/Employee';
+import User from '@/models/User';
 import {
   employeeSchema,
   raiseSchema,
@@ -29,6 +30,10 @@ async function requireAdmin() {
   if (!session?.user?.id || session.user.role !== 'admin')
     throw new Error('Área reservada à administração.');
   await dbConnect();
+  const user = await User.findById(session.user.id).select('role status').lean();
+  if (!user || user.status !== 'active' || user.role !== 'admin') {
+    throw new Error('Conta inativa ou permissões alteradas.');
+  }
   return session.user;
 }
 function parse(fd: FormData) {

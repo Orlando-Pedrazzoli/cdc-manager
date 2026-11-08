@@ -1,24 +1,29 @@
 // 📄 src/app/api/pubmed/abstract/route.ts
-// CDC Manager — Abstract de um artigo PubMed (a pedido, cacheado 24 h).
-// Só utilizadores autenticados da clínica (médico/admin/receção).
+// Abstract de um artigo PubMed, disponível apenas a utilizadores ativos da clínica.
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { getVerifiedSession } from '@/lib/get-verified-session';
 import { fetchAbstract } from '@/lib/pubmed';
 import { translateAbstract } from '@/lib/translate';
 
 export async function GET(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id || session.user.role === 'patient') {
-    return NextResponse.json({ error: 'Sem permissões.' }, { status: 403 });
+  const session = await getVerifiedSession(['admin', 'receptionist', 'doctor']);
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Sem permissões.' }, { status: 401 });
   }
+
   const url = new URL(req.url);
-  const pmid = url.searchParams.get('pmid') ?? '';
+  const pmid = url.searchParams.get('pmid')?.trim() ?? '';
+  if (!/^\d{1,12}$/.test(pmid)) {
+    return NextResponse.json({ error: 'PMID inválido.' }, { status: 400 });
+  }
+
   const lang = url.searchParams.get('lang') === 'pt' ? 'pt' : 'en';
+
   try {
     const text = await fetchAbstract(pmid);
     if (lang === 'pt') {
-      // Só o corpo do abstract (sem o cabeçalho revista/título/autores que
-      // o EFetch em texto traz antes): o bloco maior do texto
+      // O EFetch devolve também cabeçalho bibliográfico. Traduzimos o bloco
+      // mais extenso, que normalmente corresponde ao corpo do abstract.
       const blocks = text.split(/\n\n+/);
       const body = blocks.reduce((a, b) => (b.length > a.length ? b : a), '');
       const pt = await translateAbstract(pmid, body);

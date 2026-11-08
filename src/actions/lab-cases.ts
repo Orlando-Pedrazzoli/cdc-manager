@@ -21,6 +21,7 @@ import LabCase from '@/models/LabCase';
 import Appointment from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import Supplier from '@/models/Supplier';
+import User from '@/models/User';
 import { LAB_WORK_TYPE_LABEL } from '@/lib/domain';
 import {
   createLabCaseSchema,
@@ -41,6 +42,12 @@ async function requireStaff() {
     throw new Error('Sem permissões para gerir próteses.');
   }
   await dbConnect();
+  const user = await User.findById(session.user.id)
+    .select('role status')
+    .lean();
+  if (!user || user.status !== 'active' || user.role !== role) {
+    throw new Error('Conta inativa ou permissões alteradas. Inicie sessão novamente.');
+  }
   return session.user;
 }
 

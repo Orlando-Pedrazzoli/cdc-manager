@@ -92,6 +92,8 @@ const LIST_STATUS_FILTERS: { value: string; label: string }[] = [
   { value: '', label: 'Todas' },
   { value: 'pending', label: 'Pendentes' },
   { value: 'confirmed', label: 'Confirmadas' },
+  { value: 'checked-in', label: 'Check-in' },
+  { value: 'in-progress', label: 'Em consulta' },
   { value: 'completed', label: 'Concluídas' },
   { value: 'cancelled', label: 'Canceladas' },
   { value: 'no-show', label: 'Faltas' },
@@ -922,6 +924,7 @@ export default async function AgendaPage({
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           <Link
             href={buildHref({ medico: null })}
+            aria-current={!medicoParam ? 'true' : undefined}
             style={doctorPillStyle(!medicoParam, '#2743A6')}
           >
             Todos
@@ -937,6 +940,7 @@ export default async function AgendaPage({
             <Link
               key={d.id}
               href={buildHref({ medico: d.id })}
+              aria-current={medicoParam === d.id ? 'true' : undefined}
               style={doctorPillStyle(medicoParam === d.id, d.color)}
             >
               <span
@@ -963,6 +967,7 @@ export default async function AgendaPage({
               <Link
                 key={f.value || 'todas'}
                 href={buildHref({ estado: f.value || null })}
+                aria-current={active ? 'page' : undefined}
                 style={{
                   padding: '6px 12px',
                   borderRadius: '999px',
@@ -1098,7 +1103,34 @@ export default async function AgendaPage({
                             whiteSpace: 'nowrap',
                           }}
                         >
-                          {p ? p.name : '(paciente removido)'}
+                          {p ? (
+                            <Link
+                              href={`/admin/pacientes/${String(p._id)}?tab=consultas`}
+                              style={{
+                                color: 'inherit',
+                                textDecoration: 'underline',
+                                textDecorationColor: '#C9D2EE',
+                                textUnderlineOffset: '3px',
+                              }}
+                              aria-label={`Abrir consultas de ${p.name}`}
+                            >
+                              {p.name}
+                            </Link>
+                          ) : (
+                            '(paciente removido)'
+                          )}
+                          {a.isUrgent && (
+                            <span
+                              style={{
+                                marginLeft: 7,
+                                color: '#B3261E',
+                                fontSize: 11,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Urgente
+                            </span>
+                          )}
                           {p?.processNumber ? (
                             <span style={{ color: '#6A7186', fontWeight: 500 }}>
                               {' '}

@@ -769,7 +769,7 @@ export default async function AdminDashboardPage() {
             href='/admin/agenda'
             style={{ ...btn, backgroundColor: C.action, color: '#FFFFFF' }}
           >
-            + Nova marcação
+            Abrir agenda
           </Link>
           <Link
             href='/admin/pacientes/novo'

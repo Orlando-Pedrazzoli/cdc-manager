@@ -42,6 +42,12 @@ async function requireAdmin(): Promise<
   if (session?.user?.role !== 'admin' || !session.user.id) {
     return { error: 'Sem permissões.' };
   }
+
+  await dbConnect();
+  const admin = await User.findById(session.user.id).select('role status').lean();
+  if (!admin || admin.status !== 'active' || admin.role !== 'admin') {
+    return { error: 'Conta inativa ou permissões alteradas. Inicie sessão novamente.' };
+  }
   return { adminId: session.user.id };
 }
 
