@@ -86,6 +86,10 @@ async function requireStaff() {
     throw new Error('Sem permissões para operar a sala de RX.');
   }
   await dbConnect();
+  const user = await User.findById(session.user.id).select('role status').lean();
+  if (!user || user.status !== 'active' || user.role !== role) {
+    throw new Error('Conta inativa ou permissões alteradas. Inicie sessão novamente.');
+  }
   return session.user;
 }
 
