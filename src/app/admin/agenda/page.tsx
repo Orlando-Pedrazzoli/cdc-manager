@@ -92,6 +92,8 @@ const LIST_STATUS_FILTERS: { value: string; label: string }[] = [
   { value: '', label: 'Todas' },
   { value: 'pending', label: 'Pendentes' },
   { value: 'confirmed', label: 'Confirmadas' },
+  { value: 'checked-in', label: 'Check-in' },
+  { value: 'in-progress', label: 'Em consulta' },
   { value: 'completed', label: 'Concluídas' },
   { value: 'cancelled', label: 'Canceladas' },
   { value: 'no-show', label: 'Faltas' },
