@@ -20,6 +20,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
+import User, { canOperateClinic } from '@/models/User';
 import {
   isMoloniConfigured,
   isMoloniEmissionReady,
@@ -38,6 +39,11 @@ export async function testMoloniConnectionAction(): Promise<{
   const session = await auth();
   if (!session?.user?.id || session.user.role !== 'admin')
     return { error: 'Sem permissões.' };
+  await dbConnect();
+  const admin = await User.findById(session.user.id).select('role status').lean();
+  if (!admin || admin.status !== 'active' || admin.role !== 'admin') {
+    return { error: 'Conta inativa ou permissões alteradas.' };
+  }
   if (!isMoloniConfigured())
     return {
       error:
@@ -62,6 +68,21 @@ export async function emitInvoiceAction(
       return { error: 'Sem permissões.' };
     if (!OID.test(invoiceId)) return { error: 'Documento inválido.' };
 
+    await dbConnect();
+    const user = await User.findById(session.user.id)
+      .select('role status clinicIds')
+      .lean();
+    const invoice = await Invoice.findById(invoiceId).select('clinicId').lean();
+    if (
+      !user ||
+      user.status !== 'active' ||
+      user.role !== session.user.role ||
+      !invoice ||
+      !canOperateClinic(user, String(invoice.clinicId))
+    ) {
+      return { error: 'Sem permissões para esta clínica.' };
+    }
+
     const r = await emitInvoiceReceiptFor(invoiceId, {
       auditUserId: session.user.id,
       automatic: false,
@@ -80,14 +101,27 @@ export async function moloniPdfLinkAction(
 ): Promise<{ error?: string; url?: string }> {
   try {
     const session = await auth();
-    if (!session?.user?.id || session.user.role === 'patient')
+    if (
+      !session?.user?.id ||
+      !['admin', 'receptionist'].includes(session.user.role ?? '')
+    )
       return { error: 'Sem permissões.' };
     if (!OID.test(invoiceId)) return { error: 'Documento inválido.' };
     await dbConnect();
-    const inv = await Invoice.findById(invoiceId)
-      .select('moloniDocumentId')
-      .lean();
-    if (!inv?.moloniDocumentId) return { error: 'Sem documento Moloni.' };
+    const [user, inv] = await Promise.all([
+      User.findById(session.user.id).select('role status clinicIds').lean(),
+      Invoice.findById(invoiceId).select('clinicId moloniDocumentId').lean(),
+    ]);
+    if (
+      !user ||
+      user.status !== 'active' ||
+      user.role !== session.user.role ||
+      !inv ||
+      !canOperateClinic(user, String(inv.clinicId))
+    ) {
+      return { error: 'Documento não encontrado.' };
+    }
+    if (!inv.moloniDocumentId) return { error: 'Sem documento Moloni.' };
     const url = await documentPdfLink(inv.moloniDocumentId);
     return url ? { url } : { error: 'Moloni não devolveu o PDF.' };
   } catch (e) {
