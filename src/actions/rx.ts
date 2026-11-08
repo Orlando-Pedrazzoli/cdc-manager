@@ -20,6 +20,7 @@ import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import Appointment from '@/models/Appointment';
+import User, { canOperateClinic } from '@/models/User';
 import RxRequest from '@/models/RxRequest';
 import ClinicalDocument from '@/models/Document';
 import {
@@ -91,6 +92,19 @@ async function requireStaff() {
     throw new Error('Conta inativa ou permissões alteradas. Inicie sessão novamente.');
   }
   return session.user;
+}
+
+async function requireStaffForClinic(userId: string, clinicId: string) {
+  const user = await User.findById(userId)
+    .select('role status clinicIds')
+    .lean();
+  if (
+    !user ||
+    user.status !== 'active' ||
+    !canOperateClinic(user, clinicId)
+  ) {
+    throw new Error('Sem permissões para esta clínica.');
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -216,6 +230,7 @@ export async function advanceRxRequestAction(
 
     const req = await RxRequest.findById(requestId);
     if (!req) return { error: 'Pedido não encontrado.' };
+    await requireStaffForClinic(user.id, String(req.clinicId));
 
     if (!canTransitionRx(req.status as RxStatus, to)) {
       return {
@@ -355,6 +370,7 @@ export async function registerRxImageAction(
 
     const req = await RxRequest.findById(requestId);
     if (!req) return { error: 'Pedido não encontrado.' };
+    await requireStaffForClinic(user.id, String(req.clinicId));
     if (req.status === 'cancelled') {
       return { error: 'Pedido cancelado — não é possível anexar imagens.' };
     }
