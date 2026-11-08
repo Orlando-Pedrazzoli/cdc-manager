@@ -9,7 +9,7 @@
 // =============================================================================
 
 import type { ReactNode } from 'react';
-import { auth } from '@/lib/auth';
+import { requireActiveSession } from '@/lib/require-active-session';
 import { getOrganization } from '@/models/Organization';
 import { logoutAction } from '@/actions/auth';
 import PortalNav from '@/components/portal/PortalNav';
@@ -19,7 +19,10 @@ export default async function PatientLayout({
 }: {
   children: ReactNode;
 }) {
-  const [session, org] = await Promise.all([auth(), getOrganization()]);
+  const [session, org] = await Promise.all([
+    requireActiveSession(['patient'] as const),
+    getOrganization(),
+  ]);
   const firstName = (session?.user?.name ?? '').split(' ')[0];
 
   return (
