@@ -25,6 +25,7 @@ import { logAudit } from '@/lib/audit';
 import { signedDownloadUrl } from '@/lib/cloudinary';
 import ClinicalDocument from '@/models/Document';
 import Appointment from '@/models/Appointment';
+import User from '@/models/User';
 import { revalidatePath } from 'next/cache';
 
 type ActionError = { ok: false; error: string };
@@ -39,6 +40,19 @@ async function requirePatient(): Promise<
   const user = session?.user;
   if (!user?.id || user.role !== 'patient' || !user.patientId) {
     return { ok: false, error: 'Sem permissões.' };
+  }
+  await dbConnect();
+  const currentUser = await User.findById(user.id)
+    .select('role status patientId')
+    .lean();
+  if (
+    !currentUser ||
+    currentUser.status !== 'active' ||
+    currentUser.role !== 'patient' ||
+    !currentUser.patientId ||
+    String(currentUser.patientId) !== user.patientId
+  ) {
+    return { ok: false, error: 'Conta inativa ou permissões alteradas.' };
   }
   return { ok: true, userId: user.id, patientId: user.patientId };
 }
