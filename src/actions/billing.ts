@@ -84,6 +84,7 @@ export async function checkoutAction(
     if (
       !user ||
       user.status !== 'active' ||
+      user.role !== session.user.role ||
       !canOperateClinic(user, data.clinicId)
     ) {
       return { error: 'Sem permissões nesta clínica.' };
@@ -399,6 +400,7 @@ export async function registerPaymentAction(
     if (
       !user ||
       user.status !== 'active' ||
+      user.role !== session.user.role ||
       !canOperateClinic(user, String(invoice.clinicId))
     ) {
       return { error: 'Sem permissões para esta clínica.' };
