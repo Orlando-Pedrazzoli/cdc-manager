@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #171717;
 }
@@ -12,12 +13,9 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* A interface ainda não implementa um tema escuro completo. Mantemos o tema
+   claro de forma explícita para evitar interfaces híbridas quando o SO está
+   em dark mode (componentes clínicos usam superfícies claras). */
 
 body {
   background: var(--background);
@@ -272,9 +270,14 @@ body {
   }
 }
 
-/* Foco visível para navegação por teclado (links/botões da área admin) */
+/* Foco visível consistente para navegação por teclado. Campos .cdc-field
+   mantêm o tratamento próprio definido acima. */
 .cdc-shell a:focus-visible,
-.cdc-shell button:focus-visible {
+.cdc-shell button:focus-visible,
+.cdc-shell input:focus-visible,
+.cdc-shell select:focus-visible,
+.cdc-shell textarea:focus-visible,
+.cdc-shell [tabindex]:focus-visible {
   outline: 2px solid #2743a6;
   outline-offset: 2px;
   border-radius: 8px;
