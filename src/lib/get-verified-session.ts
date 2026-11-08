@@ -17,7 +17,12 @@ export async function getVerifiedSession(allowedRoles: readonly UserRole[]) {
     .select('role status doctorId patientId')
     .lean();
 
-  if (!user || user.status !== 'active' || !allowedRoles.includes(user.role)) {
+  if (
+    !user ||
+    user.status !== 'active' ||
+    user.role !== session.user.role ||
+    !allowedRoles.includes(user.role)
+  ) {
     return null;
   }
 
