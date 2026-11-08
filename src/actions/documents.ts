@@ -52,7 +52,7 @@ type ActionError = { ok: false; error: string };
 // RBAC comum
 // -----------------------------------------------------------------------------
 async function requireStaff(): Promise<
-  { ok: true; userId: string; role: string } | ActionError
+  { ok: true; userId: string; role: string; clinicIds: string[] } | ActionError
 > {
   const session = await auth();
   const role = session?.user?.role ?? '';
@@ -61,7 +61,7 @@ async function requireStaff(): Promise<
   }
 
   await dbConnect();
-  const user = await User.findById(session.user.id).select('role status').lean();
+  const user = await User.findById(session.user.id).select('role status clinicIds').lean();
   if (
     !user ||
     user.status !== 'active' ||
@@ -69,7 +69,12 @@ async function requireStaff(): Promise<
   ) {
     return { ok: false, error: 'Conta inativa ou permissões alteradas. Inicie sessão novamente.' };
   }
-  return { ok: true, userId: session.user.id, role };
+  return {
+    ok: true,
+    userId: session.user.id,
+    role,
+    clinicIds: (user.clinicIds ?? []).map(id => String(id)),
+  };
 }
 
 async function doctorCanAccessPatient(
@@ -179,6 +184,29 @@ export async function registerDocumentAction(
   if (!patient) return { ok: false, error: 'Paciente não encontrado.' };
   if (!(await doctorCanAccessPatient(gate, data.patientId))) {
     return { ok: false, error: 'Paciente não encontrado.' };
+  }
+
+  // Uma associação a consulta tem de pertencer ao mesmo paciente e à clínica autorizada.
+  if (data.appointmentId) {
+    const appointment = await Appointment.findById(data.appointmentId)
+      .select('patientId clinicId doctorId')
+      .lean();
+    if (!appointment || String(appointment.patientId) !== data.patientId) {
+      return { ok: false, error: 'Consulta não encontrada para este paciente.' };
+    }
+    if (
+      gate.role === 'receptionist' &&
+      gate.clinicIds.length > 0 &&
+      !gate.clinicIds.includes(String(appointment.clinicId))
+    ) {
+      return { ok: false, error: 'Sem permissões para esta clínica.' };
+    }
+    if (gate.role === 'doctor') {
+      const user = await User.findById(gate.userId).select('doctorId').lean();
+      if (!user?.doctorId || String(appointment.doctorId) !== String(user.doctorId)) {
+        return { ok: false, error: 'Sem permissões para esta consulta.' };
+      }
+    }
   }
 
   // Fonte de verdade: o asset TEM de existir no Cloudinary com o public_id
