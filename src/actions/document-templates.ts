@@ -53,6 +53,12 @@ async function authorizeDocumentContext(params: {
   clinicId: string | null;
   appointmentId: string | null;
 }): Promise<{ doctorId: string | null; clinicId: string } | { error: string }> {
+  if (params.appointmentId && !OID.test(params.appointmentId)) {
+    return { error: 'Consulta inválida.' };
+  }
+  if (params.clinicId && !OID.test(params.clinicId)) {
+    return { error: 'Clínica inválida.' };
+  }
   const user = await User.findById(params.userId)
     .select('role status doctorId clinicIds')
     .lean();
