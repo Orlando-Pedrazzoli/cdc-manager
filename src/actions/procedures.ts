@@ -26,6 +26,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
+import { getVerifiedSession } from '@/lib/get-verified-session';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import {
@@ -71,8 +72,8 @@ const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 // RBAC de dados: a marcação tem de pertencer ao médico da sessão
 // -----------------------------------------------------------------------------
 async function requireOwnAppointment(appointmentId: string) {
-  const session = await auth();
-  if (session?.user?.role !== 'doctor' || !session.user.doctorId) {
+  const session = await getVerifiedSession(['doctor']);
+  if (!session?.user?.doctorId) {
     throw new Error('Sem permissões.');
   }
   if (!OBJECT_ID.test(appointmentId)) {
@@ -301,8 +302,8 @@ export async function voidProcedureAction(
       return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
     }
 
-    const session = await auth();
-    if (session?.user?.role !== 'doctor' || !session.user.doctorId) {
+    const session = await getVerifiedSession(['doctor']);
+    if (!session?.user?.doctorId) {
       return { error: 'Sem permissões.' };
     }
     await dbConnect();
