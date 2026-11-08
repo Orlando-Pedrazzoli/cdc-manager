@@ -59,6 +59,16 @@ async function requireStaff(): Promise<
   if (!session?.user?.id || !STAFF_ROLES.includes(role as never)) {
     return { ok: false, error: 'Sem permissões.' };
   }
+
+  await dbConnect();
+  const user = await User.findById(session.user.id).select('role status').lean();
+  if (
+    !user ||
+    user.status !== 'active' ||
+    user.role !== role
+  ) {
+    return { ok: false, error: 'Conta inativa ou permissões alteradas. Inicie sessão novamente.' };
+  }
   return { ok: true, userId: session.user.id, role };
 }
 
