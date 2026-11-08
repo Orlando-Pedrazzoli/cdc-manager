@@ -20,6 +20,7 @@ import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import { updateOrganizationSchema } from '@/lib/validations/settings';
 import Organization from '@/models/Organization';
+import User from '@/models/User';
 import { uploadPublicLogo, destroyPublicLogo } from '@/lib/cloudinary';
 
 export type OrganizationActionState =
@@ -57,6 +58,10 @@ export async function updateOrganizationAction(
       return { error: 'Sem permissões.' };
     }
     await dbConnect();
+    const admin = await User.findById(session.user.id).select('role status').lean();
+    if (!admin || admin.status !== 'active' || admin.role !== 'admin') {
+      return { error: 'Conta inativa ou permissões alteradas.' };
+    }
 
     const existing = await Organization.findOne();
     const changedFields: string[] = [];
@@ -103,6 +108,9 @@ const LOGO_MIMES = new Set([
 async function requireAdminSession() {
   const session = await auth();
   if (!session?.user?.id || session.user.role !== 'admin') return null;
+  await dbConnect();
+  const user = await User.findById(session.user.id).select('role status').lean();
+  if (!user || user.status !== 'active' || user.role !== 'admin') return null;
   return session;
 }
 
