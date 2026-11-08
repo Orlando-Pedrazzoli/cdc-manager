@@ -13,11 +13,12 @@ export async function requireActiveSession(
   allowedRoles: readonly UserRole[],
 ) {
   const session = await auth();
-  const sessionUser = session?.user;
 
-  if (!sessionUser?.id) {
+  if (!session?.user?.id) {
     redirect('/login');
   }
+
+  const sessionUser = session.user;
 
   await dbConnect();
 
