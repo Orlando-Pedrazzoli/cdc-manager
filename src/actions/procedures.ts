@@ -25,7 +25,6 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { auth } from '@/lib/auth';
 import { getVerifiedSession } from '@/lib/get-verified-session';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
