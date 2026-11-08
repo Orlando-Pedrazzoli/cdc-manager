@@ -12,6 +12,7 @@
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { computeFreeSlots } from '@/lib/availability';
+import User, { canOperateClinic } from '@/models/User';
 
 export async function getFreeSlotsAction(params: {
   clinicId: string;
@@ -32,6 +33,17 @@ export async function getFreeSlotsAction(params: {
   if (!ok) return [];
 
   await dbConnect();
+  const user = await User.findById(session.user.id)
+    .select('role status clinicIds')
+    .lean();
+  if (
+    !user ||
+    user.status !== 'active' ||
+    user.role !== role ||
+    !canOperateClinic(user, params.clinicId)
+  ) {
+    return [];
+  }
   const slots = await computeFreeSlots({
     clinicId: params.clinicId,
     doctorId: params.doctorId,
