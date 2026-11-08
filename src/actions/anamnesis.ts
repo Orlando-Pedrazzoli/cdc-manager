@@ -22,6 +22,7 @@ import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import ClinicalRecord from '@/models/ClinicalRecord';
 import Patient from '@/models/Patient';
+import Appointment from '@/models/Appointment';
 import {
   parseQuestionnaireForm,
   deriveSafetyAlerts,
@@ -32,6 +33,21 @@ export type AnamnesisActionState =
   { success: true } | { error: string } | undefined;
 
 const OID = /^[0-9a-fA-F]{24}$/;
+
+// A página do médico limita a ficha aos pacientes com uma consulta associada.
+// Repetir a mesma regra nas Server Actions impede acesso direto por patientId.
+async function doctorCanAccessPatient(
+  doctorId: string | undefined,
+  patientId: string,
+): Promise<boolean> {
+  if (!doctorId || !OID.test(doctorId)) return false;
+  return Boolean(
+    await Appointment.exists({
+      doctorId,
+      patientId,
+    }),
+  );
+}
 
 function revalidate(patientId: string) {
   revalidatePath(`/admin/pacientes/${patientId}`);
@@ -118,6 +134,12 @@ export async function saveQuestionnaireAction(
     if (!patient || patient.status === 'anonymized') {
       return { error: 'Paciente não encontrado.' };
     }
+    if (
+      role === 'doctor' &&
+      !(await doctorCanAccessPatient(session.user.doctorId, patientId))
+    ) {
+      return { error: 'Paciente não encontrado.' };
+    }
     const { alerts } = await persist({
       patientId,
       formData,
@@ -187,6 +209,11 @@ export async function reviewQuestionnaireAction(
       return { error: 'Só o médico pode validar a anamnese.' };
     }
     await dbConnect();
+    if (
+      !(await doctorCanAccessPatient(session.user.doctorId, patientId))
+    ) {
+      return { error: 'Paciente não encontrado.' };
+    }
     const res = await ClinicalRecord.updateOne(
       { patientId, 'questionnaire.completedAt': { $ne: null } },
       {
@@ -228,6 +255,11 @@ export async function saveDoctorPrivateNotesAction(
       return { error: 'Só médicos podem editar estas observações.' };
     }
     await dbConnect();
+    if (
+      !(await doctorCanAccessPatient(session.user.doctorId, patientId))
+    ) {
+      return { error: 'Paciente não encontrado.' };
+    }
     await ClinicalRecord.updateOne(
       { patientId },
       {
