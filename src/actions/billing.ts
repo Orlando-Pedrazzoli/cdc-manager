@@ -79,9 +79,13 @@ export async function checkoutAction(
 
     // Receção: só nas clínicas onde opera
     const user = await User.findById(session.user.id)
-      .select('role clinicIds')
+      .select('role status clinicIds')
       .lean();
-    if (!user || !canOperateClinic(user, data.clinicId)) {
+    if (
+      !user ||
+      user.status !== 'active' ||
+      !canOperateClinic(user, data.clinicId)
+    ) {
       return { error: 'Sem permissões nesta clínica.' };
     }
 
@@ -237,6 +241,15 @@ export async function voidInvoiceAction(
     }
     await dbConnect();
 
+    // Revalidar a conta na BD: uma sessão JWT antiga não deve manter
+    // permissões de uma conta desativada ou cujo perfil foi alterado.
+    const admin = await User.findById(session.user.id)
+      .select('role status')
+      .lean();
+    if (!admin || admin.status !== 'active' || admin.role !== 'admin') {
+      return { error: 'Apenas a administração ativa pode anular documentos.' };
+    }
+
     const invoice = await Invoice.findById(data.invoiceId);
     if (!invoice) return { error: 'Documento não encontrado.' };
     if (invoice.status === 'voided') {
@@ -377,6 +390,20 @@ export async function registerPaymentAction(
     await dbConnect();
     const invoice = await Invoice.findById(data.invoiceId);
     if (!invoice) return { error: 'Documento não encontrado.' };
+
+    // A autorização depende da clínica da fatura, não apenas do role
+    // guardado no JWT. Revalidar também o estado atual da conta.
+    const user = await User.findById(session.user.id)
+      .select('role status clinicIds')
+      .lean();
+    if (
+      !user ||
+      user.status !== 'active' ||
+      !canOperateClinic(user, String(invoice.clinicId))
+    ) {
+      return { error: 'Sem permissões para esta clínica.' };
+    }
+
     if (invoice.status === 'voided') return { error: 'Documento anulado.' };
     const paid = invoice.paidCents ?? invoice.totalCents;
     const due = invoice.totalCents - paid;
