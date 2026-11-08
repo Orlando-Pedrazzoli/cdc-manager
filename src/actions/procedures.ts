@@ -166,6 +166,7 @@ export async function addProcedureAction(
       discountEuros: formData.get('discountEuros'),
       costEuros: formData.get('costEuros'),
       toothNumbers: formData.get('toothNumbers'),
+      faces: formData.get('faces') ?? '',
       notes: formData.get('notes'),
     });
     if (!parsed.success) {
@@ -244,6 +245,7 @@ export async function addProcedureAction(
       categorySnapshot: treatment.category ?? null,
       ...fin,
       toothNumbers: data.toothNumbers,
+      faces: data.faces, // pintam o odontograma (restauração/selante/faceta)
       notes: data.notes,
       executedAt: now,
     });
@@ -276,6 +278,7 @@ export async function addProcedureAction(
     });
 
     revalidatePath(`/doutor/consulta/${data.appointmentId}`);
+    revalidatePath(`/doutor/pacientes/${String(appt.patientId)}/odontograma`);
     return { success: true };
   } catch (e) {
     return fail(e);

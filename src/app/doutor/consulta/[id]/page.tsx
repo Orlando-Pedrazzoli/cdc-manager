@@ -118,10 +118,15 @@ function NotFound() {
 
 export default async function ConsultationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  /** ?dente=36&faces=O,M — pré-preenchimento vindo do odontograma */
+  searchParams?: Promise<{ dente?: string; faces?: string }>;
 }) {
   const { id } = await params;
+  const sp = (await searchParams) ?? {};
+  const prefill = sp.dente ? { toothNumbers: sp.dente, faces: sp.faces ?? '' } : null;
   const session = await auth();
   const doctorId = session?.user?.doctorId;
   if (!doctorId || !/^[0-9a-fA-F]{24}$/.test(id)) return <NotFound />;
@@ -147,7 +152,7 @@ export default async function ConsultationPage({
       .lean(),
     getClinicById(String(appt.clinicId)),
     TreatmentType.find({ active: true })
-      .select('name category dentoralCode priceCents costCents controlsTooth')
+      .select('name category dentoralCode priceCents costCents controlsTooth chartEffect')
       .sort({ category: 1, name: 1 })
       .lean(),
     Procedure.find({ appointmentId: appt._id }).sort({ createdAt: 1 }).lean(),
@@ -204,6 +209,7 @@ export default async function ConsultationPage({
     priceCents: t.priceCents,
     costCents: t.costCents ?? 0,
     controlsTooth: !!t.controlsTooth,
+    chartEffect: ((t as { chartEffect?: string }).chartEffect ?? 'none') as TreatmentOption['chartEffect'],
   }));
 
   // Notas clínicas DESTA consulta (a ficha completa é o passo seguinte do sprint)
@@ -514,6 +520,7 @@ export default async function ConsultationPage({
               procedures={procedureItems}
               treatments={treatmentOptions}
               canEdit={canEdit}
+              prefill={prefill}
             />
           )}
           {(canEdit || rxItems.length > 0) && (

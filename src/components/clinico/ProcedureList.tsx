@@ -61,7 +61,13 @@ export interface TreatmentOption {
   costCents: number;
   /** Paridade Dentoral «Controla Dente»: o ato exige nº de dente (FDI) */
   controlsTooth: boolean;
+  /** Como o ato pinta o odontograma (lib/odontogram-chart) — decide se pedimos faces */
+  chartEffect?: 'none' | 'restoration' | 'sealant' | 'endo' | 'extraction' | 'implant' | 'crown' | 'bridge' | 'veneer' | 'post' | 'removable' | 'ortho' | 'perio';
 }
+
+const FACE_KEYS = ['O', 'M', 'D', 'V', 'L'] as const;
+const FACE_TITLE: Record<(typeof FACE_KEYS)[number], string> = { O: 'Oclusal', M: 'Mesial', D: 'Distal', V: 'Vestibular', L: 'Lingual/Palatina' };
+const WANTS_FACES = new Set(['restoration', 'sealant', 'veneer']);
 
 export interface NoteItem {
   id: string;
@@ -77,13 +83,19 @@ export function ProcedureList({
   procedures,
   treatments,
   canEdit,
+  prefill = null,
 }: {
   appointmentId: string;
   procedures: ProcedureItem[];
   treatments: TreatmentOption[];
   canEdit: boolean;
+  /** Vindo do odontograma (?dente=36&faces=O,M): pré-preenche dentes e faces */
+  prefill?: { toothNumbers: string; faces: string } | null;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const [toothNumbers, setToothNumbers] = useState(prefill?.toothNumbers ?? '');
+  const [faces, setFaces] = useState<string[]>(() => (prefill?.faces ?? '').toUpperCase().split(/[\s,;]+/).filter(f => FACE_KEYS.includes(f as (typeof FACE_KEYS)[number])));
+  const toggleFace = (f: string) => setFaces(prev => (prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]));
   const [price, setPrice] = useState('');
   const [cost, setCost] = useState('');
   const [discountMode, setDiscountMode] = useState<'' | 'percent' | 'amount'>(
@@ -100,6 +112,8 @@ export function ProcedureList({
     setDiscountMode('');
     setDiscountValue('');
     setSelected(null);
+    setToothNumbers('');
+    setFaces([]);
   };
 
   const [, addAction, adding] = useActionState<
@@ -313,12 +327,53 @@ export function ProcedureList({
             label={selected?.controlsTooth ? 'Dentes (FDI) *' : 'Dentes (FDI)'}
             placeholder='ex.: 11, 26'
             required={selected?.controlsTooth ?? false}
+            value={toothNumbers}
+            onChange={e => setToothNumbers(e.target.value)}
             help={
               selected?.controlsTooth
                 ? 'Este ato controla dente — obrigatório'
-                : undefined
+                : prefill && toothNumbers === prefill.toothNumbers
+                  ? 'Pré-preenchido a partir do odontograma'
+                  : undefined
             }
           />
+          {(WANTS_FACES.has(selected?.chartEffect ?? '') || faces.length > 0) && (
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1B2A6B', marginBottom: 6 }}>
+                Faces tratadas
+              </label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {FACE_KEYS.map(f => {
+                  const on = faces.includes(f);
+                  return (
+                    <button
+                      key={f}
+                      type='button'
+                      title={FACE_TITLE[f]}
+                      onClick={() => toggleFace(f)}
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 10,
+                        border: `2px solid ${on ? '#2743A6' : '#D8DEEF'}`,
+                        backgroundColor: on ? '#2743A6' : '#FFFFFF',
+                        color: on ? '#FFFFFF' : '#1B2A6B',
+                        fontWeight: 800,
+                        fontSize: 14,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {f}
+                    </button>
+                  );
+                })}
+              </div>
+              <input type='hidden' name='faces' value={faces.join(',')} />
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#6A7186' }}>
+                Pintam o odontograma (O oclusal · M mesial · D distal · V vestibular · L lingual)
+              </p>
+            </div>
+          )}
           <div style={{ gridColumn: '2 / span 2' }}>
             <Input name='notes' label='Observações' placeholder='Opcional' />
           </div>

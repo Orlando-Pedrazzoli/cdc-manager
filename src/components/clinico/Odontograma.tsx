@@ -370,6 +370,7 @@ export function Odontograma({
   readOnly,
   proceduresByTooth = {},
   planBaseHref = null,
+  consultationHref = null,
 }: {
   patientId: string;
   /** Registo manual (camada existente) da versão em vista */
@@ -380,6 +381,8 @@ export function Odontograma({
   readOnly: boolean;
   proceduresByTooth?: Record<string, ToothProcedure[]>;
   planBaseHref?: string | null;
+  /** /doutor/consulta/<id> da consulta EM CURSO com este paciente (ou null) */
+  consultationHref?: string | null;
 }) {
   const router = useRouter();
   const [teeth, setTeeth] = useState<Map<string, ToothEntry>>(
@@ -580,6 +583,7 @@ export function Odontograma({
               readOnly={readOnly}
               procedures={proceduresByTooth[selectedTooth.number] ?? []}
               planHref={planBaseHref ? `${planBaseHref}&dentes=${selectedTooth.number}` : null}
+              consultationHref={consultationHref}
             />
           ) : (
             <div style={{ backgroundColor: '#FFFFFF', border: '1px dashed #C7CEE0', borderRadius: '14px', padding: '24px 18px', fontSize: '13px', color: '#6A7186', textAlign: 'center' }}>

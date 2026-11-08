@@ -127,10 +127,12 @@ export default async function OdontogramPage({
       ? requested
       : latestVersion;
   const readOnly = latestVersion > 0 && showVersion < latestVersion;
-  const [proceduresByTooth, chartEvents] = await Promise.all([
+  const [proceduresByTooth, chartEvents, inProgress] = await Promise.all([
     loadProceduresByTooth(id),
     // executado/planeado derivados dos atos e planos (sem 'initial': vem de initialTeeth)
     loadChartEvents(id, { odontogramVersion: null }),
+    // consulta em curso deste médico com o paciente → "Registar ato neste dente"
+    Appointment.findOne({ doctorId, patientId: id, status: 'in-progress' }).select('_id').lean(),
   ]);
 
   const doc =
@@ -277,6 +279,7 @@ export default async function OdontogramPage({
         readOnly={readOnly}
         proceduresByTooth={proceduresByTooth}
         planBaseHref={`/doutor/pacientes/${id}/plano?novo=1`}
+        consultationHref={inProgress ? `/doutor/consulta/${String(inProgress._id)}` : null}
       />
     </div>
   );
