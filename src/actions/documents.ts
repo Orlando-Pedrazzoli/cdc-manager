@@ -42,6 +42,7 @@ import {
 import ClinicalDocument from '@/models/Document';
 import Patient from '@/models/Patient';
 import User from '@/models/User';
+import Doctor from '@/models/Doctor';
 import Appointment from '@/models/Appointment';
 
 const STAFF_ROLES = ['admin', 'receptionist', 'doctor'] as const;
@@ -88,9 +89,18 @@ async function doctorCanAccessPatient(
     .lean();
   if (!user || user.status !== 'active' || !user.doctorId) return false;
 
+  // A conta ativa não basta: o perfil clínico também tem de estar ativo.
+  const doctor = await Doctor.findOne({
+    _id: user.doctorId,
+    active: true,
+  })
+    .select('_id')
+    .lean();
+  if (!doctor) return false;
+
   return Boolean(
     await Appointment.exists({
-      doctorId: user.doctorId,
+      doctorId: doctor._id,
       patientId,
     }),
   );
