@@ -727,6 +727,7 @@ export async function extendDoctorDayAction(input: {
   if (
     !actor ||
     actor.status !== 'active' ||
+    actor.role !== role ||
     !canOperateClinic(actor, input.clinicId)
   ) {
     return { error: 'Sem permissões para esta clínica.' };
