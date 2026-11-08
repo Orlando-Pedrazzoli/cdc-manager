@@ -45,6 +45,7 @@ import TreatmentType from '@/models/TreatmentType';
 import Product from '@/models/Product';
 import Clinic from '@/models/Clinic';
 import Appointment, { BLOCKING_STATUS } from '@/models/Appointment';
+import User from '@/models/User';
 
 export type SettingsActionState =
   | { error: string }
@@ -64,7 +65,10 @@ export type SettingsActionState =
 async function requireAdmin(): Promise<string | null> {
   const session = await auth();
   if (!session?.user?.id || session.user.role !== 'admin') return null;
-  return session.user.id;
+  await dbConnect();
+  const user = await User.findById(session.user.id).select('role status').lean();
+  if (!user || user.status !== 'active' || user.role !== 'admin') return null;
+  return String(user._id);
 }
 
 /** Nome → slug estável: sem acentos, minúsculas, hífens (a-z0-9-) */
