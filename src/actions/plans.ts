@@ -41,6 +41,7 @@ import TreatmentPlan from '@/models/TreatmentPlan';
 import TreatmentType from '@/models/TreatmentType';
 import Procedure from '@/models/Procedure';
 import Doctor from '@/models/Doctor';
+import User from '@/models/User';
 import { getClinicById } from '@/models/Clinic';
 
 export type PlanActionState = { error: string } | { success: true } | undefined;
@@ -57,6 +58,18 @@ async function requireOwnPlan(planId: string) {
     throw new Error('Sem permissões.');
   }
   await dbConnect();
+  const user = await User.findById(session.user.id)
+    .select('role status doctorId')
+    .lean();
+  if (
+    !user ||
+    user.status !== 'active' ||
+    user.role !== 'doctor' ||
+    !user.doctorId ||
+    String(user.doctorId) !== session.user.doctorId
+  ) {
+    throw new Error('Conta inativa ou permissões alteradas.');
+  }
   const plan = await TreatmentPlan.findById(planId);
   if (!plan || String(plan.doctorId) !== session.user.doctorId) {
     throw new Error('Plano não encontrado.');
@@ -354,6 +367,18 @@ export async function executePlanItemAction(
     }
     const doctorId = session.user.doctorId;
     await dbConnect();
+    const user = await User.findById(session.user.id)
+      .select('role status doctorId')
+      .lean();
+    if (
+      !user ||
+      user.status !== 'active' ||
+      user.role !== 'doctor' ||
+      !user.doctorId ||
+      String(user.doctorId) !== doctorId
+    ) {
+      return { error: 'Conta inativa ou permissões alteradas.' };
+    }
 
     const proc = await Procedure.findById(parsed.data.procedureId);
     if (!proc || String(proc.doctorId) !== doctorId) {
