@@ -85,9 +85,18 @@ async function requireStaffForClinic(clinicId: string) {
   if (!session?.user?.id || (role !== 'admin' && role !== 'receptionist')) {
     throw new Error('Sem permissões para gerir a agenda.');
   }
-  // canOperateClinic precisa dos clinicIds — a sessão pode não os ter; ler da BD
-  const user = await User.findById(session.user.id).select('role clinicIds');
-  if (!user || !canOperateClinic(user, clinicId)) {
+
+  // Revalidar conta e âmbito de clínicas na BD, não confiar apenas no JWT.
+  await dbConnect();
+  const user = await User.findById(session.user.id)
+    .select('role status clinicIds')
+    .lean();
+  if (
+    !user ||
+    user.status !== 'active' ||
+    user.role !== role ||
+    !canOperateClinic(user, clinicId)
+  ) {
     throw new Error('Sem permissões para esta clínica.');
   }
   return session.user;
