@@ -49,6 +49,22 @@ void runScript('98-audit-legacy-ids', async () => {
     }
   }
 
+  // ClinicalRecord guarda os legacyIds das notas em um array de subdocumentos.
+  // A verificação é separada porque não existe uma coleção própria de notas.
+  const duplicateClinicalNotes = await M.ClinicalRecord.aggregate([
+    { $unwind: '$notes' },
+    { $match: { 'notes.legacyId': { $type: 'string', $ne: '' } } },
+    { $group: { _id: '$notes.legacyId', count: { $sum: 1 } } },
+    { $match: { count: { $gt: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 10 },
+  ]);
+  if (duplicateClinicalNotes.length > 0) hasDuplicates = true;
+  console.log(`\nClinicalRecord.notes: chaves duplicadas=${duplicateClinicalNotes.length > 0 ? 'SIM' : 'não'}`);
+  for (const duplicate of duplicateClinicalNotes) {
+    console.log(`  DUPLICADO count=${duplicate.count} legacyId=${String(duplicate._id)}`);
+  }
+
   log('Resultado', {
     duplicatesFound: hasDuplicates,
     note: 'Amostra limitada a 10 chaves duplicadas por coleção. Nenhum dado foi alterado.',
