@@ -25,7 +25,7 @@ import mongoose from 'mongoose';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
-import { logAuditRequired } from '@/lib/audit';
+import { logAudit, logAuditRequired } from '@/lib/audit';
 import {
   documentUploadTicketSchema,
   registerDocumentSchema,
