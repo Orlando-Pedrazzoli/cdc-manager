@@ -127,15 +127,15 @@ export function OdontogramaArcada({
   onSelect,
   plannedTeeth = new Set<string>(),
   dentition = 'permanent',
-  onDentitionChange,
+  onDentitionChange = () => {},
 }: {
   entries: ToothEntry[];
   selected: string | null;
   onSelect: (toothNumber: string) => void;
   /** Fase 4C: dentes com tratamento PLANEADO (ponto âmbar) */
   plannedTeeth?: Set<string>;
-  dentition: 'permanent' | 'primary';
-  onDentitionChange: (value: 'permanent' | 'primary') => void;
+  dentition?: 'permanent' | 'primary';
+  onDentitionChange?: (value: 'permanent' | 'primary') => void;
 }) {
   const upperTeeth = dentition === 'permanent' ? UPPER_TEETH : ['55', '54', '53', '52', '51', '61', '62', '63', '64', '65'];
   const lowerTeeth = dentition === 'permanent' ? LOWER_TEETH : ['85', '84', '83', '82', '81', '71', '72', '73', '74', '75'];
