@@ -2,7 +2,7 @@
 // =============================================================================
 // CDC Manager — CRON: lembretes 24h antes da consulta
 // -----------------------------------------------------------------------------
-// Invocado de hora a hora (vercel.json). Para cada marcação que COMEÇA nas
+// Invocado diariamente (vercel.json). Para cada marcação que COMEÇA nas
 // próximas 24 horas, ainda ativa e sem lembrete enviado:
 //   · pending   → email com botão "Confirmar presença" (/confirmar/[token])
 //   · confirmed → email lembrete simples (sem botão)
