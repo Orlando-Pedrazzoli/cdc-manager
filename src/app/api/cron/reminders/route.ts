@@ -133,6 +133,16 @@ export async function GET(request: Request) {
       failedAt: result.ok ? null : new Date(),
       errorMessage: result.ok ? null : result.error,
     }).catch(() => undefined);
+
+    // Keep the claim only after a successful send. On failure, release it so
+    // the next cron execution can retry. The Notification record preserves
+    // the failed attempt for operational review.
+    if (!result.ok) {
+      await Appointment.updateOne(
+        { _id: appt._id, reminder24hSentAt: { $ne: null } },
+        { $set: { reminder24hSentAt: null } },
+      );
+    }
   }
 
   return NextResponse.json({
