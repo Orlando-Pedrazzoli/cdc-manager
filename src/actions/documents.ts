@@ -25,7 +25,7 @@ import mongoose from 'mongoose';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
-import { logAudit } from '@/lib/audit';
+import { logAuditRequired } from '@/lib/audit';
 import {
   documentUploadTicketSchema,
   registerDocumentSchema,
@@ -292,7 +292,7 @@ export async function getDocumentDownloadUrlAction(input: {
     format: doc.format ?? null,
   });
 
-  await logAudit({
+  const auditSaved = await logAuditRequired({
     userId: gate.userId,
     action: 'view',
     entityType: 'Document',
@@ -300,6 +300,9 @@ export async function getDocumentDownloadUrlAction(input: {
     patientId: String(doc.patientId),
     summary: `Download do documento: ${doc.title}`,
   });
+  if (!auditSaved) {
+    return { ok: false, error: 'Não foi possível registrar o acesso ao documento. Tente novamente.' };
+  }
 
   return { ok: true, url };
 }
