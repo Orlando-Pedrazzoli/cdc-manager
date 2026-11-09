@@ -234,6 +234,9 @@ const DoctorSchema = new Schema(
       default: true,
       index: true,
     },
+    // Escrita de serialização para reservas concorrentes do mesmo médico,
+    // incluindo marcações em clínicas diferentes.
+    bookingLockVersion: { type: Number, default: 0, select: false },
   },
   {
     timestamps: true,
