@@ -164,7 +164,15 @@ export function OdontogramaArcada({
         onClick={() => onSelect(fdi)}
         style={{ cursor: 'pointer' }}
         role='button'
-        aria-label={`Dente ${fdi}${mark ? ` — ${TOOTH_STATUS_LABEL[t.status]}` : ''}`}
+        tabIndex={0}
+        aria-pressed={isSelected}
+        aria-label={`Dente ${fdi}${mark ? ` · ${TOOTH_STATUS_LABEL[t.status]}` : ''}${t.faces.length ? ` · ${t.faces.map(face => face.face + ' ' + face.condition).join(', ')}` : ''}${isPlanned ? ' · tratamento planeado' : ''}`}
+        onKeyDown={event => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onSelect(fdi);
+          }
+        }}
       >
         <title>
           {`Dente ${fdi}${mark ? ` · ${TOOTH_STATUS_LABEL[t.status]}` : ''}`}
