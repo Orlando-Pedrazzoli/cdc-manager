@@ -100,8 +100,8 @@ function visualFaceMap(
   toothNumber: string,
 ): Record<'top' | 'bottom' | 'left' | 'right' | 'center', ToothFace> {
   const quadrant = toothNumber[0];
-  const isUpper = quadrant === '1' || quadrant === '2';
-  const mesialRight = quadrant === '1' || quadrant === '4';
+  const isUpper = ['1', '2', '5', '6'].includes(quadrant);
+  const mesialRight = ['1', '4', '5', '8'].includes(quadrant);
   return {
     center: 'O',
     top: isUpper ? 'V' : 'L',
