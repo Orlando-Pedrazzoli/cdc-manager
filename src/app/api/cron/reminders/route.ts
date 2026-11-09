@@ -62,6 +62,7 @@ export async function GET(request: Request) {
   let sent = 0;
   let skipped = 0;
   let failed = 0;
+  let notificationLogFailures = 0;
 
   for (const appt of candidates) {
     // Claim atómico: só UMA execução ganha este documento
@@ -132,7 +133,10 @@ export async function GET(request: Request) {
       sentAt: result.ok ? new Date() : null,
       failedAt: result.ok ? null : new Date(),
       errorMessage: result.ok ? null : result.error,
-    }).catch(() => undefined);
+    }).catch((error: unknown) => {
+      notificationLogFailures++;
+      console.error('[cron/reminders] falha ao guardar Notification:', error);
+    });
 
     // Keep the claim only after a successful send. On failure, release it so
     // the next cron execution can retry. The Notification record preserves
@@ -152,5 +156,6 @@ export async function GET(request: Request) {
     sent,
     skipped,
     failed,
+    notificationLogFailures,
   });
 }
