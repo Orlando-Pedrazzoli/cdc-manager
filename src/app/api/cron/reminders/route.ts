@@ -6,9 +6,9 @@
 // próximas 24 horas, ainda ativa e sem lembrete enviado:
 //   · pending   → email com botão "Confirmar presença" (/confirmar/[token])
 //   · confirmed → email lembrete simples (sem botão)
-// Marca reminder24hSentAt ANTES de enviar (claim atómico com filtro
-// $eq null) — duas execuções sobrepostas do cron nunca enviam em dobro; se
-// o envio falhar, o registo 'failed' fica no outbox para retry manual.
+// Marca reminder24hSentAt antes do envio para impedir claims concorrentes.
+// Se o provider devolver falha, liberta o claim para nova tentativa no
+// próximo cron. Uma falha de rede ambígua pode ainda exigir reconciliação.
 //
 // A NÃO-resposta ao botão é o sinal operacional: essas marcações continuam
 // 'pending' e aparecem no painel "Por confirmar (24h)" da agenda do admin
