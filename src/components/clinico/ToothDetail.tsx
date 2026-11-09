@@ -11,7 +11,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Eraser, ClipboardPlus, Stethoscope } from 'lucide-react';
 import {
   TOOTH_STATUS,
@@ -111,6 +111,8 @@ export function ToothDetail({
   consultationHref?: string | null;
 }) {
   const [regFaces, setRegFaces] = useState<ToothFace[]>([]);
+  const [selectedFace, setSelectedFace] = useState<ToothFace>('O');
+  useEffect(() => setSelectedFace('O'), [tooth.number]);
   const toggleRegFace = (f: ToothFace) => setRegFaces(prev => (prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]));
   const registerHref = consultationHref ? `${consultationHref}?dente=${tooth.number}${regFaces.length ? `&faces=${regFaces.join(',')}` : ''}` : null;
   const conditionOf = (face: ToothFace): FaceCondition | '' =>
@@ -180,51 +182,65 @@ export function ToothDetail({
       </Select>
 
       <div>
-        <p
-          style={{
-            margin: '0 0 8px',
-            fontSize: '13px',
-            fontWeight: 600,
-            color: '#3D4257',
-          }}
-        >
+        <p style={{ margin: '0 0 8px', fontSize: '13px', fontWeight: 600, color: '#3D4257' }}>
           Condições por face
         </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          {TOOTH_FACES.map(face => (
-            <div
-              key={face}
-              style={{ display: 'flex', alignItems: 'center', gap: '10px' }}
-            >
-              <span
+        <div
+          role='group'
+          aria-label={`Selecionar face do dente ${tooth.number}`}
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6 }}
+        >
+          {TOOTH_FACES.map(face => {
+            const condition = conditionOf(face);
+            const active = selectedFace === face;
+            return (
+              <button
+                key={face}
+                type='button'
+                aria-pressed={active}
+                aria-label={`${face}, ${TOOTH_FACE_LABEL[face]}, ${condition ? FACE_CONDITION_LABEL[condition] : 'sem condição registada'}`}
+                onClick={() => setSelectedFace(face)}
                 style={{
-                  width: 110,
-                  fontSize: '13px',
-                  color: '#3D4257',
-                  flexShrink: 0,
+                  minWidth: 0,
+                  minHeight: 58,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                  border: `1px solid ${active ? '#2743A6' : '#D8DEEF'}`,
+                  borderRadius: 9,
+                  background: active ? '#EEF2FF' : '#FFFFFF',
+                  color: active ? '#1B2A6B' : '#3D4257',
+                  cursor: 'pointer',
+                  padding: '6px 3px',
                 }}
               >
-                <strong>{face}</strong> · {TOOTH_FACE_LABEL[face]}
-              </span>
-              <div style={{ flex: 1 }}>
-                <Select
-                  value={conditionOf(face)}
-                  disabled={readOnly}
-                  onChange={e =>
-                    setFace(face, e.target.value as FaceCondition | '')
-                  }
-                >
-                  <option value=''>— Sã —</option>
-                  {FACE_CONDITIONS.map(c => (
-                    <option key={c} value={c}>
-                      {FACE_CONDITION_LABEL[c]}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
-          ))}
+                <strong style={{ fontSize: 14 }}>{face}</strong>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: condition ? '#0F7B4D' : '#D8DEEF' }} />
+              </button>
+            );
+          })}
         </div>
+        <p style={{ margin: '8px 0 5px', fontSize: 12, color: '#6A7186' }}>
+          {TOOTH_FACE_LABEL[selectedFace]} · {selectedFace}
+        </p>
+        <Select
+          label='Condição'
+          value={conditionOf(selectedFace)}
+          disabled={readOnly}
+          onChange={e => setFace(selectedFace, e.target.value as FaceCondition | '')}
+        >
+          <option value=''>— Sem condição registada —</option>
+          {FACE_CONDITIONS.map(condition => (
+            <option key={condition} value={condition}>
+              {FACE_CONDITION_LABEL[condition]}
+            </option>
+          ))}
+        </Select>
+        <p style={{ margin: '6px 0 0', fontSize: 11, color: '#9AA1B4' }}>
+          Selecione uma face para consultar ou alterar a condição. O ponto verde indica uma condição registada.
+        </p>
       </div>
 
       <Input
