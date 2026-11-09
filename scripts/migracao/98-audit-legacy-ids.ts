@@ -20,23 +20,37 @@ void runScript('98-audit-legacy-ids', async () => {
 
   console.log('\n=== Auditoria read-only de legacyId ===');
   for (const [name, model] of models) {
-    const [total, withLegacyId, missing, duplicates] = await Promise.all([
+    const missingFilter = {
+      $or: [
+        { legacyId: null },
+        { legacyId: { $exists: false } },
+        { legacyId: '' },
+        { legacyId: { $not: { $type: 'string' } } },
+      ],
+    };
+    const [total, withLegacyId, missing, duplicates, missingBreakdown] = await Promise.all([
       model.countDocuments({}),
       model.countDocuments({ legacyId: { $type: 'string', $ne: '' } }),
-      model.countDocuments({
-        $or: [
-          { legacyId: null },
-          { legacyId: { $exists: false } },
-          { legacyId: '' },
-          { legacyId: { $not: { $type: 'string' } } },
-        ],
-      }),
+      model.countDocuments(missingFilter),
       model.aggregate([
         { $match: { legacyId: { $type: 'string', $ne: '' } } },
         { $group: { _id: '$legacyId', count: { $sum: 1 } } },
         { $match: { count: { $gt: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 10 },
+      ]),
+      model.aggregate([
+        { $match: missingFilter },
+        {
+          $group: {
+            _id: {
+              hasLegacyData: { $ne: [{ $ifNull: ['$legacyData', null] }, null] },
+              createdYear: { $year: { $ifNull: ['$createdAt', new Date(0)] } },
+            },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { '_id.createdYear': 1, '_id.hasLegacyData': 1 } },
       ]),
     ]);
 
@@ -46,6 +60,12 @@ void runScript('98-audit-legacy-ids', async () => {
     );
     for (const duplicate of duplicates) {
       console.log(`  DUPLICADO count=${duplicate.count} legacyId=${String(duplicate._id)}`);
+    }
+    if (missingBreakdown.length > 0) {
+      console.log('  Distribuição dos registros sem legacyId (ano de criação / legacyData):');
+      for (const group of missingBreakdown) {
+        console.log(`    ano=${group._id.createdYear}, legacyData=${group._id.hasLegacyData ? 'sim' : 'não'}, total=${group.count}`);
+      }
     }
   }
 
