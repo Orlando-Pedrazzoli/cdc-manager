@@ -107,6 +107,9 @@ const ClinicSchema = new Schema(
       min: 1,
       default: 1,
     },
+    // Escrita de serialização para evitar write skew em reservas concorrentes.
+    // Só é incrementado dentro da transação que valida/cria uma marcação.
+    bookingLockVersion: { type: Number, default: 0, select: false },
     // --- Marcação online (políticas podem divergir entre clínicas) ----------
     onlineMinNoticeHours: { type: Number, min: 0, default: 24 },
     onlineMaxAdvanceDays: { type: Number, min: 1, default: 90 },
