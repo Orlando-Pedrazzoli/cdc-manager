@@ -21,7 +21,7 @@
 
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
-import { logAudit } from '@/lib/audit';
+import { logAuditRequired } from '@/lib/audit';
 import { signedDownloadUrl } from '@/lib/cloudinary';
 import ClinicalDocument from '@/models/Document';
 import Appointment from '@/models/Appointment';
@@ -90,7 +90,7 @@ export async function getMyDocumentUrlAction(input: {
     format: doc.format ?? null,
   });
 
-  await logAudit({
+  const auditSaved = await logAuditRequired({
     userId: gate.userId,
     action: 'view',
     entityType: 'Document',
@@ -98,6 +98,9 @@ export async function getMyDocumentUrlAction(input: {
     patientId: gate.patientId,
     summary: `Download pelo próprio paciente no portal: ${doc.title}`,
   });
+  if (!auditSaved) {
+    return { ok: false, error: 'Não foi possível registrar o acesso ao documento. Tente novamente.' };
+  }
 
   return { ok: true, url };
 }
