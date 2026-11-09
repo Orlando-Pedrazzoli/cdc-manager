@@ -21,7 +21,7 @@
 
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
-import { logAuditRequired } from '@/lib/audit';
+import { logAudit, logAuditRequired } from '@/lib/audit';
 import { signedDownloadUrl } from '@/lib/cloudinary';
 import ClinicalDocument from '@/models/Document';
 import Appointment from '@/models/Appointment';
