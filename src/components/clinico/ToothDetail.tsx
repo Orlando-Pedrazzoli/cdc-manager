@@ -11,7 +11,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Eraser, ClipboardPlus, Stethoscope } from 'lucide-react';
 import {
   TOOTH_STATUS,
@@ -111,8 +111,8 @@ export function ToothDetail({
   consultationHref?: string | null;
 }) {
   const [regFaces, setRegFaces] = useState<ToothFace[]>([]);
-  const [selectedFace, setSelectedFace] = useState<ToothFace>('O');
-  useEffect(() => setSelectedFace('O'), [tooth.number]);
+  const [faceSelection, setFaceSelection] = useState<{ toothNumber: string; face: ToothFace }>({ toothNumber: tooth.number, face: 'O' });
+  const selectedFace = faceSelection.toothNumber === tooth.number ? faceSelection.face : 'O';
   const toggleRegFace = (f: ToothFace) => setRegFaces(prev => (prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]));
   const registerHref = consultationHref ? `${consultationHref}?dente=${tooth.number}${regFaces.length ? `&faces=${regFaces.join(',')}` : ''}` : null;
   const conditionOf = (face: ToothFace): FaceCondition | '' =>
@@ -199,7 +199,7 @@ export function ToothDetail({
                 type='button'
                 aria-pressed={active}
                 aria-label={`${face}, ${TOOTH_FACE_LABEL[face]}, ${condition ? FACE_CONDITION_LABEL[condition] : 'sem condição registada'}`}
-                onClick={() => setSelectedFace(face)}
+                onClick={() => setFaceSelection({ toothNumber: tooth.number, face })}
                 style={{
                   minWidth: 0,
                   minHeight: 58,
