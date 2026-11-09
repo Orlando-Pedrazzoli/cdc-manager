@@ -309,7 +309,7 @@ function Arch({
             flexDirection: 'column',
             alignItems: 'center',
             gap: '2px',
-            marginLeft: idx === 8 ? '12px' : 0, // linha média
+            marginLeft: idx === Math.floor(teethNumbers.length / 2) ? '12px' : 0, // linha média, também na dentição decídua
           }}
         >
           {upper && (
