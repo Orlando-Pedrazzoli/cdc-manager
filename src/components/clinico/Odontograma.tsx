@@ -389,6 +389,7 @@ export function Odontograma({
     () => new Map(initialTeeth.map(t => [t.number, t])),
   );
   const [selected, setSelected] = useState<string | null>(null);
+  const [dentition, setDentition] = useState<'permanent' | 'primary'>('permanent');
   const [dirty, setDirty] = useState(false);
   const [layers, setLayers] = useState<Record<ChartLayer, boolean>>({ existing: true, completed: true, planned: true });
 
@@ -519,6 +520,8 @@ export function Odontograma({
         entries={archEntries}
         selected={selected}
         onSelect={setSelected}
+        dentition={dentition}
+        onDentitionChange={value => { setDentition(value); setSelected(null); }}
         plannedTeeth={new Set([...states.values()].filter(s => s.statusLayer === 'planned' || Object.values(s.faces).some(f => f.layer === 'planned')).map(s => s.number))}
       />
 
@@ -541,9 +544,9 @@ export function Odontograma({
           <p style={{ margin: '0 0 4px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#6A7186', textAlign: 'center' }}>
             Arcada superior
           </p>
-          <Arch teethNumbers={UPPER_TEETH} states={states} notes={notes} selected={selected} onSelect={setSelected} upper />
+          <Arch teethNumbers={dentition === 'permanent' ? UPPER_TEETH : ['55', '54', '53', '52', '51', '61', '62', '63', '64', '65']} states={states} notes={notes} selected={selected} onSelect={setSelected} upper />
           <div style={{ height: 10 }} />
-          <Arch teethNumbers={LOWER_TEETH} states={states} notes={notes} selected={selected} onSelect={setSelected} upper={false} />
+          <Arch teethNumbers={dentition === 'permanent' ? LOWER_TEETH : ['85', '84', '83', '82', '81', '71', '72', '73', '74', '75']} states={states} notes={notes} selected={selected} onSelect={setSelected} upper={false} />
           <p style={{ margin: '4px 0 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#6A7186', textAlign: 'center' }}>
             Arcada inferior
           </p>
