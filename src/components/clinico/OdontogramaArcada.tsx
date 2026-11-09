@@ -18,7 +18,6 @@
 
 'use client';
 
-import { useState } from 'react';
 import {
   UPPER_TEETH,
   LOWER_TEETH,
@@ -29,9 +28,6 @@ import {
 import type { ToothEntry } from '@/components/clinico/ToothDetail';
 
 /** Dentição decídua em notação FDI. O modelo já aceita estes 20 dentes. */
-const UPPER_PRIMARY = ['55', '54', '53', '52', '51', '61', '62', '63', '64', '65'] as const;
-const LOWER_PRIMARY = ['85', '84', '83', '82', '81', '71', '72', '73', '74', '75'] as const;
-
 // Mesmas cores da grelha (inline SEMPRE — convenção do projeto)
 const CONDITION_COLOR: Record<FaceCondition, string> = {
   caries: '#B3261E',
@@ -130,16 +126,19 @@ export function OdontogramaArcada({
   selected,
   onSelect,
   plannedTeeth = new Set<string>(),
+  dentition = 'permanent',
+  onDentitionChange,
 }: {
   entries: ToothEntry[];
   selected: string | null;
   onSelect: (toothNumber: string) => void;
   /** Fase 4C: dentes com tratamento PLANEADO (ponto âmbar) */
   plannedTeeth?: Set<string>;
+  dentition: 'permanent' | 'primary';
+  onDentitionChange: (value: 'permanent' | 'primary') => void;
 }) {
-  const [dentition, setDentition] = useState<'permanent' | 'primary'>('permanent');
-  const upperTeeth = dentition === 'permanent' ? UPPER_TEETH : UPPER_PRIMARY;
-  const lowerTeeth = dentition === 'permanent' ? LOWER_TEETH : LOWER_PRIMARY;
+  const upperTeeth = dentition === 'permanent' ? UPPER_TEETH : ['55', '54', '53', '52', '51', '61', '62', '63', '64', '65'];
+  const lowerTeeth = dentition === 'permanent' ? LOWER_TEETH : ['85', '84', '83', '82', '81', '71', '72', '73', '74', '75'];
   const byNumber = new Map(entries.map(t => [t.number, t]));
   const empty = (n: string): ToothEntry => ({
     number: n,
@@ -282,7 +281,7 @@ export function OdontogramaArcada({
                 key={value}
                 type='button'
                 aria-pressed={active}
-                onClick={() => setDentition(value)}
+                onClick={() => onDentitionChange(value)}
                 style={{ border: active ? '1px solid #C9D6F5' : '1px solid transparent', borderRadius: 8, padding: '7px 12px', background: active ? '#FFFFFF' : 'transparent', color: active ? '#1B2A6B' : '#6A7186', fontSize: 12, fontWeight: 700, cursor: 'pointer', boxShadow: active ? '0 1px 2px rgba(20,35,80,.08)' : 'none' }}
               >
                 {label}
