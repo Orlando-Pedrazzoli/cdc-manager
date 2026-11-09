@@ -48,45 +48,37 @@ const STATUS_MARK: Partial<
   'to-extract': { char: 'E', color: '#B3261E' },
 };
 
-// --- Formas por tipo de dente (coords locais, coroa a apontar para +y) --------
-// Posição no quadrante (último dígito FDI): 1–2 incisivos, 3 canino,
-// 4–5 pré-molares, 6–8 molares. Paths desenhados à mão em caixa ~34×40.
-function toothPath(fdi: string): { d: string; grooves: string | null } {
+// --- Silhuetas oclusais por grupo dentário ----------------------------------
+function toothPath(fdi: string): { d: string; grooves: string | null; highlight: string } {
   const pos = Number(fdi[1]);
+  const primary = ['5', '6', '7', '8'].includes(fdi[0]);
+  const molar = primary ? pos >= 4 : pos >= 6;
   if (pos <= 2) {
-    // Incisivo: coroa em pá, bordo largo
     return {
-      d: 'M-9,-20 C-11,-8 -11,8 -8,18 C-4,21 4,21 8,18 C11,8 11,-8 9,-20 C4,-23 -4,-23 -9,-20 Z',
-      grooves: null,
+      d: 'M-8,-21 C-12,-17 -12,-7 -10,2 C-10,10 -8,17 -4,20 C-1,22 1,22 4,20 C8,17 10,10 10,2 C12,-7 12,-17 8,-21 C4,-24 -4,-24 -8,-21 Z',
+      grooves: 'M-5,-14 C-2,-17 2,-17 5,-14',
+      highlight: 'M-5,-15 C-7,-5 -6,8 -3,15',
     };
   }
   if (pos === 3) {
-    // Canino: cúspide única
     return {
-      d: 'M-8,-14 C-11,-4 -10,10 0,21 C10,10 11,-4 8,-14 C4,-19 -4,-19 -8,-14 Z',
-      grooves: null,
+      d: 'M-7,-18 C-4,-22 4,-22 7,-18 C11,-10 10,2 6,13 C4,18 1,23 0,24 C-1,23 -4,18 -6,13 C-10,2 -11,-10 -7,-18 Z',
+      grooves: 'M-4,-12 C-2,-8 2,-8 4,-12',
+      highlight: 'M-5,-13 C-7,-3 -4,8 -1,15',
     };
   }
-  if (pos <= 5) {
-    // Pré-molar: oval com sulco central
+  if (!molar) {
     return {
-      d: 'M-11,-14 C-15,-4 -15,6 -11,14 C-5,19 5,19 11,14 C15,6 15,-4 11,-14 C5,-19 -5,-19 -11,-14 Z',
-      grooves: 'M0,-11 C-2,-4 -2,4 0,11',
+      d: 'M-10,-17 C-14,-12 -14,9 -9,16 C-5,22 5,22 9,16 C14,9 14,-12 10,-17 C5,-22 -5,-22 -10,-17 Z',
+      grooves: 'M0,-14 C-4,-8 -3,-2 0,2 C3,6 4,10 0,15 M-7,-2 C-3,-5 3,-5 7,-2',
+      highlight: 'M-7,-13 C-10,-5 -8,8 -4,14',
     };
   }
-  // Molar: mais largo, sulcos em cruz
   return {
-    d: 'M-15,-14 C-19,-5 -19,6 -15,14 C-7,19 7,19 15,14 C19,6 19,-5 15,-14 C7,-19 -7,-19 -15,-14 Z',
-    grooves: 'M0,-12 C-2,-4 -2,4 0,12 M-12,0 C-4,-2 4,-2 12,0',
+    d: 'M-13,-17 C-18,-12 -17,10 -12,17 C-7,23 7,23 12,17 C17,10 18,-12 13,-17 C7,-23 -7,-23 -13,-17 Z',
+    grooves: 'M0,-17 C-4,-10 -4,-4 0,0 C4,4 4,10 0,17 M-12,0 C-6,-4 -3,-3 0,0 C3,3 7,4 12,0 M-8,-12 C-4,-8 -3,-4 0,0',
+    highlight: 'M-9,-14 C-13,-5 -11,8 -6,14',
   };
-}
-
-// Cor de destaque do dente: estado marcado > primeira condição de face
-function toothTint(t: ToothEntry): string | null {
-  const mark = STATUS_MARK[t.status];
-  if (mark) return mark.color;
-  const c = t.faces[0]?.condition;
-  return c ? CONDITION_COLOR[c] : null;
 }
 
 // Ponto e rotação de um dente na semi-elipse
@@ -150,9 +142,12 @@ export function OdontogramaArcada({
   const renderTooth = (fdi: string, index: number, total: number, arch: 'upper' | 'lower') => {
     const t = byNumber.get(fdi) ?? empty(fdi);
     const { x, y, rot, labelX, labelY } = place(index, total, arch);
-    const { d, grooves } = toothPath(fdi);
-    const tint = toothTint(t);
+    const { d, grooves, highlight } = toothPath(fdi);
     const mark = STATUS_MARK[t.status];
+    const faceDots = t.faces.map(face => ({
+      face: face.face,
+      color: CONDITION_COLOR[face.condition],
+    }));
     const isMissing = t.status === 'missing';
     const isSelected = selected === fdi;
     const isPlanned = plannedTeeth.has(fdi);
@@ -177,22 +172,29 @@ export function OdontogramaArcada({
           {`Dente ${fdi}${mark ? ` · ${TOOTH_STATUS_LABEL[t.status]}` : ''}`}
         </title>
         <g transform={`translate(${x},${y}) rotate(${rot})`}>
+          <defs>
+            <linearGradient id={`tooth-enamel-${fdi}`} x1='0' y1='0' x2='1' y2='1'>
+              <stop offset='0%' stopColor='#FFFFFF' />
+              <stop offset='52%' stopColor='#F5F1E8' />
+              <stop offset='100%' stopColor='#DCD5C6' />
+            </linearGradient>
+          </defs>
           <path
             d={d}
-            fill={isMissing ? '#F4F6FB' : tint ? `${tint}22` : '#FFFFFF'}
-            stroke={isSelected ? '#2743A6' : (tint ?? '#8A93AC')}
-            strokeWidth={isSelected ? 3 : 1.6}
+            fill={isMissing ? '#F4F6FB' : `url(#tooth-enamel-${fdi})`}
+            stroke={isSelected ? '#2743A6' : '#AFA795'}
+            strokeWidth={isSelected ? 2.8 : 1.35}
             strokeDasharray={isMissing ? '4 3' : undefined}
           />
+          {!isMissing && <path d={highlight} fill='none' stroke='#FFFFFF' strokeWidth='2' strokeLinecap='round' opacity='.9' />}
           {grooves && !isMissing && (
-            <path
-              d={grooves}
-              fill='none'
-              stroke={tint ?? '#B8C0D4'}
-              strokeWidth={1.2}
-              strokeLinecap='round'
-            />
+            <path d={grooves} fill='none' stroke='#AFA795' strokeWidth={1.15} strokeLinecap='round' opacity='.9' />
           )}
+          {!isMissing && faceDots.map((dot, dotIndex) => (
+            <circle key={dot.face} cx={-7 + (dotIndex % 3) * 7} cy={-2 + Math.floor(dotIndex / 3) * 7} r='2.5' fill={dot.color} stroke='#FFFFFF' strokeWidth='.8'>
+              <title>{dot.face}: {dot.face}</title>
+            </circle>
+          ))}
           {isPlanned && (
             <circle
               cx={0}
