@@ -2,19 +2,22 @@
 // Run with: npx tsx --env-file=.env.local scripts/migracao/98-audit-legacy-ids.ts
 // This script never writes to MongoDB or MySQL.
 
+import type { Model } from 'mongoose';
 import { runScript, log } from './lib/common';
 
 void runScript('98-audit-legacy-ids', async () => {
   const M = await import('@/models');
-  const models = [
-    ['Patient', M.Patient],
-    ['Doctor', M.Doctor],
-    ['Employee', M.Employee],
-    ['Appointment', M.Appointment],
-    ['Procedure', M.Procedure],
-    ['TreatmentPlan', M.TreatmentPlan],
-    ['Document', M.Document],
-  ] as const;
+  // Normalize model types because the imported models have different document
+  // interfaces. The audit only uses generic MongoDB query/aggregation methods.
+  const models: Array<[string, Model<any>]> = [
+    ['Patient', M.Patient as Model<any>],
+    ['Doctor', M.Doctor as Model<any>],
+    ['Employee', M.Employee as Model<any>],
+    ['Appointment', M.Appointment as Model<any>],
+    ['Procedure', M.Procedure as Model<any>],
+    ['TreatmentPlan', M.TreatmentPlan as Model<any>],
+    ['Document', M.Document as Model<any>],
+  ];
 
   let hasDuplicates = false;
 
