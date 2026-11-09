@@ -301,7 +301,7 @@ export async function getDocumentDownloadUrlAction(input: {
     summary: `Download do documento: ${doc.title}`,
   });
   if (!auditSaved) {
-    return { ok: false, error: 'Não foi possível registrar o acesso ao documento. Tente novamente.' };
+    return { ok: false, error: 'Não foi possível registar o acesso ao documento. Tente novamente.' };
   }
 
   return { ok: true, url };
