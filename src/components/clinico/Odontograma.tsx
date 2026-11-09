@@ -195,7 +195,7 @@ function ToothSvg({
         </defs>
         <path d={roots} fill={rootColor || 'url(#root-' + state.number + ')'} stroke={rootColor || '#BEB6A7'} strokeWidth='1' opacity={dimmed ? 0.25 : 1} />
         {postColor && <path d={upper ? 'M19 4 L22 4 L22 17 L19 17 Z' : 'M19 45 L22 45 L22 59 L19 59 Z'} fill={postColor} />}
-        <g opacity={dimmed ? 0.28 : 1}>
+        <g transform={upper ? 'translate(0 12)' : 'translate(0 0)'} opacity={dimmed ? 0.28 : 1}>
           <path d={crown} fill={dimmed ? '#F2F3F5' : 'url(#enamel-' + state.number + ')'} stroke={selected ? '#2743A6' : '#B8B09F'} strokeWidth={selected ? 2 : 1.1} />
           <path d='M12 16 C15 12 25 11 29 16' fill='none' stroke='#FFFFFF' strokeWidth='2' opacity='.85' strokeLinecap='round' />
           <g clipPath={'url(#tooth-crown-' + state.number + ')'}>
@@ -216,7 +216,7 @@ function ToothSvg({
           {mark && <text x='21' y='27' textAnchor='middle' dominantBaseline='central' fontSize={state.status === 'missing' ? 19 : 13} fontWeight='800' fill={markColor} stroke='#FFFFFF' strokeWidth='2' paintOrder='stroke'>{mark}</text>}
           {note && <circle cx='34' cy='12' r='3.2' fill='#C2620A' stroke='#FFFFFF' strokeWidth='1' />}
         </g>
-        {selected && <path d='M5 8 Q21 1 37 8 L37 46 Q21 53 5 46 Z' fill='none' stroke='#2743A6' strokeWidth='1.5' strokeDasharray='3 2' />}
+        {selected && <path d={upper ? 'M5 20 Q21 13 37 20 L37 58 Q21 65 5 58 Z' : 'M5 8 Q21 1 37 8 L37 46 Q21 53 5 46 Z'} fill='none' stroke='#2743A6' strokeWidth='1.5' strokeDasharray='3 2' />}
       </svg>
     </button>
   );
