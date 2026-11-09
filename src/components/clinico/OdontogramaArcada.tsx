@@ -18,6 +18,7 @@
 
 'use client';
 
+import { useState } from 'react';
 import {
   UPPER_TEETH,
   LOWER_TEETH,
@@ -26,6 +27,10 @@ import {
   type ToothStatus,
 } from '@/lib/domain';
 import type { ToothEntry } from '@/components/clinico/ToothDetail';
+
+/** Dentição decídua em notação FDI. O modelo já aceita estes 20 dentes. */
+const UPPER_PRIMARY = ['55', '54', '53', '52', '51', '61', '62', '63', '64', '65'] as const;
+const LOWER_PRIMARY = ['85', '84', '83', '82', '81', '71', '72', '73', '74', '75'] as const;
 
 // Mesmas cores da grelha (inline SEMPRE — convenção do projeto)
 const CONDITION_COLOR: Record<FaceCondition, string> = {
@@ -132,6 +137,9 @@ export function OdontogramaArcada({
   /** Fase 4C: dentes com tratamento PLANEADO (ponto âmbar) */
   plannedTeeth?: Set<string>;
 }) {
+  const [dentition, setDentition] = useState<'permanent' | 'primary'>('permanent');
+  const upperTeeth = dentition === 'permanent' ? UPPER_TEETH : UPPER_PRIMARY;
+  const lowerTeeth = dentition === 'permanent' ? LOWER_TEETH : LOWER_PRIMARY;
   const byNumber = new Map(entries.map(t => [t.number, t]));
   const empty = (n: string): ToothEntry => ({
     number: n,
@@ -140,9 +148,9 @@ export function OdontogramaArcada({
     note: null,
   });
 
-  const renderTooth = (fdi: string, index: number, arch: 'upper' | 'lower') => {
+  const renderTooth = (fdi: string, index: number, total: number, arch: 'upper' | 'lower') => {
     const t = byNumber.get(fdi) ?? empty(fdi);
-    const { x, y, rot, labelX, labelY } = place(index, 16, arch);
+    const { x, y, rot, labelX, labelY } = place(index, total, arch);
     const { d, grooves } = toothPath(fdi);
     const tint = toothTint(t);
     const mark = STATUS_MARK[t.status];
@@ -251,9 +259,33 @@ export function OdontogramaArcada({
             color: '#6A7186',
           }}
         >
-          — clique num dente para abrir o detalhe
+          · selecione um dente para abrir o detalhe
         </span>
       </p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+        <div role='group' aria-label='Tipo de dentição' style={{ display: 'inline-flex', gap: 4, padding: 3, borderRadius: 10, background: '#F4F6FB' }}>
+          {([
+            ['permanent', 'Permanente'],
+            ['primary', 'Decídua'],
+          ] as const).map(([value, label]) => {
+            const active = dentition === value;
+            return (
+              <button
+                key={value}
+                type='button'
+                aria-pressed={active}
+                onClick={() => setDentition(value)}
+                style={{ border: active ? '1px solid #C9D6F5' : '1px solid transparent', borderRadius: 8, padding: '7px 12px', background: active ? '#FFFFFF' : 'transparent', color: active ? '#1B2A6B' : '#6A7186', fontSize: 12, fontWeight: 700, cursor: 'pointer', boxShadow: active ? '0 1px 2px rgba(20,35,80,.08)' : 'none' }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <span style={{ fontSize: 12, color: '#6A7186' }}>
+          {dentition === 'permanent' ? '32 dentes · FDI 11–48' : '20 dentes · FDI 51–85'}
+        </span>
+      </div>
       <svg
         viewBox='0 0 720 430'
         role='img'
@@ -281,8 +313,8 @@ export function OdontogramaArcada({
         >
           INFERIOR
         </text>
-        {UPPER_TEETH.map((fdi, i) => renderTooth(fdi, i, 'upper'))}
-        {LOWER_TEETH.map((fdi, i) => renderTooth(fdi, i, 'lower'))}
+        {upperTeeth.map((fdi, i) => renderTooth(fdi, i, upperTeeth.length, 'upper'))}
+        {lowerTeeth.map((fdi, i) => renderTooth(fdi, i, lowerTeeth.length, 'lower'))}
       </svg>
     </div>
   );
