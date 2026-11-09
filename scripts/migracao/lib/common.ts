@@ -245,10 +245,27 @@ export function oid(v: unknown): Types.ObjectId {
 // -----------------------------------------------------------------------------
 export async function loadLegacyMap(model: Model<any>, field = 'legacyId'): Promise<Map<string, Types.ObjectId>> {
   const map = new Map<string, Types.ObjectId>();
-  const cursor = model.find({ [field]: { $type: 'string' } }, { [field]: 1 }).lean().cursor();
+  let duplicateCount = 0;
+  const cursor = model.find(
+    { [field]: { $type: 'string', $ne: '' } },
+    { [field]: 1 },
+  ).lean().cursor();
+
   for await (const doc of cursor) {
-    map.set(String((doc as any)[field]), (doc as any)._id);
+    const key = String((doc as any)[field]);
+    if (map.has(key)) {
+      duplicateCount++;
+      continue;
+    }
+    map.set(key, (doc as any)._id);
   }
+
+  if (duplicateCount > 0) {
+    throw new Error(
+      `Foram encontrados ${duplicateCount} identificadores ${field} duplicados em ${model.modelName}. Corrija os dados antes de continuar a migração.`,
+    );
+  }
+
   return map;
 }
 
@@ -265,6 +282,25 @@ export async function upsertByLegacyId(
   keyField = 'legacyId',
 ): Promise<void> {
   if (docs.length === 0) return;
+
+  // Nunca permitir upsert sem uma chave estável: filtros com undefined/null
+  // podem criar documentos impossíveis de reconciliar numa migração seguinte.
+  const keys = new Set<string>();
+  for (const [index, doc] of docs.entries()) {
+    const rawKey = doc[keyField];
+    if (typeof rawKey !== 'string' || rawKey.trim() === '') {
+      throw new Error(
+        `Documento ${index + 1} sem ${keyField} válido em ${model.modelName}; lote rejeitado sem escrita.`,
+      );
+    }
+    if (keys.has(rawKey)) {
+      throw new Error(
+        `Chave ${keyField} repetida dentro do lote de ${model.modelName}; lote rejeitado sem escrita.`,
+      );
+    }
+    keys.add(rawKey);
+  }
+
   if (args.dryRun) {
     stats.skipped += docs.length;
     return;
