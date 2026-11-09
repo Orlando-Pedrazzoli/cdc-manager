@@ -139,145 +139,84 @@ const EMPTY_STATE = (n: string): ToothChartState => ({
   events: [],
 });
 
-// --- Dente (SVG 40×50: 40×40 faces + 10 de zona radicular) -------------------
+// --- Dente anatómico (SVG): coroa por grupo dentário + raízes -----------------
 function ToothSvg({
-  state,
-  note,
-  selected,
-  upper,
-  onSelect,
+  state, note, selected, upper, onSelect,
 }: {
-  state: ToothChartState;
-  note: string | null;
-  selected: boolean;
-  upper: boolean;
-  onSelect: () => void;
+  state: ToothChartState; note: string | null; selected: boolean; upper: boolean; onSelect: () => void;
 }) {
   const map = visualFaceMap(state.number);
   const mark = STATUS_CHAR[state.status];
-  const markColor = state.statusLayer
-    ? LAYER_COLOR[state.statusLayer]
-    : '#9AA1B4';
+  const markColor = state.statusLayer ? LAYER_COLOR[state.statusLayer] : '#9AA1B4';
   const dimmed = state.status === 'missing';
   const rootColor = state.endo ? LAYER_COLOR[state.endo] : null;
   const postColor = state.post ? LAYER_COLOR[state.post] : null;
   const veneerColor = state.veneer ? LAYER_COLOR[state.veneer] : null;
-  // raiz desenhada do lado oposto à vestibular… simplificação: raiz "para fora" da arcada
-  const rootY = upper ? 0 : 40;
-  const faceOffset = upper ? 10 : 0;
+  const position = Number(state.number[1]);
+  const primary = ['5', '6', '7', '8'].includes(state.number[0]);
+  const molar = primary ? position >= 4 : position >= 6;
+  const premolar = !primary && position >= 4 && position <= 5;
+  const canine = position === 3;
+  const crown = molar
+    ? 'M8 19 C5 16 7 11 12 10 C15 6 21 7 24 10 C29 7 35 11 34 16 C39 20 36 28 33 31 C32 38 27 43 21 42 C15 44 9 40 9 34 C4 30 4 23 8 19 Z'
+    : premolar
+      ? 'M10 17 C8 12 12 8 17 10 C21 6 28 9 30 13 C35 17 34 25 31 30 C30 38 25 42 20 41 C14 42 9 37 9 31 C5 26 6 20 10 17 Z'
+      : canine
+        ? 'M10 18 C10 11 14 8 20 5 C26 8 30 12 30 19 C32 28 27 38 20 43 C13 38 8 28 10 18 Z'
+        : 'M10 14 C13 9 27 9 30 14 C33 20 32 31 29 37 C26 42 14 42 11 37 C8 30 7 20 10 14 Z';
+  const roots = molar
+    ? (upper
+      ? 'M11 17 C8 10 7 5 9 1 C13 0 15 8 17 15 Z M17 16 C17 8 18 2 21 0 C25 2 23 10 23 17 Z M25 16 C28 8 30 3 34 4 C36 8 32 14 30 19 Z'
+      : 'M11 43 C8 50 7 57 10 65 C14 66 16 55 18 44 Z M22 43 C22 52 23 59 27 64 C31 62 28 51 28 43 Z')
+    : (upper
+      ? 'M15 17 C13 10 12 4 17 0 C21 0 21 10 22 17 Z'
+      : 'M15 42 C13 50 13 58 18 65 C22 64 21 52 22 42 Z');
   const titleBits = [
-    `Dente ${state.number}`,
+    'Dente ' + state.number,
     mark ? TOOTH_STATUS_LABEL[state.status] : null,
-    state.endo ? `Endodontia (${LAYER_LABEL[state.endo]})` : null,
+    state.endo ? 'Endodontia (' + LAYER_LABEL[state.endo] + ')' : null,
     state.post ? 'Espigão' : null,
     state.veneer ? 'Faceta' : null,
   ].filter(Boolean);
 
   return (
-    <button
-      type='button'
-      onClick={onSelect}
-      title={titleBits.join(' · ')}
-      style={{
-        border: 'none',
-        background: 'transparent',
-        padding: 0,
-        cursor: 'pointer',
-        lineHeight: 0,
-      }}
-    >
-      <svg width={40} height={50} viewBox='0 0 40 50'>
-        {/* zona radicular */}
-        <g transform={`translate(0 ${rootY})`}>
-          <path
-            d={
-              upper
-                ? 'M12,10 L16,1 L24,1 L28,10 Z'
-                : 'M12,0 L16,9 L24,9 L28,0 Z'
-            }
-            fill={rootColor ?? '#FFFFFF'}
-            stroke={rootColor ?? FACE_STROKE}
-            strokeWidth={rootColor ? 1.5 : 1}
-            opacity={dimmed ? 0.3 : 1}
-          />
-          {postColor && (
-            <rect
-              x={18.5}
-              y={upper ? 2 : 2}
-              width={3}
-              height={6}
-              fill={postColor}
-            />
-          )}
+    <button type='button' onClick={onSelect} title={titleBits.join(' · ')}
+      aria-label={titleBits.join(', ')} aria-pressed={selected}
+      style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', lineHeight: 0, borderRadius: 5 }}>
+      <svg width={46} height={68} viewBox='0 0 42 68' role='img' aria-hidden='true'>
+        <defs>
+          <linearGradient id={'enamel-' + state.number} x1='0' y1='0' x2='1' y2='1'>
+            <stop offset='0%' stopColor='#FFFFFF' /><stop offset='48%' stopColor='#F5F1E8' /><stop offset='100%' stopColor='#DED8C9' />
+          </linearGradient>
+          <linearGradient id={'root-' + state.number} x1='0' y1='0' x2='1' y2='0'>
+            <stop offset='0%' stopColor='#D8D0C0' /><stop offset='48%' stopColor='#FFFDF7' /><stop offset='100%' stopColor='#D5CDBD' />
+          </linearGradient>
+          <clipPath id={'tooth-crown-' + state.number}><path d={crown} /></clipPath>
+        </defs>
+        <path d={roots} fill={rootColor || 'url(#root-' + state.number + ')'} stroke={rootColor || '#BEB6A7'} strokeWidth='1' opacity={dimmed ? 0.25 : 1} />
+        {postColor && <path d={upper ? 'M19 4 L22 4 L22 17 L19 17 Z' : 'M19 45 L22 45 L22 59 L19 59 Z'} fill={postColor} />}
+        <g opacity={dimmed ? 0.28 : 1}>
+          <path d={crown} fill={dimmed ? '#F2F3F5' : 'url(#enamel-' + state.number + ')'} stroke={selected ? '#2743A6' : '#B8B09F'} strokeWidth={selected ? 2 : 1.1} />
+          <path d='M12 16 C15 12 25 11 29 16' fill='none' stroke='#FFFFFF' strokeWidth='2' opacity='.85' strokeLinecap='round' />
+          <g clipPath={'url(#tooth-crown-' + state.number + ')'}>
+            <g transform='translate(1 1) scale(.95 .95)'>
+              {(['top', 'bottom', 'left', 'right'] as const).map(pos => {
+                const st = faceStyle(state.faces[map[pos]]);
+                return <path key={pos} d={FACE_PATHS[pos]} fill={st.fill} fillOpacity='.9' stroke={st.stroke} strokeWidth={st.strokeWidth} strokeDasharray={st.dash} />;
+              })}
+              {(() => {
+                const st = faceStyle(state.faces.O);
+                return <rect x='13' y='13' width='14' height='14' fill={st.fill} fillOpacity='.92' stroke={st.stroke} strokeWidth={st.strokeWidth} strokeDasharray={st.dash} />;
+              })()}
+            </g>
+          </g>
+          {molar && <path d='M12 24 C16 20 18 21 21 25 C24 21 28 21 31 24 M21 25 C18 29 17 32 18 35 M21 25 C25 29 26 32 24 36' fill='none' stroke='#B8AE9B' strokeWidth='1' opacity='.8' />}
+          {premolar && <path d='M15 22 C18 19 22 19 26 22 M20 20 L21 34' fill='none' stroke='#B8AE9B' strokeWidth='1' opacity='.75' />}
+          {veneerColor && <path d={upper ? 'M10 14 Q20 7 30 14' : 'M10 36 Q20 44 30 36'} fill='none' stroke={veneerColor} strokeWidth='3' />}
+          {mark && <text x='21' y='27' textAnchor='middle' dominantBaseline='central' fontSize={state.status === 'missing' ? 19 : 13} fontWeight='800' fill={markColor} stroke='#FFFFFF' strokeWidth='2' paintOrder='stroke'>{mark}</text>}
+          {note && <circle cx='34' cy='12' r='3.2' fill='#C2620A' stroke='#FFFFFF' strokeWidth='1' />}
         </g>
-        <g transform={`translate(0 ${faceOffset})`} opacity={dimmed ? 0.35 : 1}>
-          {(['top', 'bottom', 'left', 'right'] as const).map(pos => {
-            const st = faceStyle(state.faces[map[pos]]);
-            return (
-              <path
-                key={pos}
-                d={FACE_PATHS[pos]}
-                fill={st.fill}
-                stroke={st.stroke}
-                strokeWidth={st.strokeWidth}
-                strokeDasharray={st.dash}
-              />
-            );
-          })}
-          {(() => {
-            const st = faceStyle(state.faces.O);
-            return (
-              <rect
-                x={13}
-                y={13}
-                width={14}
-                height={14}
-                fill={st.fill}
-                stroke={st.stroke}
-                strokeWidth={st.strokeWidth}
-                strokeDasharray={st.dash}
-              />
-            );
-          })()}
-          {veneerColor && (
-            <path
-              d={FACE_PATHS[upper ? 'top' : 'bottom']}
-              fill='none'
-              stroke={veneerColor}
-              strokeWidth={3}
-            />
-          )}
-          {mark && (
-            <text
-              x={20}
-              y={20}
-              textAnchor='middle'
-              dominantBaseline='central'
-              fontSize={state.status === 'missing' ? 22 : 15}
-              fontWeight={800}
-              fill={markColor}
-              stroke='#FFFFFF'
-              strokeWidth={state.status === 'missing' ? 0 : 2}
-              paintOrder='stroke'
-              style={{ pointerEvents: 'none' }}
-            >
-              {mark}
-            </text>
-          )}
-          {note && <circle cx={35} cy={5} r={3.5} fill='#C2620A' />}
-        </g>
-        {selected && (
-          <rect
-            x={0.5}
-            y={0.5}
-            width={39}
-            height={49}
-            fill='none'
-            stroke='#2743A6'
-            strokeWidth={2.5}
-            rx={4}
-          />
-        )}
+        {selected && <path d='M5 8 Q21 1 37 8 L37 46 Q21 53 5 46 Z' fill='none' stroke='#2743A6' strokeWidth='1.5' strokeDasharray='3 2' />}
       </svg>
     </button>
   );
@@ -300,7 +239,7 @@ function Arch({
   upper: boolean;
 }) {
   return (
-    <div style={{ display: 'flex', gap: '3px', justifyContent: 'center' }}>
+    <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
       {teethNumbers.map((n, idx) => (
         <div
           key={n}
