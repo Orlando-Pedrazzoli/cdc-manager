@@ -49,6 +49,7 @@ import { canOperateClinic } from '@/models/User';
 import User from '@/models/User';
 import {
   isSlotAvailable,
+  lockSlotResources,
   lisbonToUtc,
   hhmmToMin,
   workingRangesForDate,
@@ -369,6 +370,11 @@ export async function createAppointmentAction(
   try {
     let appointmentId = '';
     await session.withTransaction(async () => {
+      await lockSlotResources({
+        clinicId: data.clinicId,
+        doctorId: data.doctorId,
+        session,
+      });
       const free = await isSlotAvailable({
         clinicId: data.clinicId,
         doctorId: data.doctorId,
@@ -592,6 +598,11 @@ export async function rescheduleAppointmentAction(
   try {
     let newId = '';
     await session.withTransaction(async () => {
+      await lockSlotResources({
+        clinicId: data.clinicId,
+        doctorId: data.doctorId,
+        session,
+      });
       const free = await isSlotAvailable({
         clinicId: data.clinicId,
         doctorId: data.doctorId,
@@ -744,6 +755,11 @@ export async function updateAppointmentDurationAction(
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
+      await lockSlotResources({
+        clinicId: String(appt.clinicId),
+        doctorId: appt.doctorId ? String(appt.doctorId) : null,
+        session,
+      });
       if (deltaMin > 0) {
         // Só a janela acrescentada [oldEnd, newEnd) pode conflituar
         const free = await isSlotAvailable({
