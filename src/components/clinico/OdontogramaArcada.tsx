@@ -192,7 +192,7 @@ export function OdontogramaArcada({
           )}
           {!isMissing && faceDots.map((dot, dotIndex) => (
             <circle key={dot.face} cx={-7 + (dotIndex % 3) * 7} cy={-2 + Math.floor(dotIndex / 3) * 7} r='2.5' fill={dot.color} stroke='#FFFFFF' strokeWidth='.8'>
-              <title>{dot.face}: {dot.face}</title>
+              <title>{dot.face}: {t.faces.find(face => face.face === dot.face)?.condition}</title>
             </circle>
           ))}
           {isPlanned && (
