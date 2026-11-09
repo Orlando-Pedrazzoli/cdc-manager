@@ -361,6 +361,40 @@ export async function computeFreeSlots(
 // -----------------------------------------------------------------------------
 // Re-verificação ATÓMICA no momento da escrita (dentro da transação)
 // -----------------------------------------------------------------------------
+/**
+ * Serializa verificações de disponibilidade dentro da transação de escrita.
+ * Sem esta escrita partilhada, duas transações podem ler o mesmo estado livre
+ * e ambas inserir marcações (write skew).
+ *
+ * A clínica protege a capacidade. O médico protege conflitos entre clínicas.
+ * A ordem dos locks é sempre clínica e depois médico.
+ */
+export async function lockSlotResources(params: {
+  clinicId: string;
+  doctorId: string | null;
+  session: mongoose.ClientSession;
+}): Promise<void> {
+  const clinicLock = await Clinic.updateOne(
+    { _id: new mongoose.Types.ObjectId(params.clinicId) },
+    { $inc: { bookingLockVersion: 1 } },
+    { session: params.session, timestamps: false },
+  );
+  if (clinicLock.matchedCount !== 1) {
+    throw new Error('Clínica não encontrada ao validar a disponibilidade.');
+  }
+
+  if (params.doctorId) {
+    const doctorLock = await Doctor.updateOne(
+      { _id: new mongoose.Types.ObjectId(params.doctorId) },
+      { $inc: { bookingLockVersion: 1 } },
+      { session: params.session, timestamps: false },
+    );
+    if (doctorLock.matchedCount !== 1) {
+      throw new Error('Médico não encontrado ao validar a disponibilidade.');
+    }
+  }
+}
+
 export async function isSlotAvailable(params: {
   clinicId: string;
   doctorId: string | null;
