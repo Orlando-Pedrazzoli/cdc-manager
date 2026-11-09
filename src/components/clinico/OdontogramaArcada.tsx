@@ -127,7 +127,7 @@ export function OdontogramaArcada({
   onSelect,
   plannedTeeth = new Set<string>(),
   dentition = 'permanent',
-  onDentitionChange = () => {},
+  onDentitionChange,
 }: {
   entries: ToothEntry[];
   selected: string | null;
@@ -269,26 +269,28 @@ export function OdontogramaArcada({
           · selecione um dente para abrir o detalhe
         </span>
       </p>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
-        <div role='group' aria-label='Tipo de dentição' style={{ display: 'inline-flex', gap: 4, padding: 3, borderRadius: 10, background: '#F4F6FB' }}>
-          {([
-            ['permanent', 'Permanente'],
-            ['primary', 'Decídua'],
-          ] as const).map(([value, label]) => {
-            const active = dentition === value;
-            return (
-              <button
-                key={value}
-                type='button'
-                aria-pressed={active}
-                onClick={() => onDentitionChange(value)}
-                style={{ border: active ? '1px solid #C9D6F5' : '1px solid transparent', borderRadius: 8, padding: '7px 12px', background: active ? '#FFFFFF' : 'transparent', color: active ? '#1B2A6B' : '#6A7186', fontSize: 12, fontWeight: 700, cursor: 'pointer', boxShadow: active ? '0 1px 2px rgba(20,35,80,.08)' : 'none' }}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+        {onDentitionChange && (
+          <div role='group' aria-label='Tipo de dentição' style={{ display: 'inline-flex', gap: 4, padding: 3, borderRadius: 10, background: '#F4F6FB' }}>
+            {([
+              ['permanent', 'Permanente'],
+              ['primary', 'Decídua'],
+            ] as const).map(([value, label]) => {
+              const active = dentition === value;
+              return (
+                <button
+                  key={value}
+                  type='button'
+                  aria-pressed={active}
+                  onClick={() => onDentitionChange(value)}
+                  style={{ border: active ? '1px solid #C9D6F5' : '1px solid transparent', borderRadius: 8, padding: '7px 12px', background: active ? '#FFFFFF' : 'transparent', color: active ? '#1B2A6B' : '#6A7186', fontSize: 12, fontWeight: 700, cursor: 'pointer', boxShadow: active ? '0 1px 2px rgba(20,35,80,.08)' : 'none' }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <span style={{ fontSize: 12, color: '#6A7186' }}>
           {dentition === 'permanent' ? '32 dentes · FDI 11–48' : '20 dentes · FDI 51–85'}
         </span>
