@@ -99,7 +99,7 @@ export async function getMyDocumentUrlAction(input: {
     summary: `Download pelo próprio paciente no portal: ${doc.title}`,
   });
   if (!auditSaved) {
-    return { ok: false, error: 'Não foi possível registrar o acesso ao documento. Tente novamente.' };
+    return { ok: false, error: 'Não foi possível registar o acesso ao documento. Tente novamente.' };
   }
 
   return { ok: true, url };
