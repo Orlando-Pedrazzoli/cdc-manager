@@ -56,7 +56,6 @@ import {
   type ToothProcedure,
 } from '@/components/clinico/ToothDetail';
 import { Button } from '@/components/ui/Button';
-import { OdontogramaArcada } from '@/components/clinico/OdontogramaArcada';
 
 // --- Cores (inline SEMPRE — convenção do projeto) -----------------------------
 /** Cor por camada para TRABALHO (restauração, selante, coroa, implante…) */
@@ -238,38 +237,80 @@ function Arch({
   onSelect: (n: string) => void;
   upper: boolean;
 }) {
+  const center = (teethNumbers.length - 1) / 2;
+
   return (
-    <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-      {teethNumbers.map((n, idx) => (
-        <div
-          key={n}
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '2px',
-            marginLeft: idx === Math.floor(teethNumbers.length / 2) ? '12px' : 0, // linha média, também na dentição decídua
-          }}
-        >
-          {upper && (
-            <span style={{ fontSize: '10px', fontWeight: 700, color: '#6A7186' }}>
-              {n}
-            </span>
-          )}
-          <ToothSvg
-            state={states.get(n) ?? EMPTY_STATE(n)}
-            note={notes.get(n) ?? null}
-            selected={selected === n}
-            upper={upper}
-            onSelect={() => onSelect(n)}
-          />
-          {!upper && (
-            <span style={{ fontSize: '10px', fontWeight: 700, color: '#6A7186' }}>
-              {n}
-            </span>
-          )}
-        </div>
-      ))}
+    <div
+      role='group'
+      aria-label={upper ? 'Arcada superior' : 'Arcada inferior'}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(${teethNumbers.length}, minmax(0, 1fr))`,
+        alignItems: 'start',
+        minWidth: 760,
+        maxWidth: 920,
+        margin: '0 auto',
+        padding: upper ? '8px 0 0' : '0 0 8px',
+      }}
+    >
+      {teethNumbers.map((n, idx) => {
+        const relative = center === 0 ? 0 : (idx - center) / center;
+        const curve = Math.pow(Math.abs(relative), 1.7);
+        const verticalOffset = Math.round(curve * 38);
+        const rotation = Math.round(relative * (upper ? 34 : -34));
+
+        return (
+          <div
+            key={n}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 3,
+              marginLeft: idx === Math.ceil(teethNumbers.length / 2) ? 10 : 0,
+              transform: `translateY(${verticalOffset}px) rotate(${rotation}deg)`,
+              transformOrigin: 'center center',
+              position: 'relative',
+              zIndex: selected === n ? 2 : 1,
+            }}
+          >
+            {upper && (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: selected === n ? 800 : 600,
+                  color: selected === n ? '#2743A6' : '#6A7186',
+                  lineHeight: 1,
+                  transform: `rotate(${-rotation}deg)`,
+                }}
+              >
+                {n}
+              </span>
+            )}
+            <ToothSvg
+              state={states.get(n) ?? EMPTY_STATE(n)}
+              note={notes.get(n) ?? null}
+              selected={selected === n}
+              upper={upper}
+              onSelect={() => onSelect(n)}
+            />
+            {!upper && (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: selected === n ? 800 : 600,
+                  color: selected === n ? '#2743A6' : '#6A7186',
+                  lineHeight: 1,
+                  transform: `rotate(${-rotation}deg)`,
+                }}
+              >
+                {n}
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -361,17 +402,6 @@ export function Odontograma({
 
   const notes = useMemo(() => new Map([...teeth.values()].map(t => [t.number, t.note])), [teeth]);
 
-  // entradas para a arcada anatómica (mesma fonte)
-  const archEntries = useMemo<ToothEntry[]>(
-    () =>
-      [...states.values()].map(s => ({
-        number: s.number,
-        status: s.status,
-        faces: Object.entries(s.faces).map(([face, f]) => ({ face: face as ToothFace, condition: f.condition as FaceCondition })),
-        note: notes.get(s.number) ?? null,
-      })),
-    [states, notes],
-  );
 
   const [state, action, pending] = useActionState<ConsultationActionState, FormData>(saveOdontogramAction, undefined);
   const handled = useRef<ConsultationActionState>(undefined);
@@ -454,15 +484,6 @@ export function Odontograma({
         )}
       </div>
 
-      {/* Vista anatómica das arcadas — mesma fonte de dados, mesma seleção */}
-      <OdontogramaArcada
-        entries={archEntries}
-        selected={selected}
-        onSelect={setSelected}
-        dentition={dentition}
-        onDentitionChange={value => { setDentition(value); setSelected(null); }}
-        plannedTeeth={new Set([...states.values()].filter(s => s.statusLayer === 'planned' || Object.values(s.faces).some(f => f.layer === 'planned')).map(s => s.number))}
-      />
 
       <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         {/* Mapa das arcadas */}
