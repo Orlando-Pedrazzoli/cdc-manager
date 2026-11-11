@@ -54,6 +54,8 @@ import {
 } from '@/components/clinico/odontograma/chart-style';
 import { OdontogramaAnatomico } from '@/components/clinico/odontograma/OdontogramaAnatomico';
 import { OdontogramaPaciente3D } from '@/components/clinico/odontograma/OdontogramaPaciente3D';
+import { OdontogramaHistorico } from '@/components/clinico/odontograma/OdontogramaHistorico';
+import type { OdontogramHistoryEntry } from '@/lib/odontogram-history';
 import type { SerializedChartEvent } from '@/lib/odontogram-events';
 import {
   ToothDetail,
@@ -103,6 +105,7 @@ export function Odontograma({
   versionLabel,
   readOnly,
   proceduresByTooth = {},
+  history,
   planBaseHref = null,
   consultationHref = null,
 }: {
@@ -114,6 +117,9 @@ export function Odontograma({
   versionLabel: string | null;
   readOnly: boolean;
   proceduresByTooth?: Record<string, ToothProcedure[]>;
+  /** 4.ª ronda/07 (Victor): histórico de tratamentos no mesmo ecrã (atos por
+   *  data, com médico e observações). Sem a prop, a tabela não aparece. */
+  history?: OdontogramHistoryEntry[];
   planBaseHref?: string | null;
   /** /doutor/consulta/<id> da consulta EM CURSO com este paciente (ou null) */
   consultationHref?: string | null;
@@ -344,6 +350,9 @@ export function Odontograma({
           )}
         </div>
       </div>
+
+      {/* 4.ª ronda/07: histórico e observações no mesmo ecrã */}
+      {history && <OdontogramaHistorico history={history} selected={selected} onSelect={setSelected} />}
 
       {/* Rodapé: versão + gravação */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>

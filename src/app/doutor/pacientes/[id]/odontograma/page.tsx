@@ -16,12 +16,11 @@ import Appointment from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
 import Odontogram from '@/models/Odontogram';
-import Procedure from '@/models/Procedure';
 import { Odontograma } from '@/components/clinico/Odontograma';
 import { loadChartEvents } from '@/lib/odontogram-events';
+import { loadOdontogramHistory } from '@/lib/odontogram-history';
 import type {
   ToothEntry,
-  ToothProcedure,
 } from '@/components/clinico/ToothDetail';
 import type { ToothStatus, FaceCondition, ToothFace } from '@/lib/domain';
 
@@ -62,37 +61,6 @@ function NotFound() {
   );
 }
 
-// Fase 4C (P13): atos por dente — planeados (ponto âmbar) e executados
-async function loadProceduresByTooth(patientId: string) {
-  const procs = await Procedure.find({
-    patientId,
-    status: { $in: ['planned', 'completed', 'invoiced', 'void'] },
-    'toothNumbers.0': { $exists: true },
-  })
-    .select('nameSnapshot status toothNumbers executedAt priceCents')
-    .sort({ executedAt: -1, createdAt: -1 })
-    .lean();
-  const fmt = new Intl.DateTimeFormat('pt-PT', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    timeZone: 'Europe/Lisbon',
-  });
-  const out: Record<string, ToothProcedure[]> = {};
-  for (const p of procs) {
-    for (const tooth of p.toothNumbers ?? []) {
-      (out[tooth] ??= []).push({
-        id: String(p._id),
-        name: p.nameSnapshot,
-        status: p.status as ToothProcedure['status'],
-        dateLabel: p.executedAt ? fmt.format(p.executedAt as Date) : null,
-        priceCents: p.priceCents,
-      });
-    }
-  }
-  return out;
-}
-
 export default async function OdontogramPage({
   params,
   searchParams,
@@ -127,8 +95,9 @@ export default async function OdontogramPage({
       ? requested
       : latestVersion;
   const readOnly = latestVersion > 0 && showVersion < latestVersion;
-  const [proceduresByTooth, chartEvents, inProgress] = await Promise.all([
-    loadProceduresByTooth(id),
+  const [{ history, proceduresByTooth }, chartEvents, inProgress] = await Promise.all([
+    // 4.ª ronda/07: atos por dente + histórico por data (com notas clínicas)
+    loadOdontogramHistory(id, { includeClinicalNotes: true }),
     // executado/planeado derivados dos atos e planos (sem 'initial': vem de initialTeeth)
     loadChartEvents(id, { odontogramVersion: null }),
     // consulta em curso deste médico com o paciente → "Registar ato neste dente"
@@ -278,6 +247,7 @@ export default async function OdontogramPage({
         versionLabel={versionLabel}
         readOnly={readOnly}
         proceduresByTooth={proceduresByTooth}
+        history={history}
         planBaseHref={`/doutor/pacientes/${id}/plano?novo=1`}
         consultationHref={inProgress ? `/doutor/consulta/${String(inProgress._id)}` : null}
       />

@@ -51,6 +51,10 @@ export interface ToothProcedure {
   status: 'planned' | 'completed' | 'invoiced' | 'void';
   dateLabel: string | null;
   priceCents: number;
+  /** 4.ª ronda/07 (Victor): médico responsável, observações e faces do ato */
+  doctorName?: string | null;
+  notes?: string | null;
+  faces?: string[];
 }
 
 const LAYER_COLOR: Record<ChartLayer, string> = { existing: '#0F7B4D', completed: '#2743A6', planned: '#E0A100' };
@@ -334,7 +338,7 @@ export function ToothDetail({
                   textDecoration: p.status === 'void' ? 'line-through' : 'none',
                 }}
               >
-                <span>
+                <span style={{ minWidth: 0 }}>
                   <span
                     style={{
                       display: 'inline-block',
@@ -357,7 +361,15 @@ export function ToothDetail({
                     {p.status === 'planned'
                       ? 'planeado'
                       : (p.dateLabel ?? 'executado')}
+                    {p.faces && p.faces.length > 0 ? ` · ${p.faces.join('')}` : ''}
                   </span>
+                  {(p.doctorName || p.notes) && (
+                    <span style={{ display: 'block', marginLeft: 13, color: '#6A7186', textDecoration: 'none' }}>
+                      {p.doctorName}
+                      {p.doctorName && p.notes ? ' — ' : ''}
+                      {p.notes && <span style={{ fontStyle: 'italic', color: '#7A4B00' }}>{p.notes}</span>}
+                    </span>
+                  )}
                 </span>
                 <span
                   style={{

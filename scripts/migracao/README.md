@@ -45,6 +45,7 @@ MySQL local tem de estar a correr (terminal 1):
 | 12 | `12-fix-nif.ts` | anula NIFs placeholder/inválidos nos pacientes (original em legacyData) | — | segundos |
 | 13 | `13-chart-effects.ts` | infere `TreatmentType.chartEffect` (como o ato pinta o odontograma) + CSV para revisão | 1 290 | segundos |
 | 14 | `14-odontogram.ts` | `tratexec` (estado inicial + atos por dente) → `Odontogram` v1 por paciente | ~60k pacientes | 5–10 min |
+| 15 | `15-fix-split-appointments.ts` | Reparação: junta as marcações importadas "uma por intervalo" (só Mongo; simulação por omissão, `--apply` grava) | todas as marcações importadas | minutos |
 | 99 | `99-verify.ts` | contagens MySQL vs Mongo, integridade, amostra | — | 1 min |
 
 Correr sempre pela ordem. Primeiro **a seco e com limite**:
