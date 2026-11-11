@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Cópias de segurança dos scripts de migração (contêm dados de pacientes)
+/scripts/migracao/data/backup-*.jsonl
