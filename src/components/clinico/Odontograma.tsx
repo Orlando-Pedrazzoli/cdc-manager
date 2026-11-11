@@ -2,10 +2,12 @@
 // =============================================================================
 // CDC Manager — Clínico: Odontograma interativo (Client Component)
 // -----------------------------------------------------------------------------
-// Mapa das 2 arcadas da dentição definitiva (32 dentes, FDI) em SVG: cada
-// dente é um diagrama de 5 faces (O central, M/D/V/L em trapézios) + zona
-// radicular (endodontia / espigão) — a representação que os médicos conhecem
-// do papel e do Dentoral.
+// Mapa das 2 arcadas da dentição definitiva (32 dentes, FDI), em duas vistas
+// comutáveis sobre os MESMOS dados:
+//   · ANATÓMICO (por omissão) — dentes de anatomia real em vista vestibular e
+//     oclusal + grelha de 5 faces (odontograma/OdontogramaAnatomico)
+//   · ESQUEMA — arcadas em vista oclusal + diagrama de 5 faces (O central,
+//     M/D/V/L em trapézios) com zona radicular, como no papel
 //
 // O MAPA É DERIVADO, não desenhado à mão (Open Dental / CareStack / Curve):
 //   · EXISTENTE  (verde)  — registo manual do médico: estado inicial, achados
@@ -26,7 +28,7 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Save, Layers, CalendarClock } from 'lucide-react';
+import { Save, Layers, CalendarClock, LayoutGrid, Smile } from 'lucide-react';
 import {
   saveOdontogramAction,
   type ConsultationActionState,
@@ -47,6 +49,18 @@ import {
   type ToothChartState,
   type FaceConditionKey,
 } from '@/lib/odontogram-chart';
+import {
+  EMPTY_STATE,
+  FACE_PATHS,
+  FACE_STROKE,
+  FINDING_COLOR,
+  LAYER_COLOR,
+  LAYER_LABEL,
+  STATUS_CHAR,
+  faceStyle,
+  visualFaceMap,
+} from '@/components/clinico/odontograma/chart-style';
+import { OdontogramaAnatomico } from '@/components/clinico/odontograma/OdontogramaAnatomico';
 import type { SerializedChartEvent } from '@/lib/odontogram-events';
 import {
   ToothDetail,
@@ -58,86 +72,10 @@ import {
 import { Button } from '@/components/ui/Button';
 import { OdontogramaArcada } from '@/components/clinico/OdontogramaArcada';
 
-// --- Cores (inline SEMPRE — convenção do projeto) -----------------------------
-/** Cor por camada para TRABALHO (restauração, selante, coroa, implante…) */
-export const LAYER_COLOR: Record<ChartLayer, string> = {
-  existing: '#0F7B4D', // verde — já existia
-  completed: '#2743A6', // azul — feito na clínica
-  planned: '#E0A100', // laranja — a fazer
-};
-export const LAYER_LABEL: Record<ChartLayer, string> = {
-  existing: 'Existente',
-  completed: 'Executado',
-  planned: 'Planeado',
-};
-/** ACHADOS (sempre camada existente) têm cor própria, independente da camada */
-const FINDING_COLOR: Partial<Record<FaceConditionKey, string>> = {
-  caries: '#B3261E',
-  fracture: '#C2620A',
-  wear: '#7A4FB0',
-};
-const FACE_EMPTY = '#F4F6FB';
-const FACE_STROKE = '#C7CEE0';
+// Cores e regras de pintura: odontograma/chart-style (fonte única das 2 vistas)
+export { LAYER_COLOR, LAYER_LABEL };
 
-const STATUS_CHAR: Partial<Record<ToothStatus, string>> = {
-  missing: '✕',
-  implant: 'I',
-  crown: 'C',
-  'bridge-pontic': 'P',
-  'root-only': 'R',
-  'to-extract': 'E',
-};
-
-const FACE_PATHS: Record<'top' | 'bottom' | 'left' | 'right', string> = {
-  top: 'M2,2 L38,2 L27,13 L13,13 Z',
-  bottom: 'M2,38 L38,38 L27,27 L13,27 Z',
-  left: 'M2,2 L13,13 L13,27 L2,38 Z',
-  right: 'M38,2 L38,38 L27,27 L27,13 Z',
-};
-
-/** Mapeia posições visuais → faces anatómicas conforme o quadrante FDI */
-function visualFaceMap(
-  toothNumber: string,
-): Record<'top' | 'bottom' | 'left' | 'right' | 'center', ToothFace> {
-  const quadrant = toothNumber[0];
-  const isUpper = quadrant === '1' || quadrant === '2';
-  const mesialRight = quadrant === '1' || quadrant === '4';
-  return {
-    center: 'O',
-    top: isUpper ? 'V' : 'L',
-    bottom: isUpper ? 'L' : 'V',
-    left: mesialRight ? 'D' : 'M',
-    right: mesialRight ? 'M' : 'D',
-  };
-}
-
-function faceStyle(f: ToothChartState['faces'][ToothFace] | undefined): {
-  fill: string;
-  stroke: string;
-  strokeWidth: number;
-  dash?: string;
-} {
-  if (!f) return { fill: FACE_EMPTY, stroke: FACE_STROKE, strokeWidth: 1 };
-  const finding = FINDING_COLOR[f.condition];
-  if (finding) return { fill: finding, stroke: FACE_STROKE, strokeWidth: 1 };
-  const color = LAYER_COLOR[f.layer];
-  if (f.layer === 'planned')
-    return { fill: `${color}33`, stroke: color, strokeWidth: 2, dash: '3 2' };
-  if (f.condition === 'sealant')
-    return { fill: `${color}99`, stroke: color, strokeWidth: 1 };
-  return { fill: color, stroke: FACE_STROKE, strokeWidth: 1 };
-}
-
-const EMPTY_STATE = (n: string): ToothChartState => ({
-  number: n,
-  status: 'present',
-  statusLayer: null,
-  endo: null,
-  post: null,
-  veneer: null,
-  faces: {},
-  events: [],
-});
+type ChartView = 'anatomico' | 'esquema';
 
 // --- Dente (SVG 40×50: 40×40 faces + 10 de zona radicular) -------------------
 function ToothSvg({
@@ -391,6 +329,7 @@ export function Odontograma({
   const [selected, setSelected] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [layers, setLayers] = useState<Record<ChartLayer, boolean>>({ existing: true, completed: true, planned: true });
+  const [view, setView] = useState<ChartView>('anatomico');
 
   // eventos externos (executado/planeado), já com Date
   const external = useMemo<ChartEvent[]>(
@@ -476,6 +415,39 @@ export function Odontograma({
           padding: '10px 16px',
         }}
       >
+        <div
+          role='group'
+          aria-label='Vista do odontograma'
+          style={{ display: 'inline-flex', border: '1px solid #D5DBEA', borderRadius: '9px', overflow: 'hidden' }}
+        >
+          {(
+            [
+              { id: 'anatomico', label: 'Anatómico', Icon: Smile },
+              { id: 'esquema', label: 'Esquema', Icon: LayoutGrid },
+            ] as const
+          ).map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              type='button'
+              onClick={() => setView(id)}
+              aria-pressed={view === id}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: 700,
+                backgroundColor: view === id ? '#2743A6' : '#FFFFFF',
+                color: view === id ? '#FFFFFF' : '#3D4257',
+              }}
+            >
+              <Icon size={14} /> {label}
+            </button>
+          ))}
+        </div>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '12px', fontWeight: 700, color: '#6A7186' }}>
           <Layers size={14} /> Camadas
         </span>
@@ -514,13 +486,15 @@ export function Odontograma({
         )}
       </div>
 
-      {/* Vista anatómica das arcadas — mesma fonte de dados, mesma seleção */}
-      <OdontogramaArcada
-        entries={archEntries}
-        selected={selected}
-        onSelect={setSelected}
-        plannedTeeth={new Set([...states.values()].filter(s => s.statusLayer === 'planned' || Object.values(s.faces).some(f => f.layer === 'planned')).map(s => s.number))}
-      />
+      {/* Vista em esquema: arcadas em vista oclusal — mesma fonte de dados, mesma seleção */}
+      {view === 'esquema' && (
+        <OdontogramaArcada
+          entries={archEntries}
+          selected={selected}
+          onSelect={setSelected}
+          plannedTeeth={new Set([...states.values()].filter(s => s.statusLayer === 'planned' || Object.values(s.faces).some(f => f.layer === 'planned')).map(s => s.number))}
+        />
+      )}
 
       <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         {/* Mapa das arcadas */}
@@ -538,15 +512,21 @@ export function Odontograma({
             overflowX: 'auto',
           }}
         >
-          <p style={{ margin: '0 0 4px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#6A7186', textAlign: 'center' }}>
-            Arcada superior
-          </p>
-          <Arch teethNumbers={UPPER_TEETH} states={states} notes={notes} selected={selected} onSelect={setSelected} upper />
-          <div style={{ height: 10 }} />
-          <Arch teethNumbers={LOWER_TEETH} states={states} notes={notes} selected={selected} onSelect={setSelected} upper={false} />
-          <p style={{ margin: '4px 0 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#6A7186', textAlign: 'center' }}>
-            Arcada inferior
-          </p>
+          {view === 'anatomico' ? (
+            <OdontogramaAnatomico states={states} notes={notes} selected={selected} onSelect={setSelected} />
+          ) : (
+            <>
+              <p style={{ margin: '0 0 4px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#6A7186', textAlign: 'center' }}>
+                Arcada superior
+              </p>
+              <Arch teethNumbers={UPPER_TEETH} states={states} notes={notes} selected={selected} onSelect={setSelected} upper />
+              <div style={{ height: 10 }} />
+              <Arch teethNumbers={LOWER_TEETH} states={states} notes={notes} selected={selected} onSelect={setSelected} upper={false} />
+              <p style={{ margin: '4px 0 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#6A7186', textAlign: 'center' }}>
+                Arcada inferior
+              </p>
+            </>
+          )}
 
           {/* Legenda */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #F4F6FB', justifyContent: 'center' }}>
@@ -562,8 +542,20 @@ export function Odontograma({
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#3D4257' }}>
               <span style={{ width: 10, height: 6, borderRadius: 1, backgroundColor: LAYER_COLOR.completed, display: 'inline-block' }} />
-              Raiz pintada = endodontia
+              {view === 'anatomico' ? 'Canal pintado = endodontia' : 'Raiz pintada = endodontia'}
             </span>
+            {view === 'anatomico' && (
+              <>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#3D4257' }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '3px 3px 5px 5px', backgroundColor: `${LAYER_COLOR.completed}B3`, border: `1px solid ${LAYER_COLOR.completed}`, display: 'inline-block' }} />
+                  Coroa pintada = coroa / faceta / pôntico
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#3D4257' }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 2, border: '1px dashed #9AA1B4', display: 'inline-block' }} />
+                  Contorno tracejado = dente ausente
+                </span>
+              </>
+            )}
             {Object.entries(STATUS_CHAR).map(([st, ch]) => (
               <span key={st} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#3D4257' }}>
                 <span style={{ fontWeight: 800, color: '#3D4257' }}>{ch}</span>
