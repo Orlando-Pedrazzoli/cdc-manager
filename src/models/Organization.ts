@@ -52,6 +52,17 @@ const OrganizationSchema = new Schema(
     /** Texto RGPD próprio (verbatim). Vazio → gerado por lib/domain
         gdprConsentText() a partir de name/legalName/nipc */
     gdprConsentText: { type: String, default: null, maxlength: 8000 },
+    /** 5.ª ronda/09: promoção do mês (ex.: "Branqueamento") — aparece como
+        opção em "Como nos conheceu" na nova marcação; vazio = sem promoção */
+    monthlyPromo: { type: String, default: null, trim: true, maxlength: 80 },
+    /** 5.ª ronda/14: acesso só dentro da clínica. Com `enabled`, os perfis
+        em `roles` só entram (e só navegam) a partir dos IP em `allowedIps`
+        (IPv4/IPv6 exatos ou prefixos CIDR IPv4). Desligado por omissão. */
+    networkRestriction: {
+      enabled: { type: Boolean, default: false },
+      allowedIps: { type: [String], default: [] },
+      roles: { type: [String], default: ['receptionist'] },
+    },
   },
   { timestamps: true },
 );

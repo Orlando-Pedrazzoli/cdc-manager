@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BrandMark, type BrandMarkProps } from './BrandMark';
 import {
+  Smile,
   BookOpenText,
   CalendarDays,
   LayoutDashboard,
@@ -40,6 +41,8 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: '/doutor/dashboard', label: 'O meu dia', icon: LayoutDashboard },
       { href: '/doutor/agenda', label: 'Agenda', icon: CalendarDays },
       { href: '/doutor/pacientes', label: 'Pacientes', icon: Users },
+      // 5.ª ronda/12: qualquer paciente da clínica (consulta) pelo odontograma
+      { href: '/doutor/odontograma', label: 'Odontograma', icon: Smile },
       // Ferramenta de "cadeira": explicar causas + porquê do RX ao paciente
       { href: '/doutor/atlas', label: 'Atlas Dentário', icon: ScanSearch },
       // Leitura para os intervalos: publicações recentes (PubMed, sem chave)

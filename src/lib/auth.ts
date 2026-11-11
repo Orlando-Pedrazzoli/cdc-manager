@@ -15,6 +15,7 @@
 // =============================================================================
 
 import NextAuth from 'next-auth';
+import { CredentialsSignin } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
@@ -22,6 +23,11 @@ import { dbConnect } from '@/lib/mongodb';
 import User from '@/models/User';
 import { logAudit } from '@/lib/audit';
 import { authConfig } from '@/lib/auth.config';
+import { readOrganizationSettings } from '@/lib/org-settings';
+import {
+  clientIpFromHeaders,
+  isBlockedByNetwork,
+} from '@/lib/network-access';
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
@@ -29,6 +35,11 @@ const LOCK_MINUTES = 15;
 // Hash dummy (password aleatória impossível) para tempo constante
 const DUMMY_HASH =
   '$2a$12$C6UzMDM.H6dfI/f/IKcEeO7ZBpDuMkoTJYFvJZKp0Hqu8mKlXGZ2y';
+
+/** 5.ª ronda/14: distingue "fora da rede" de credenciais erradas */
+export class OutsideClinicError extends CredentialsSignin {
+  code = 'outside-clinic';
+}
 
 const credentialsSchema = z.object({
   email: z.string().email().toLowerCase(),
@@ -43,7 +54,7 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
         email: {},
         password: {},
       },
-      async authorize(raw) {
+      async authorize(raw, request) {
         const parsed = credentialsSchema.safeParse(raw);
         if (!parsed.success) return null;
         const { email, password } = parsed.data;
@@ -115,6 +126,26 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
               : `Password errada (tentativa ${attempts})`,
           });
           return null;
+        }
+
+        // 5.ª ronda/14: perfis limitados à rede da clínica não entram de
+        // fora (a password estava certa — fica registado, sem contar como
+        // tentativa falhada)
+        const { network } = await readOrganizationSettings();
+        if (network.enabled) {
+          const ip = request?.headers
+            ? clientIpFromHeaders(request.headers)
+            : null;
+          if (isBlockedByNetwork(user.role, ip, network)) {
+            await logAudit({
+              userId: user._id.toString(),
+              action: 'login-failed',
+              entityType: 'User',
+              entityId: user._id.toString(),
+              summary: `Login recusado: fora da rede da clínica (IP ${ip ?? 'desconhecido'})`,
+            });
+            throw new OutsideClinicError();
+          }
         }
 
         // Sucesso: limpa contadores e regista

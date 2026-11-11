@@ -66,6 +66,16 @@ const WeeklyScheduleSchema = new Schema(
   {
     weekday: { type: Number, required: true, min: 0, max: 6 },
     ranges: { type: [TimeRangeSchema], default: [] }, // vazio = não trabalha
+    // 5.ª ronda/07 (Victor, nov. 2026): turnos QUINZENAIS ("fins de semana
+    // quinzenais — Dra. Flávia, Dra. Geane"). null = todas as semanas;
+    // 'YYYY-MM-DD' = uma data em que o médico TRABALHA neste dia da semana —
+    // a partir dela, semana sim, semana não (ver isBiweeklyOn em
+    // lib/availability.ts). Dias avulsos continuam a ser exceções por data.
+    biweeklyAnchor: {
+      type: String,
+      match: [/^\d{4}-\d{2}-\d{2}$/, 'Data inválida (YYYY-MM-DD)'],
+      default: null,
+    },
   },
   { _id: false },
 );

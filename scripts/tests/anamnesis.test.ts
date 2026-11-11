@@ -5,6 +5,10 @@ import {
   parseQuestionnaireForm,
   deriveSafetyAlerts,
   anamnesisStatus,
+  missingRequired,
+  requiredStatus,
+  anamnesisGateReason,
+  anesthesiaReactionAlert,
 } from '../../src/lib/anamnesis';
 
 let n = 0;
@@ -106,6 +110,86 @@ test('estado: em falta / válida / expirada / por validar', () => {
     ).state,
     'ok',
   );
+});
+
+// --- 5.ª ronda/04 (Victor, nov. 2026): campos obrigatórios ---------------------
+const vazio = {
+  surgeryLast12m: null,
+  surgeryWhich: null,
+  anesthesiaReaction: null,
+  anesthesiaReactionWhich: null,
+  takesMedication: null,
+  medicationWhich: null,
+  allergies: [] as string[],
+  allergiesOther: null,
+  noKnownAllergies: false,
+};
+const completo = {
+  ...vazio,
+  surgeryLast12m: false,
+  anesthesiaReaction: false,
+  takesMedication: true,
+  medicationWhich: 'Varfarina',
+  noKnownAllergies: true,
+};
+
+test('obrigatórios: sem respostas faltam os quatro', () => {
+  assert.equal(missingRequired(vazio).length, 4);
+  assert.equal(missingRequired(null).length, 4);
+});
+
+test('obrigatórios: Sim exige o "Qual?"; Não chega', () => {
+  const st = requiredStatus({ ...vazio, surgeryLast12m: true, anesthesiaReaction: false });
+  assert.equal(st.surgery, false); // Sim sem "Qual?"
+  assert.equal(st.anesthesia, true);
+  assert.equal(requiredStatus({ ...vazio, surgeryLast12m: true, surgeryWhich: '  ' }).surgery, false);
+  assert.equal(requiredStatus({ ...vazio, surgeryLast12m: true, surgeryWhich: 'Apendicite' }).surgery, true);
+});
+
+test('obrigatórios: alergias — uma opção, "outra" ou "Sem alergias conhecidas"', () => {
+  assert.equal(requiredStatus(vazio).allergies, false);
+  assert.equal(requiredStatus({ ...vazio, allergies: ['latex'] }).allergies, true);
+  assert.equal(requiredStatus({ ...vazio, allergiesOther: 'Níquel' }).allergies, true);
+  assert.equal(requiredStatus({ ...vazio, noKnownAllergies: true }).allergies, true);
+  // contraditório: "sem alergias" com uma alergia marcada
+  assert.equal(requiredStatus({ ...vazio, noKnownAllergies: true, allergies: ['latex'] }).allergies, false);
+});
+
+test('obrigatórios: ficha completa não tem nada em falta', () => {
+  assert.deepEqual(missingRequired(completo), []);
+});
+
+test('janela da consulta: em falta, revisão anual, incompleta, ok', () => {
+  const now = new Date('2026-11-11T12:00:00Z');
+  assert.equal(anamnesisGateReason(null, now), 'missing');
+  assert.equal(anamnesisGateReason({ completedAt: null }, now), 'missing');
+  assert.equal(
+    anamnesisGateReason({ completedAt: new Date('2025-11-01'), data: { general: completo } }, now),
+    'expired',
+  );
+  // ficha anterior à v2: dentro da validade mas sem os obrigatórios
+  assert.equal(
+    anamnesisGateReason({ completedAt: new Date('2026-09-01'), data: { general: vazio } }, now),
+    'incomplete',
+  );
+  assert.equal(
+    anamnesisGateReason({ completedAt: new Date('2026-09-01'), data: { general: completo } }, now),
+    null,
+  );
+});
+
+test('formulário: "Sem alergias conhecidas" chega ao servidor como booleano', () => {
+  const fd = new FormData();
+  fd.set('g.surgeryLast12m', 'nao');
+  fd.set('g.anesthesiaReaction', 'sim');
+  fd.set('g.anesthesiaReactionWhich', 'Taquicardia com articaína');
+  fd.set('g.takesMedication', 'nao');
+  fd.set('g.noKnownAllergies', 'on');
+  const q = parseQuestionnaireForm(fd);
+  assert.equal(q.general.noKnownAllergies, true);
+  assert.deepEqual(missingRequired(q.general), []);
+  assert.equal(anesthesiaReactionAlert(q), 'Taquicardia com articaína');
+  assert.equal(parseQuestionnaireForm(new FormData()).general.noKnownAllergies, false);
 });
 
 console.log(`\n${n} testes passaram.`);

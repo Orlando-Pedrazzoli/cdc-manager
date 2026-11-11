@@ -2,7 +2,9 @@
 // =============================================================================
 // CDC Manager — Odontograma: histórico de tratamentos no mesmo ecrã
 // -----------------------------------------------------------------------------
-// 4.ª ronda (Victor, nov. 2026), ponto 07. Por baixo do mapa: todos os atos
+// 5.ª ronda/03: passou para o LADO do mapa (lista compacta, rolagem
+// própria) — antes era uma tabela por baixo e perdia-se o mapa de vista.
+// 4.ª ronda (Victor, nov. 2026), ponto 07: todos os atos
 // do paciente por data, com dente(s) e faces, médico responsável e
 // observações. Com um dente selecionado no mapa, filtra-se por esse dente
 // com um clique; clicar no número de um dente na tabela seleciona-o no mapa.
@@ -23,24 +25,6 @@ const STATUS: Record<string, { label: string; color: string }> = {
 };
 const PAGE = 40;
 
-const th: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '8px 10px',
-  fontSize: '11px',
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '0.5px',
-  color: '#6A7186',
-  borderBottom: '1px solid #EEF1F8',
-  whiteSpace: 'nowrap',
-};
-const td: React.CSSProperties = {
-  padding: '8px 10px',
-  fontSize: '13px',
-  color: '#1C2233',
-  borderBottom: '1px solid #F4F6FB',
-  verticalAlign: 'top',
-};
 const chip = (active: boolean): React.CSSProperties => ({
   padding: '5px 11px',
   borderRadius: '999px',
@@ -110,67 +94,63 @@ export function OdontogramaHistorico({
           {byTooth ? `Sem atos registados no dente ${selected}.` : 'Sem atos registados.'}
         </p>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={th}>Data</th>
-                <th style={th}>Dente</th>
-                <th style={th}>Ato</th>
-                <th style={th}>Médico</th>
-                <th style={{ ...th, width: '34%' }}>Observações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map(h => {
-                const st = h.status ? STATUS[h.status] : null;
-                const isVoid = h.status === 'void';
-                return (
-                  <tr key={h.id} style={{ opacity: isVoid ? 0.55 : 1, backgroundColor: h.kind === 'note' ? '#FAFBFE' : undefined }}>
-                    <td style={{ ...td, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                      {h.dateLabel ?? <span style={{ color: '#B26A00', fontWeight: 600 }}>A realizar</span>}
-                    </td>
-                    <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                      {h.teeth.length === 0 ? (
-                        <span style={{ color: '#9AA1B4' }}>—</span>
-                      ) : (
-                        h.teeth.map(t => (
-                          <button
-                            key={t}
-                            type='button'
-                            onClick={() => onSelect(t)}
-                            title={`Selecionar o dente ${t} no mapa`}
-                            style={{
-                              marginRight: 4,
-                              padding: '1px 7px',
-                              borderRadius: '6px',
-                              border: `1px solid ${selected === t ? '#2743A6' : '#D5DBEA'}`,
-                              backgroundColor: selected === t ? '#EEF2FF' : '#FFFFFF',
-                              color: '#1B2A6B',
-                              fontSize: '12px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {t}
-                          </button>
-                        ))
-                      )}
-                      {h.faces.length > 0 && <span style={{ fontSize: '12px', color: '#6A7186' }}>{h.faces.join('')}</span>}
-                    </td>
-                    <td style={{ ...td, textDecoration: isVoid ? 'line-through' : 'none' }}>
-                      <span style={{ fontWeight: h.kind === 'note' ? 500 : 600, fontStyle: h.kind === 'note' ? 'italic' : 'normal' }}>{h.name}</span>
-                      {st && h.status !== 'completed' && h.status !== 'invoiced' && (
-                        <span style={{ marginLeft: 8, fontSize: '11px', fontWeight: 700, color: st.color }}>{st.label}</span>
-                      )}
-                    </td>
-                    <td style={{ ...td, whiteSpace: 'nowrap', color: '#3D4257' }}>{h.doctorName ?? '—'}</td>
-                    <td style={{ ...td, color: h.notes ? '#3D4257' : '#C7CEE0', whiteSpace: 'pre-wrap' }}>{h.notes ?? '—'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div>
+          {/* 5.ª ronda/03: lista compacta (cabe na coluna ao lado do mapa):
+              data · dente(s) · médico / ato / observações */}
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {shown.map(h => {
+              const st = h.status ? STATUS[h.status] : null;
+              const isVoid = h.status === 'void';
+              return (
+                <li
+                  key={h.id}
+                  style={{
+                    padding: '9px 2px',
+                    borderBottom: '1px solid #F4F6FB',
+                    opacity: isVoid ? 0.55 : 1,
+                    backgroundColor: h.kind === 'note' ? '#FAFBFE' : undefined,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 8px', fontSize: '12px', color: '#6A7186' }}>
+                    <span style={{ fontWeight: 700, color: '#1B2A6B', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                      {h.dateLabel ?? <span style={{ color: '#B26A00' }}>A realizar</span>}
+                    </span>
+                    {h.teeth.map(t => (
+                      <button
+                        key={t}
+                        type='button'
+                        onClick={() => onSelect(t)}
+                        title={`Selecionar o dente ${t} no mapa`}
+                        style={{
+                          padding: '1px 7px',
+                          borderRadius: '6px',
+                          border: `1px solid ${selected === t ? '#2743A6' : '#D5DBEA'}`,
+                          backgroundColor: selected === t ? '#EEF2FF' : '#FFFFFF',
+                          color: '#1B2A6B',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                    {h.faces.length > 0 && <span>{h.faces.join('')}</span>}
+                    {h.doctorName && <span style={{ marginLeft: 'auto', textAlign: 'right' }}>{h.doctorName}</span>}
+                  </div>
+                  <div style={{ marginTop: 3, fontSize: '13px', color: '#1C2233', textDecoration: isVoid ? 'line-through' : 'none' }}>
+                    <span style={{ fontWeight: h.kind === 'note' ? 500 : 600, fontStyle: h.kind === 'note' ? 'italic' : 'normal' }}>{h.name}</span>
+                    {st && h.status !== 'completed' && h.status !== 'invoiced' && (
+                      <span style={{ marginLeft: 8, fontSize: '11px', fontWeight: 700, color: st.color }}>{st.label}</span>
+                    )}
+                  </div>
+                  {h.notes && (
+                    <div style={{ marginTop: 2, fontSize: '12.5px', color: '#3D4257', whiteSpace: 'pre-wrap' }}>{h.notes}</div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
           {rows.length > limit && (
             <div style={{ paddingTop: 10, textAlign: 'center' }}>
               <button type='button' onClick={() => setLimit(l => l + PAGE)} style={chip(false)}>

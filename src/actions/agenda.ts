@@ -11,7 +11,13 @@
 
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
-import { computeFreeSlots } from '@/lib/availability';
+import {
+  computeFreeSlots,
+  minToHhmm,
+  workingRangesForDate,
+} from '@/lib/availability';
+import Clinic from '@/models/Clinic';
+import Doctor from '@/models/Doctor';
 import User, { canOperateClinic } from '@/models/User';
 
 export async function getFreeSlotsAction(params: {
@@ -53,4 +59,61 @@ export async function getFreeSlotsAction(params: {
     onlineRules: false, // balcão
   });
   return slots.map(s => ({ start: s.start }));
+}
+
+/**
+ * 5.ª ronda/10 (Victor, nov. 2026): "ao escolher 20/11/2026, em Médico
+ * aparecem apenas os médicos desse dia com os respetivos horários". O modal
+ * de nova marcação pede esta lista sempre que a DATA muda — antes mostrava
+ * os médicos do dia que estava aberto na agenda, mesmo com outra data
+ * escolhida no modal.
+ */
+export async function getWorkingDoctorsAction(params: {
+  clinicId: string;
+  date: string; // 'YYYY-MM-DD'
+}): Promise<{ id: string; name: string; hours: string }[]> {
+  const session = await auth();
+  const role = session?.user?.role;
+  if (!session?.user?.id || (role !== 'admin' && role !== 'receptionist')) {
+    return [];
+  }
+  if (
+    !/^[0-9a-fA-F]{24}$/.test(params.clinicId) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(params.date)
+  ) {
+    return [];
+  }
+
+  await dbConnect();
+  const user = await User.findById(session.user.id)
+    .select('role status clinicIds')
+    .lean();
+  if (
+    !user ||
+    user.status !== 'active' ||
+    user.role !== role ||
+    !canOperateClinic(user, params.clinicId)
+  ) {
+    return [];
+  }
+
+  const [clinic, doctors] = await Promise.all([
+    Clinic.findById(params.clinicId),
+    Doctor.find({ active: true, 'clinicSchedules.clinicId': params.clinicId }),
+  ]);
+  if (!clinic || !clinic.isActive) return [];
+
+  return doctors
+    .map(d => {
+      const ranges = workingRangesForDate(d, clinic, params.date);
+      return {
+        id: String(d._id),
+        name: d.name,
+        hours: ranges
+          .map(r => `${minToHhmm(r.start)}–${minToHhmm(r.end)}`)
+          .join(' · '),
+      };
+    })
+    .filter(d => d.hours !== '')
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt'));
 }

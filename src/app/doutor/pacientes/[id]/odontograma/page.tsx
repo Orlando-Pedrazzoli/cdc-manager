@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { ArrowLeft, History } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
+import { logAudit } from '@/lib/audit';
 import Appointment from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
@@ -76,8 +77,12 @@ export default async function OdontogramPage({
   if (!doctorId || !/^[0-9a-fA-F]{24}$/.test(id)) return <NotFound />;
 
   await dbConnect();
+  // 5.ª ronda/02 (Victor, nov. 2026): consulta do odontograma para todos.
+  // Com relação de consulta o médico edita, como sempre; sem relação abre
+  // SÓ PARA LEITURA, sem notas clínicas, e a consulta fica na auditoria.
+  // (A gravação continua protegida por requireDoctorWithPatient na action.)
   const hasRelation = await Appointment.exists({ doctorId, patientId: id });
-  if (!hasRelation) return <NotFound />;
+  const consultOnly = !hasRelation;
 
   const [patient, versions] = await Promise.all([
     Patient.findById(id).select('name processNumber').lean(),
@@ -87,6 +92,15 @@ export default async function OdontogramPage({
       .lean(),
   ]);
   if (!patient) return <NotFound />;
+  if (consultOnly) {
+    await logAudit({
+      userId: session.user.id,
+      action: 'view',
+      entityType: 'Odontogram',
+      patientId: id,
+      summary: 'Odontograma consultado (só leitura) por médico sem consultas com o paciente',
+    });
+  }
 
   const latestVersion = versions[0]?.version ?? 0;
   const requested = Number(v);
@@ -94,10 +108,11 @@ export default async function OdontogramPage({
     Number.isInteger(requested) && requested >= 1 && requested <= latestVersion
       ? requested
       : latestVersion;
-  const readOnly = latestVersion > 0 && showVersion < latestVersion;
+  const oldVersion = latestVersion > 0 && showVersion < latestVersion;
+  const readOnly = consultOnly || oldVersion;
   const [{ history, proceduresByTooth }, chartEvents, inProgress] = await Promise.all([
     // 4.ª ronda/07: atos por dente + histórico por data (com notas clínicas)
-    loadOdontogramHistory(id, { includeClinicalNotes: true }),
+    loadOdontogramHistory(id, { includeClinicalNotes: !consultOnly }),
     // executado/planeado derivados dos atos e planos (sem 'initial': vem de initialTeeth)
     loadChartEvents(id, { odontogramVersion: null }),
     // consulta em curso deste médico com o paciente → "Registar ato neste dente"
@@ -128,7 +143,7 @@ export default async function OdontogramPage({
   }));
 
   const versionLabel = doc
-    ? `Versão ${doc.version}${readOnly ? ' (antiga — só leitura)' : ''} · ${
+    ? `Versão ${doc.version}${oldVersion ? ' (antiga — só leitura)' : ''} · ${
         doc.createdAt ? lisbonDateTime(doc.createdAt) : '—'
       } · ${updaterName.get(String(doc.updatedBy)) ?? 'Médico'}`
     : null;
@@ -136,7 +151,7 @@ export default async function OdontogramPage({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <Link
-        href={`/doutor/pacientes/${id}`}
+        href={consultOnly ? '/doutor/odontograma' : `/doutor/pacientes/${id}`}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -148,7 +163,7 @@ export default async function OdontogramPage({
         }}
       >
         <ArrowLeft size={15} />
-        Ficha de {patient.name}
+        {consultOnly ? 'Procurar outro paciente' : `Ficha de ${patient.name}`}
       </Link>
 
       <div
@@ -217,7 +232,24 @@ export default async function OdontogramPage({
         )}
       </div>
 
-      {readOnly && (
+      {consultOnly && (
+        <div
+          style={{
+            backgroundColor: '#E8EEFF',
+            border: '1px solid #C9D6F5',
+            borderRadius: '10px',
+            padding: '10px 16px',
+            fontSize: '13px',
+            color: '#1B2A6B',
+          }}
+        >
+          Vista de consulta (só leitura): ainda não teve consultas com este
+          paciente. A edição fica disponível a partir da primeira marcação
+          consigo.
+        </div>
+      )}
+
+      {oldVersion && !consultOnly && (
         <div
           style={{
             backgroundColor: '#FFF4DE',
@@ -244,11 +276,11 @@ export default async function OdontogramPage({
         patientId={id}
         initialTeeth={initialTeeth}
         events={chartEvents}
-        versionLabel={versionLabel}
+        versionLabel={versionLabel ?? (consultOnly ? 'Sem registo manual do médico' : null)}
         readOnly={readOnly}
         proceduresByTooth={proceduresByTooth}
         history={history}
-        planBaseHref={`/doutor/pacientes/${id}/plano?novo=1`}
+        planBaseHref={consultOnly ? null : `/doutor/pacientes/${id}/plano?novo=1`}
         consultationHref={inProgress ? `/doutor/consulta/${String(inProgress._id)}` : null}
       />
     </div>

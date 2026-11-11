@@ -616,3 +616,27 @@ export const EMPLOYEE_CONTRACT_LABEL: Record<EmployeeContractType, string> = {
   estagio: 'Estágio',
   outro: 'Outro',
 };
+
+// =============================================================================
+// COMO NOS CONHECEU (5.ª ronda/09, Victor, nov. 2026)
+// -----------------------------------------------------------------------------
+// Diferente do CANAL do pedido (balcão/telefone/WhatsApp): aqui regista-se
+// como o paciente chegou à clínica. 'promocao' leva o nome da promoção do
+// mês em vigor (Organization.monthlyPromo) em `referralDetail`.
+// =============================================================================
+export const REFERRAL_SOURCES = [
+  'instagram',
+  'google',
+  'indicacao',
+  'promocao',
+  'outro',
+] as const;
+export type ReferralSource = (typeof REFERRAL_SOURCES)[number];
+
+export const REFERRAL_SOURCE_LABEL: Record<ReferralSource, string> = {
+  instagram: 'Instagram',
+  google: 'Google',
+  indicacao: 'Indicação',
+  promocao: 'Promoção do mês',
+  outro: 'Outro',
+};

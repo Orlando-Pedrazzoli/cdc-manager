@@ -33,6 +33,14 @@
 // · 05 — clicar no NOME do paciente abre a ficha rápida (contacto, alertas,
 //   saldo, próximas marcações) sem sair da agenda; o resto do cartão
 //   continua a abrir as ações da marcação.
+//
+// 5.ª ronda (Victor, nov. 2026):
+// · 01 — a janela da marcação tem a caixa "Observações", editável em
+//   qualquer altura; o que lá se escreve aparece na linha da marcação.
+// · 07 — fora do turno do médico a coluna fica FECHADA (escuro, tracejado)
+//   e não aceita cliques; médico fora da escala nesse dia só aparece se
+//   tiver marcações, com a coluna toda fechada e o aviso "Fora da escala".
+// · 13 — pré-marcações (ficha por completar) levam a pastilha "S/ FICHA".
 // =============================================================================
 
 'use client';
@@ -48,10 +56,11 @@ import { PatientQuickView } from '@/components/agenda/PatientQuickView';
 import {
   transitionAppointmentAction,
   updateAppointmentDurationAction,
+  updateAppointmentNoteAction,
 } from '@/actions/appointments';
 import type { AppointmentStatus } from '@/models/Appointment';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Input, Textarea } from '@/components/ui/Input';
 import {
   RescheduleForm,
   type RescheduleClinic,
@@ -217,6 +226,10 @@ export interface AgendaAppointment {
   /** P3: para o formulário de remarcação */
   clinicId: string;
   date: string; // YYYY-MM-DD
+  /** 5.ª ronda/13: ficha criada numa pré-marcação, ainda por completar */
+  provisional?: boolean;
+  /** 5.ª ronda/09: como nos conheceu (rótulo pronto a mostrar) */
+  referralLabel?: string | null;
 }
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -235,7 +248,28 @@ export interface AgendaDoctorColumn {
   color: string;
   /** Faixas de trabalho (minutos) nesta clínica neste dia */
   ranges: { start: number; end: number }[];
+  /** 5.ª ronda/07: não está escalado neste dia — a coluna só existe porque
+   *  tem marcações; fica toda fechada */
+  offSchedule?: boolean;
 }
+
+// 5.ª ronda/07: fora do turno = fechado (escuro, tracejado) — a receção vê
+// de imediato que ali não se marca
+const CLOSED_BG =
+  'repeating-linear-gradient(135deg, #C9CEDB 0px, #C9CEDB 8px, #BEC4D3 8px, #BEC4D3 16px)';
+const provisionalPillStyle: React.CSSProperties = {
+  display: 'inline-block',
+  marginRight: 5,
+  padding: '0 5px',
+  borderRadius: '4px',
+  backgroundColor: '#9A6700',
+  color: '#FFFFFF',
+  fontSize: '9px',
+  fontWeight: 800,
+  letterSpacing: '0.5px',
+  verticalAlign: 'middle',
+  lineHeight: '14px',
+};
 
 export function AgendaGrid({
   gridStart,
@@ -268,6 +302,8 @@ export function AgendaGrid({
     doctors: { id: string; name: string }[];
     treatments: { id: string; name: string; category?: string | null }[];
     rooms?: { id: string; name: string }[];
+    /** 5.ª ronda/09: promoção do mês em vigor */
+    promo?: string | null;
   };
 }) {
   const router = useRouter();
@@ -283,6 +319,32 @@ export function AgendaGrid({
   // 4.ª ronda/05: ficha rápida do paciente
   const [quick, setQuick] = useState<{ id: string; name: string } | null>(null);
   const clickable = !!newAppointment?.canCreate;
+  // 5.ª ronda/01: observação em edição na janela da marcação
+  const [noteDraft, setNoteDraft] = useState<{ id: string; text: string } | null>(null);
+  const noteText =
+    selected && noteDraft?.id === selected.id ? noteDraft.text : (selected?.note ?? '');
+  const noteDirty = !!selected && noteText.trim() !== (selected.note ?? '');
+  const saveNote = async () => {
+    if (!selected) return;
+    setBusy(true);
+    const res = await updateAppointmentNoteAction(selected.id, noteText);
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success('Observação guardada.');
+    setSelected(s => (s ? { ...s, note: res.note ?? null } : s));
+    setNoteDraft(null);
+    router.refresh();
+  };
+  /** 5.ª ronda/07: o minuto está dentro do turno desta coluna? */
+  const inShift = (
+    col: AgendaDoctorColumn | { id: null; name: string },
+    min: number,
+  ) =>
+    col.id === null ||
+    ('ranges' in col && col.ranges.some(r => min >= r.start && min < r.end));
 
   const totalMin = gridEnd - gridStart;
   const height = totalMin * PX_PER_MIN;
@@ -468,6 +530,22 @@ export function AgendaGrid({
               >
                 {col.name}
               </span>
+              {'offSchedule' in col && col.offSchedule && (
+                <span
+                  title='Não está escalado neste dia — aparece porque tem marcações'
+                  style={{
+                    flexShrink: 0,
+                    padding: '1px 6px',
+                    borderRadius: '999px',
+                    backgroundColor: '#4A5169',
+                    color: '#FFFFFF',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                  }}
+                >
+                  Fora da escala
+                </span>
+              )}
             </div>
           ))}
 
@@ -516,10 +594,18 @@ export function AgendaGrid({
                   position: 'relative',
                   height,
                   borderLeft: '1px solid #F0F2F7',
-                  backgroundColor: '#F7F8FC', // fora do horário = cinza
-                  cursor: clickable ? 'copy' : 'default',
+                  // 5.ª ronda/07: fora do turno = fechado; "Sem médico"
+                  // não tem turno (fundo neutro)
+                  background: col.id === null ? '#F7F8FC' : CLOSED_BG,
+                  cursor:
+                    hover && hover.col === (col.id ?? 'unassigned')
+                      ? 'copy'
+                      : clickable && col.id !== null
+                        ? 'not-allowed'
+                        : clickable
+                          ? 'copy'
+                          : 'default',
                 }}
-                title={clickable ? 'Clique num horário livre para marcar' : undefined}
                 onMouseMove={
                   clickable
                     ? e => {
@@ -529,6 +615,10 @@ export function AgendaGrid({
                           return;
                         }
                         const min = minuteAt(e);
+                        if (!inShift(col, min)) {
+                          if (hover) setHover(null);
+                          return;
+                        }
                         const key = col.id ?? 'unassigned';
                         if (!hover || hover.col !== key || hover.min !== min) setHover({ col: key, min });
                       }
@@ -539,7 +629,12 @@ export function AgendaGrid({
                   clickable
                     ? e => {
                         if (e.target !== e.currentTarget) return;
-                        setSlot({ doctorId: col.id ?? '', start: hhmm(minuteAt(e)) });
+                        const min = minuteAt(e);
+                        if (!inShift(col, min)) {
+                          toast('Fora do turno do médico — use "Abrir dia / estender horário" para marcar aqui.', { icon: '🔒' });
+                          return;
+                        }
+                        setSlot({ doctorId: col.id ?? '', start: hhmm(min) });
                         setHover(null);
                       }
                     : undefined
@@ -705,6 +800,11 @@ export function AgendaGrid({
                             URG
                           </span>
                         )}
+                        {a.provisional && (
+                          <span title='Pré-marcação: ficha por completar' style={provisionalPillStyle}>
+                            S/ FICHA
+                          </span>
+                        )}
                         {a.start} ·{' '}
                         {/* 4.ª ronda/05: o nome abre a ficha rápida */}
                         {/* <span> e não <button>: um botão é um bloco atómico e
@@ -799,6 +899,7 @@ export function AgendaGrid({
           doctors={newAppointment.doctors}
           treatments={newAppointment.treatments}
           rooms={newAppointment.rooms ?? []}
+          promo={newAppointment.promo ?? null}
         />
       )}
 
@@ -813,6 +914,7 @@ export function AgendaGrid({
           setCancelMode(false);
           setRescheduleMode(false);
           setCancelReason('');
+          setNoteDraft(null);
         }}
         title='Marcação'
       >
@@ -874,6 +976,17 @@ export function AgendaGrid({
                   {STATUS_LABEL[selected.status] ?? selected.status}
                 </Badge>
                 {selected.isUrgent && <Badge variant='danger'>Urgência</Badge>}
+                {selected.provisional && (
+                  <Link
+                    href={`/admin/pacientes/${selected.patientId}?tab=dados`}
+                    target='_blank'
+                    rel='noopener'
+                    title='Pré-marcação: abrir a ficha para a completar'
+                    style={{ textDecoration: 'none' }}
+                  >
+                    <Badge variant='warning'>Ficha por completar</Badge>
+                  </Link>
+                )}
               </div>
             </div>
 
@@ -897,9 +1010,9 @@ export function AgendaGrid({
                 {selected.createdAtLabel}
                 {selected.createdByName ? ` · ${selected.channelLabel}` : ''}
               </span>
-              {selected.note && (
+              {selected.referralLabel && (
                 <span>
-                  <strong>Obs.:</strong> {selected.note}
+                  <strong>Como nos conheceu:</strong> {selected.referralLabel}
                 </span>
               )}
               {selected.labDue.length > 0 && (
@@ -928,6 +1041,32 @@ export function AgendaGrid({
                 </span>
               )}
             </div>
+
+            {/* 5.ª ronda/01: observações — sempre à vista e editáveis */}
+            {!rescheduleMode && !cancelMode && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <Textarea
+                  id='appt-note'
+                  label='Observações'
+                  value={noteText}
+                  onChange={e => setNoteDraft({ id: selected.id, text: e.target.value })}
+                  maxLength={500}
+                  rows={2}
+                  placeholder='Ex.: PDD da Dra. / MPR OK · avisar a Dra. para trazer procaína'
+                  help='Aparece na linha da marcação, na agenda.'
+                />
+                {noteDirty && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Button size='sm' loading={busy} onClick={saveNote}>
+                      Guardar observação
+                    </Button>
+                    <Button size='sm' variant='outline' disabled={busy} onClick={() => setNoteDraft(null)}>
+                      Desfazer
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Duração (apontamento 01): −15 / +15 / +30 / +60 sobre o fim */}
             {DURATION_EDITABLE.includes(selected.status) &&

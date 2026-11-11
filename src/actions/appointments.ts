@@ -59,6 +59,12 @@ import {
   sendAppointmentConfirmationEmail,
   sendDoctorNewAppointmentEmail,
 } from '@/lib/resend';
+import { phoneField } from '@/lib/validations/patient';
+import { REFERRAL_SOURCES } from '@/lib/domain';
+import {
+  createProvisionalPatient,
+  findPatientByPhone,
+} from '@/lib/provisional-patient';
 import {
   PATIENT_SEARCH_SELECT,
   patientSearchOr,
@@ -73,7 +79,12 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 // -----------------------------------------------------------------------------
 export type AppointmentFormState =
   | { error: string }
-  | { success: true; appointmentId: string }
+  | {
+      success: true;
+      appointmentId: string;
+      /** 5.ª ronda/13: ficha provisória criada com a marcação */
+      provisionalPatientId?: string;
+    }
   | undefined;
 
 // -----------------------------------------------------------------------------
@@ -271,9 +282,40 @@ export async function setAppointmentRoomAction(
 // -----------------------------------------------------------------------------
 // CRIAR MARCAÇÃO (balcão/admin)
 // -----------------------------------------------------------------------------
+const emptyToNullStr = (v: unknown) =>
+  typeof v === 'string' && v.trim() === '' ? null : v;
+
 const createSchema = z.object({
   clinicId: z.string().regex(/^[0-9a-fA-F]{24}$/),
-  patientId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Selecione o paciente'),
+  // 5.ª ronda/13: vazio quando é uma pré-marcação sem ficha (newFirstName…)
+  patientId: z.preprocess(
+    emptyToNullStr,
+    z
+      .string()
+      .regex(/^[0-9a-fA-F]{24}$/, 'Selecione o paciente')
+      .nullable()
+      .default(null),
+  ),
+  newFirstName: z.preprocess(
+    emptyToNullStr,
+    z.string().trim().min(2, 'Nome demasiado curto').max(60).nullable().default(null),
+  ),
+  newLastName: z.preprocess(
+    emptyToNullStr,
+    z.string().trim().min(2, 'Apelido demasiado curto').max(90).nullable().default(null),
+  ),
+  newPhone: phoneField.default(null),
+  /** A receção confirmou que é outra pessoa com o mesmo telemóvel */
+  samePhoneOk: z.preprocess(v => v === 'on' || v === 'true', z.boolean()),
+  // 5.ª ronda/09: como nos conheceu
+  referralSource: z.preprocess(
+    emptyToNullStr,
+    z.enum(REFERRAL_SOURCES).nullable().default(null),
+  ),
+  referralDetail: z.preprocess(
+    emptyToNullStr,
+    z.string().trim().max(120).nullable().default(null),
+  ),
   doctorId: z.preprocess(
     v => (typeof v === 'string' && v.trim() === '' ? null : v),
     z
@@ -320,10 +362,24 @@ export async function createAppointmentAction(
     return { error: (e as Error).message };
   }
 
+  // 5.ª ronda/13: pré-marcação — sem ficha escolhida, exige nome, apelido
+  // e telemóvel
+  const isPreBooking = !data.patientId;
+  if (isPreBooking && !(data.newFirstName && data.newLastName && data.newPhone)) {
+    return {
+      error:
+        'Selecione o paciente ou, para quem ainda não tem ficha, indique nome, apelido e telemóvel.',
+    };
+  }
+
   // Referências têm de existir e estar ativas
-  const [clinic, patient, treatment, doctor] = await Promise.all([
+  const [clinic, existingPatient, treatment, doctor] = await Promise.all([
     Clinic.findById(data.clinicId),
-    Patient.findById(data.patientId).select('status name email consents'),
+    data.patientId
+      ? Patient.findById(data.patientId).select(
+          'status name email consents referralSource',
+        )
+      : Promise.resolve(null),
     TreatmentType.findById(data.treatmentTypeId).select(
       'name durationMin bufferMin',
     ),
@@ -333,12 +389,20 @@ export async function createAppointmentAction(
   const roomId = await resolveRoomId(data.clinicId, data.roomId);
   if (roomId === false)
     return { error: 'Gabinete inválido para esta clínica.' };
-  if (!patient || patient.status !== 'active') {
+  if (!isPreBooking && (!existingPatient || existingPatient.status !== 'active')) {
     return { error: 'Paciente inválido ou inativo.' };
   }
   if (!treatment) return { error: 'Ato inválido.' };
   if (data.doctorId && (!doctor || !doctor.active)) {
     return { error: 'Médico inválido ou inativo.' };
+  }
+  if (isPreBooking && !data.samePhoneOk) {
+    const dup = await findPatientByPhone(data.newPhone as string);
+    if (dup) {
+      return {
+        error: `Já existe uma ficha com este telemóvel: ${dup.name} (processo nº ${dup.processNumber}). Escolha-a na pesquisa ou marque "É outra pessoa" para criar uma nova.`,
+      };
+    }
   }
 
   const totalMin = treatment.durationMin + (treatment.bufferMin ?? 0);
@@ -362,6 +426,39 @@ export async function createAppointmentAction(
       };
     }
   }
+
+  // Pré-marcação: a ficha provisória nasce aqui, depois de todas as
+  // validações que não dependem da transação; se a marcação falhar (horário
+  // ocupado entretanto), a ficha é removida no catch.
+  let provisionalPatientId: string | null = null;
+  let patient: {
+    _id: mongoose.Types.ObjectId;
+    name: string;
+    email?: string | null;
+    consents?: { remindersAt?: Date | null } | null;
+  };
+  if (isPreBooking) {
+    try {
+      const created = await createProvisionalPatient({
+        firstName: data.newFirstName as string,
+        lastName: data.newLastName as string,
+        phone: data.newPhone as string,
+        referralSource: data.referralSource,
+        referralDetail: data.referralDetail,
+      });
+      provisionalPatientId = created.id;
+      patient = {
+        _id: new mongoose.Types.ObjectId(created.id),
+        name: created.name,
+      };
+    } catch (e) {
+      console.error('[appointments] ficha provisória falhou:', e);
+      return { error: 'Não foi possível registar o paciente. Tente novamente.' };
+    }
+  } else {
+    patient = existingPatient!;
+  }
+  const patientId = String(patient._id);
 
   // --- Transação: re-verificar + criar atomicamente -------------------------
   const session = await mongoose.startSession();
@@ -387,7 +484,7 @@ export async function createAppointmentAction(
         [
           {
             clinicId: data.clinicId,
-            patientId: data.patientId,
+            patientId,
             doctorId: data.doctorId,
             treatmentTypeId: data.treatmentTypeId,
             roomId,
@@ -397,6 +494,8 @@ export async function createAppointmentAction(
             channel: data.channel,
             createdByUserId: staff.id,
             note: data.note,
+            referralSource: data.referralSource,
+            referralDetail: data.referralDetail,
             confirmToken,
           },
         ],
@@ -410,10 +509,26 @@ export async function createAppointmentAction(
       action: 'create',
       entityType: 'Appointment',
       entityId: appointmentId,
-      patientId: data.patientId,
+      patientId,
       clinicId: data.clinicId,
-      summary: `Marcação criada: ${treatment.name} a ${data.date} ${data.start}`,
+      summary: `Marcação criada: ${treatment.name} a ${data.date} ${data.start}${isPreBooking ? ' (pré-marcação, ficha por completar)' : ''}`,
     });
+    // Como nos conheceu: fica na ficha na primeira vez que é indicado
+    if (
+      !isPreBooking &&
+      data.referralSource &&
+      !existingPatient?.referralSource
+    ) {
+      await Patient.updateOne(
+        { _id: patient._id },
+        {
+          $set: {
+            referralSource: data.referralSource,
+            referralDetail: data.referralDetail,
+          },
+        },
+      ).catch(() => undefined);
+    }
 
     // Emails (paciente com botão de confirmação + médico) — best-effort
     await notifyNewAppointment({
@@ -430,12 +545,75 @@ export async function createAppointmentAction(
     });
 
     revalidatePath('/admin/agenda');
-    return { success: true, appointmentId };
+    return {
+      success: true,
+      appointmentId,
+      ...(provisionalPatientId ? { provisionalPatientId } : {}),
+    };
   } catch (e) {
+    // A marcação não ficou criada → não deixar a ficha provisória órfã
+    if (provisionalPatientId) {
+      const hasAppt = await Appointment.exists({ patientId: provisionalPatientId });
+      if (!hasAppt) {
+        await Patient.deleteOne({
+          _id: provisionalPatientId,
+          provisional: true,
+        }).catch(() => undefined);
+      }
+    }
     return { error: (e as Error).message };
   } finally {
     await session.endSession();
   }
+}
+
+// -----------------------------------------------------------------------------
+// OBSERVAÇÕES DA MARCAÇÃO (5.ª ronda/01, Victor, nov. 2026)
+// "Acrescentar uma caixa Observações na janela da marcação, que apareça
+// também na linha da marcação na agenda." A observação já existia (campo
+// `note`, mostrado no cartão) mas só se escrevia ao criar; passa a poder
+// ser lida e alterada em qualquer altura, em qualquer estado.
+// -----------------------------------------------------------------------------
+export async function updateAppointmentNoteAction(
+  appointmentId: string,
+  note: string,
+): Promise<{ error?: string; note?: string | null }> {
+  if (!isObjectId(appointmentId)) return { error: 'Marcação inválida.' };
+  const clean = (typeof note === 'string' ? note : '').trim();
+  if (clean.length > 500) {
+    return { error: 'Observação demasiado longa (máx. 500 caracteres).' };
+  }
+
+  await dbConnect();
+  const appt = await Appointment.findById(appointmentId).select(
+    'clinicId patientId note',
+  );
+  if (!appt) return { error: 'Marcação não encontrada.' };
+
+  let staff;
+  try {
+    staff = await requireStaffForClinic(String(appt.clinicId));
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+
+  const next = clean === '' ? null : clean;
+  if ((appt.note ?? null) === next) return { note: next };
+
+  await Appointment.updateOne({ _id: appt._id }, { $set: { note: next } });
+  await logAudit({
+    userId: staff.id,
+    action: 'update',
+    entityType: 'Appointment',
+    entityId: appointmentId,
+    patientId: String(appt.patientId),
+    clinicId: String(appt.clinicId),
+    summary: next ? 'Observação da marcação alterada' : 'Observação da marcação removida',
+    changedFields: ['note'],
+  });
+  revalidatePath('/admin/agenda');
+  revalidatePath('/doutor/agenda');
+  return { note: next };
 }
 
 // -----------------------------------------------------------------------------

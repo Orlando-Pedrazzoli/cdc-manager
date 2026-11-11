@@ -25,6 +25,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
+  Smile,
   ScanLine,
   BarChart3,
   CalendarDays,
@@ -79,6 +80,8 @@ const NAV: { section: string; items: NavItem[] }[] = [
         label: 'Tratamentos',
         icon: ClipboardList,
       },
+      // 5.ª ronda/12: atalho — procurar o paciente e abrir o odontograma
+      { href: '/admin/odontograma', label: 'Odontograma', icon: Smile },
       { href: '/admin/rx', label: 'Raio-X', icon: ScanLine },
       { href: '/admin/proteses', label: 'Próteses', icon: FlaskConical },
       { href: '/admin/recalls', label: 'Recalls', icon: RefreshCcw },

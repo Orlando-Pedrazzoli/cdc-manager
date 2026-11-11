@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import User, { type UserRole } from '@/models/User';
 import Doctor from '@/models/Doctor';
+import { isRequestOutsideClinic } from '@/lib/org-settings';
 
 /**
  * Valida a sessão JWT contra o estado atual da conta na base de dados.
@@ -25,6 +26,9 @@ export async function getVerifiedSession(allowedRoles: readonly UserRole[]) {
   ) {
     return null;
   }
+
+  // 5.ª ronda/14: perfis limitados à rede da clínica não passam de fora
+  if (await isRequestOutsideClinic(user.role)) return null;
 
   if (user.role === 'doctor') {
     if (

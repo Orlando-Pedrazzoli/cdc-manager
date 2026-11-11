@@ -36,6 +36,8 @@ import { getOrganization } from '@/models/Organization';
 import { defaultClinic } from '@/lib/branding';
 import { isMoloniConfigured, isMoloniEmissionReady } from '@/lib/moloni';
 import User from '@/models/User';
+import { OperationsPanel } from '@/components/configuracoes/OperationsPanel';
+import { currentClientIp, getOrganizationSettings } from '@/lib/org-settings';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Configurações' };
@@ -44,6 +46,7 @@ const TABS = [
   { key: 'organizacao', label: 'Organização' },
   { key: 'clinicas', label: 'Clínicas & horários' },
   { key: 'utilizadores', label: 'Utilizadores' },
+  { key: 'operacao', label: 'Operação' }, // 5.ª ronda — promoção + acessos
   { key: 'integracoes', label: 'Integrações' }, // Fase 7A — Moloni
   { key: 'conta', label: 'A minha conta' },
 ] as const;
@@ -97,6 +100,10 @@ export default async function ConfiguracoesPage({
   }
 
   await dbConnect();
+  const [opSettings, clientIp] = await Promise.all([
+    getOrganizationSettings(),
+    currentClientIp(),
+  ]);
 
   // ---------------------------------------------------------------------------
   // Dados por separador (fetch só do que o separador ativo precisa)
@@ -244,6 +251,12 @@ export default async function ConfiguracoesPage({
         <OrganizationForm key={org.logoUrl ?? 'no-logo'} brand={org} />
       ) : activeTab === 'utilizadores' ? (
         <UsersPanel users={teamUsers} currentUserId={session.user.id ?? ''} />
+      ) : activeTab === 'operacao' ? (
+        <OperationsPanel
+          monthlyPromo={opSettings.monthlyPromo}
+          network={opSettings.network}
+          currentIp={clientIp}
+        />
       ) : activeTab === 'conta' ? (
         <ChangePasswordForm email={session.user.email ?? ''} />
       ) : activeTab === 'integracoes' ? (

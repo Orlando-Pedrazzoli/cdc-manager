@@ -176,6 +176,7 @@ export default async function DoctorPage({
       weeklySchedule: cs.weeklySchedule.map(w => ({
         weekday: w.weekday,
         ranges: w.ranges.map(r => ({ start: r.start, end: r.end })),
+        biweeklyAnchor: w.biweeklyAnchor ?? null,
       })),
     })),
   };

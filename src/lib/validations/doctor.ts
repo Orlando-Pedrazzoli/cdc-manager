@@ -36,7 +36,24 @@ const weeklyScheduleSchema = z
   .object({
     weekday: z.number().int().min(0).max(6),
     ranges: z.array(timeRangeSchema).max(6),
+    // 5.ª ronda/07: quinzenal — data em que trabalha (mesmo dia da semana)
+    biweeklyAnchor: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data de referência inválida')
+      .nullable()
+      .optional(),
   })
+  .refine(
+    w => {
+      if (!w.biweeklyAnchor) return true;
+      const [y, m, d] = w.biweeklyAnchor.split('-').map(Number);
+      return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === w.weekday;
+    },
+    {
+      message:
+        'Turno quinzenal: a data de referência tem de calhar nesse dia da semana',
+    },
+  )
   .refine(
     w => {
       // Intervalos do mesmo dia sem sobreposição (comparação lexicográfica

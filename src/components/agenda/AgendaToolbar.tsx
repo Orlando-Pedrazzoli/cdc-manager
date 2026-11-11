@@ -19,6 +19,7 @@ export function AgendaToolbar({
   doctors,
   treatments,
   rooms = [],
+  promo = null,
   buttonLabel,
 }: {
   clinicId: string;
@@ -28,6 +29,8 @@ export function AgendaToolbar({
   rooms?: { id: string; name: string }[];
   doctors: { id: string; name: string }[];
   treatments: { id: string; name: string; category?: string | null }[];
+  /** 5.ª ronda/09: promoção do mês em vigor */
+  promo?: string | null;
   buttonLabel: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -55,6 +58,7 @@ export function AgendaToolbar({
         doctors={doctors}
         treatments={treatments}
         rooms={rooms}
+        promo={promo}
       />
     </>
   );

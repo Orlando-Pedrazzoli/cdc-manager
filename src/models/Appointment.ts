@@ -168,6 +168,10 @@ const AppointmentSchema = new Schema(
       maxlength: 500,
       default: null,
     },
+    // 5.ª ronda/09: como o paciente conheceu a clínica, registado NESTA
+    // marcação (estatística por mês/promoção) — ver Patient.referralSource
+    referralSource: { type: String, trim: true, maxlength: 30, default: null },
+    referralDetail: { type: String, trim: true, maxlength: 120, default: null },
     // --- Confirmação --------------------------------------------------------
     // Token opaco (base64url) do link "Confirmar presença" enviado por email.
     // Gerado na criação; a página pública /confirmar/[token] resolve-o.

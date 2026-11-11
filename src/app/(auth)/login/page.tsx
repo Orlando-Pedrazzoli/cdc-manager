@@ -6,10 +6,26 @@
 
 'use client';
 
-import { useActionState, useState } from 'react';
+import { Suspense, useActionState, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, EyeOff, Loader2, Lock, Mail } from 'lucide-react';
 import { loginAction, type AuthFormState } from '@/actions/auth';
+
+/** useSearchParams exige Suspense — fica isolado neste componente */
+function OutsideClinicNotice() {
+  if (useSearchParams().get('error') !== 'OutsideClinic') return null;
+  return (
+    <div
+      className='rounded-lg px-4 py-3 text-sm'
+      style={{ backgroundColor: '#FFF7E6', color: '#7A4B00' }}
+      role='alert'
+    >
+      O seu acesso só é permitido a partir da rede da clínica. A sessão foi
+      interrompida porque está fora da clínica.
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState<AuthFormState, FormData>(
@@ -125,6 +141,13 @@ export default function LoginPage() {
             </p>
           )}
         </div>
+
+        {/* 5.ª ronda/14: sessão interrompida por estar fora da rede */}
+        {!state?.error && (
+          <Suspense fallback={null}>
+            <OutsideClinicNotice />
+          </Suspense>
+        )}
 
         {state?.error && (
           <div

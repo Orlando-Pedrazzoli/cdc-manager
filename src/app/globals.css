@@ -359,3 +359,47 @@ body {
     gap: 10px;
   }
 }
+
+/* =============================================================================
+   Odontograma — 5.ª ronda/03 (Victor, nov. 2026)
+   Ecrã normal: mapa à esquerda; ao lado, dente selecionado + histórico com
+   rolagem própria (o mapa nunca sai de vista). Ecrã estreito: empilha.
+   ========================================================================== */
+.cdc-odonto {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.cdc-odonto-chart {
+  min-width: 0;
+}
+.cdc-odonto-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+@media (min-width: 1180px) {
+  .cdc-odonto {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(340px, 1fr);
+    align-items: start;
+  }
+  .cdc-odonto-side {
+    position: sticky;
+    top: 12px;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+}
+@media print {
+  .cdc-odonto {
+    display: block;
+  }
+  .cdc-odonto-side {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}

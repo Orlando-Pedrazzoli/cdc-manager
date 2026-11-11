@@ -444,6 +444,12 @@ export async function updatePatientAction(
     changed.push('deceasedAt');
   }
 
+  // 5.ª ronda/13: gravar a ficha completa tira a marca de pré-marcação
+  if (patient.provisional) {
+    $set['provisional'] = false;
+    changed.push('provisional');
+  }
+
   if (changed.length === 0) {
     return {
       success: true,

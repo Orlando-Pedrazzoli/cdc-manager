@@ -214,6 +214,12 @@ export const generalSchema = z.object({
   supplementsWhich: text(300),
   allergies: manyOf(ALLERGIES),
   allergiesOther: text(200),
+  // 5.ª ronda/04: "Sem alergias conhecidas" — resposta explícita, para
+  // distinguir "não tem" de "ninguém perguntou"
+  noKnownAllergies: z.preprocess(
+    v => v === true || v === 'on' || v === 'true',
+    z.boolean().default(false),
+  ),
   lastDentalVisit: dateStr,
   frequency: oneOf(DENTAL_FREQUENCY),
   treatmentsDone: manyOf(TREATMENTS_DONE),
@@ -274,7 +280,93 @@ export type GeneralData = z.infer<typeof generalSchema>;
 export type PediatricData = z.infer<typeof pediatricSchema>;
 export type AestheticData = z.infer<typeof aestheticSchema>;
 
-export const QUESTIONNAIRE_VERSION = 1;
+// v2 (5.ª ronda/04, nov. 2026): campos obrigatórios + "Sem alergias conhecidas"
+export const QUESTIONNAIRE_VERSION = 2;
+
+// -----------------------------------------------------------------------------
+// CAMPOS OBRIGATÓRIOS (5.ª ronda/04, Victor, nov. 2026)
+// -----------------------------------------------------------------------------
+// "Os campos obrigatórios aparecem com fundo amarelo e asterisco (*) e passam
+// a verde quando preenchidos. Guardar anamnese só fica ativo com todos a
+// verde." Os restantes campos ficam opcionais e não bloqueiam.
+//   1. Fez alguma cirurgia nos últimos 12 meses? Se Sim, "Qual?"
+//   2. Teve alguma reação ou complicação anestésica? Se Sim, "Qual?"
+//   3. Toma medicação regularmente? Se Sim, "Qual?"
+//   4. Alergias ou intolerâncias: pelo menos uma opção, ou "Sem alergias
+//      conhecidas"
+// Função PURA, partilhada pelo formulário (botão ativo/inativo, cores) e pelo
+// servidor (recusa gravar sem tudo preenchido).
+// -----------------------------------------------------------------------------
+export interface RequiredAnswers {
+  surgeryLast12m: boolean | null | undefined;
+  surgeryWhich: string | null | undefined;
+  anesthesiaReaction: boolean | null | undefined;
+  anesthesiaReactionWhich: string | null | undefined;
+  takesMedication: boolean | null | undefined;
+  medicationWhich: string | null | undefined;
+  allergies: readonly string[] | null | undefined;
+  allergiesOther: string | null | undefined;
+  noKnownAllergies: boolean | null | undefined;
+}
+
+export const REQUIRED_KEYS = ['surgery', 'anesthesia', 'medication', 'allergies'] as const;
+export type RequiredKey = (typeof REQUIRED_KEYS)[number];
+
+export const REQUIRED_LABEL: Record<RequiredKey, string> = {
+  surgery: 'Cirurgia nos últimos 12 meses',
+  anesthesia: 'Reação ou complicação anestésica',
+  medication: 'Medicação regular',
+  allergies: 'Alergias ou intolerâncias',
+};
+
+const filled = (v: string | null | undefined) => !!v && v.trim().length > 0;
+const yesNoDone = (
+  answer: boolean | null | undefined,
+  which: string | null | undefined,
+) => answer === false || (answer === true && filled(which));
+
+/** Estado de cada campo obrigatório: true = preenchido (verde) */
+export function requiredStatus(a: RequiredAnswers): Record<RequiredKey, boolean> {
+  const hasAllergy = (a.allergies?.length ?? 0) > 0 || filled(a.allergiesOther);
+  return {
+    surgery: yesNoDone(a.surgeryLast12m, a.surgeryWhich),
+    anesthesia: yesNoDone(a.anesthesiaReaction, a.anesthesiaReactionWhich),
+    medication: yesNoDone(a.takesMedication, a.medicationWhich),
+    // "Sem alergias conhecidas" e uma alergia marcada ao mesmo tempo é
+    // contraditório → fica por preencher até se desfazer
+    allergies: a.noKnownAllergies ? !hasAllergy : hasAllergy,
+  };
+}
+
+/** Rótulos dos campos obrigatórios ainda por preencher ([] = completo) */
+export function missingRequired(a: RequiredAnswers | null | undefined): string[] {
+  if (!a) return REQUIRED_KEYS.map(k => REQUIRED_LABEL[k]);
+  const st = requiredStatus(a);
+  return REQUIRED_KEYS.filter(k => !st[k]).map(k => REQUIRED_LABEL[k]);
+}
+
+/**
+ * A consulta tem de parar para a anamnese? Em falta, com mais de 12 meses
+ * (revisão anual) ou sem os campos obrigatórios (fichas anteriores à v2).
+ */
+export function anamnesisGateReason(
+  q:
+    | {
+        completedAt?: Date | null;
+        data?: { general?: RequiredAnswers | null } | null;
+      }
+    | null
+    | undefined,
+  now = new Date(),
+): 'missing' | 'expired' | 'incomplete' | null {
+  if (!q?.completedAt) return 'missing';
+  const days = Math.floor(
+    (now.getTime() - new Date(q.completedAt).getTime()) / 86_400_000,
+  );
+  if (days >= ANAMNESIS_VALID_DAYS) return 'expired';
+  if (missingRequired(q.data?.general).length > 0) return 'incomplete';
+  return null;
+}
 
 /**
  * FormData → objeto por prefixo ("g.conditions", "p.habits", "a.improve").
@@ -377,4 +469,12 @@ export function deriveSafetyAlerts(q: QuestionnaireData): {
     medications.push(q.general.medicationWhich);
   }
   return { allergies, conditions, medications };
+}
+
+/** 5.ª ronda/04: reação anestésica para a faixa do topo dos ecrãs clínicos */
+export function anesthesiaReactionAlert(
+  q: { general?: { anesthesiaReaction?: boolean | null; anesthesiaReactionWhich?: string | null } | null } | null | undefined,
+): string | null {
+  if (!q?.general?.anesthesiaReaction) return null;
+  return q.general.anesthesiaReactionWhich?.trim() || 'sim (sem detalhe)';
 }

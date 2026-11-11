@@ -83,6 +83,17 @@ export async function loginAction(
       redirect: false,
     });
   } catch (err) {
+    // 5.ª ronda/14: a password estava certa, mas o perfil só entra dentro
+    // da clínica — dizer porquê (não revela nada a quem não tem a password)
+    if (
+      err instanceof AuthError &&
+      (err as { code?: string }).code === 'outside-clinic'
+    ) {
+      return {
+        error:
+          'O seu acesso só é permitido a partir da rede da clínica. Fora da clínica não é possível entrar.',
+      };
+    }
     if (err instanceof AuthError) {
       // Mensagem única para qualquer falha — nunca revelar se o email
       // existe, se a conta está bloqueada, etc. (anti-enumeração)

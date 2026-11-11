@@ -42,10 +42,10 @@ export function ExtendDayButton({
       <Button
         variant='secondary'
         onClick={() => setOpen(true)}
-        title='Estender horário de um médico neste dia'
+        title='Abrir a agenda de um médico que não está escalado neste dia, ou estender o horário de quem está'
       >
         <Clock3 size={15} style={{ marginRight: 6 }} />
-        Estender horário
+        Abrir dia / estender horário
       </Button>
       <Modal
         open={open}

@@ -22,6 +22,15 @@
 // grelha abre este modal com `initialDoctorId` e `preferredStart`; o médico
 // fica escolhido e, assim que há ato, o horário livre mais próximo da hora
 // clicada fica selecionado (a lista continua a mostrar SÓ horários livres).
+//
+// 5.ª ronda (Victor, nov. 2026):
+// · 10 — a lista de médicos acompanha a DATA escolhida no modal: só quem
+//   está escalado nesse dia, com o horário ao lado do nome.
+// · 13 — pré-marcação sem ficha: nome, apelido e telemóvel chegam para
+//   marcar; fica criada uma ficha provisória ("por completar").
+// · 09 — depois de criada, a receção pode abrir logo a ficha para a
+//   completar; e regista-se como o paciente conheceu a clínica (Instagram,
+//   Google, indicação, promoção do mês) — separado do canal do pedido.
 // =============================================================================
 
 'use client';
@@ -29,7 +38,7 @@
 import { useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { MapPin, Search } from 'lucide-react';
+import { MapPin, Search, UserPlus } from 'lucide-react';
 import { tint } from '@/lib/branding';
 import {
   createAppointmentAction,
@@ -37,7 +46,15 @@ import {
 } from '@/actions/appointments';
 import { usePatientSearch } from '@/components/agenda/usePatientSearch';
 import { PatientSearchResult } from '@/components/pacientes/PatientSearchResult';
-import { getFreeSlotsAction } from '@/actions/agenda';
+import {
+  getFreeSlotsAction,
+  getWorkingDoctorsAction,
+} from '@/actions/agenda';
+import {
+  REFERRAL_SOURCES,
+  REFERRAL_SOURCE_LABEL,
+  type ReferralSource,
+} from '@/lib/domain';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
@@ -54,6 +71,7 @@ export function NewAppointmentModal({
   doctors,
   treatments,
   rooms = [],
+  promo = null,
 }: {
   open: boolean;
   onClose: () => void;
@@ -69,8 +87,24 @@ export function NewAppointmentModal({
   /** Gabinetes ativos da clínica (Warehouse kind 'operatory') */
   rooms?: { id: string; name: string }[];
   treatments: { id: string; name: string; category?: string | null }[];
+  /** 5.ª ronda/09: promoção do mês em vigor (Configurações) */
+  promo?: string | null;
 }) {
   const router = useRouter();
+
+  // --- 5.ª ronda/13: pré-marcação sem ficha ---------------------------------
+  const [newMode, setNewMode] = useState(false);
+  const [newFirst, setNewFirst] = useState('');
+  const [newLast, setNewLast] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [samePhoneOk, setSamePhoneOk] = useState(false);
+  /** Ficha provisória acabada de criar → convite para a completar (09) */
+  const [created, setCreated] = useState<{ id: string; name: string } | null>(
+    null,
+  );
+  // --- 5.ª ronda/09: como nos conheceu --------------------------------------
+  const [referral, setReferral] = useState<ReferralSource | ''>('');
+  const [referralOther, setReferralOther] = useState('');
 
   // --- Data da marcação ------------------------------------------------------
   // Estado próprio: abre com o dia da agenda, mas é livremente alterável.
@@ -104,6 +138,33 @@ export function NewAppointmentModal({
   const [channel, setChannel] = useState<'front-desk' | 'phone' | 'whatsapp'>(
     'front-desk',
   );
+
+  // 5.ª ronda/10: médicos escalados no DIA ESCOLHIDO. Enquanto o pedido não
+  // chega (ou se falhar) usa-se a lista do dia aberto na agenda, que é a
+  // certa quando a data não foi mexida.
+  const [dayDoctors, setDayDoctors] = useState<{
+    date: string;
+    list: { id: string; name: string; hours: string }[];
+  } | null>(null);
+  useEffect(() => {
+    if (!open || !date) return;
+    let cancelled = false;
+    getWorkingDoctorsAction({ clinicId, date })
+      .then(list => {
+        if (!cancelled) setDayDoctors({ date, list });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [open, clinicId, date]);
+  const doctorsLoaded = dayDoctors?.date === date;
+  const doctorOptions: { id: string; name: string; hours?: string }[] =
+    doctorsLoaded ? dayDoctors.list : date === initialDate ? doctors : [];
+  // Médico escolhido que não trabalha na nova data → volta a "atribuir depois"
+  if (doctorsLoaded && doctorId && !doctorOptions.some(d => d.id === doctorId)) {
+    setDoctorId('');
+  }
 
   // Slots livres: o resultado guarda a CHAVE do pedido (médico|ato|dia).
   // `slots`, `slotsLoading` e `start` são derivados no render a partir dessa
@@ -168,15 +229,85 @@ export function NewAppointmentModal({
     if (result && 'error' in result) return result;
     toast.success('Marcação criada.');
     router.refresh();
-    onClose();
+    const provisionalId =
+      result && 'provisionalPatientId' in result
+        ? result.provisionalPatientId
+        : undefined;
+    if (provisionalId) {
+      // 09: a marcação está feita; oferecer completar a ficha já
+      setCreated({
+        id: provisionalId,
+        name: `${newFirst} ${newLast}`.replace(/\s+/g, ' ').trim(),
+      });
+    } else {
+      onClose();
+    }
     // Reset para a próxima abertura
     resetPatient();
     setTreatmentId('');
     setDoctorId('');
     setStartSel({ key: '', start: '' });
     setChannel('front-desk');
+    setNewMode(false);
+    setNewFirst('');
+    setNewLast('');
+    setNewPhone('');
+    setSamePhoneOk(false);
+    setReferral('');
+    setReferralOther('');
     return result;
   }, undefined);
+
+  const closeAll = () => {
+    setCreated(null);
+    onClose();
+  };
+  const referralDetail =
+    referral === 'promocao' ? (promo ?? '') : referral ? referralOther : '';
+  const canSubmit = newMode
+    ? newFirst.trim().length >= 2 &&
+      newLast.trim().length >= 2 &&
+      newPhone.replace(/\D/g, '').length >= 9
+    : !!patient;
+
+  if (created) {
+    return (
+      <Modal open={open} onClose={closeAll} title='Marcação criada' maxWidth={480}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <p style={{ margin: 0, fontSize: '14px', color: '#3A3F4A', lineHeight: 1.5 }}>
+            A marcação de <strong>{created.name}</strong> ficou registada. A
+            ficha foi criada só com o nome e o telemóvel e fica assinalada como{' '}
+            <strong>por completar</strong>.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+            <Button type='button' variant='outline' onClick={closeAll}>
+              Completar depois
+            </Button>
+            <a
+              href={`/admin/pacientes/${created.id}?tab=dados`}
+              target='_blank'
+              rel='noopener'
+              onClick={closeAll}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                borderRadius: '10px',
+                padding: '9px 16px',
+                fontSize: '14px',
+                fontWeight: 700,
+                textDecoration: 'none',
+                color: '#FFFFFF',
+                backgroundColor: '#1B2A6B',
+              }}
+            >
+              <UserPlus size={15} /> Completar a ficha agora
+            </a>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
 
   const clinicColor = clinic?.color ?? '#1B2A6B';
 
@@ -216,6 +347,72 @@ export function NewAppointmentModal({
         )}
 
         {/* Paciente */}
+        {newMode ? (
+          <div
+            style={{
+              border: '1px solid #D8DEEF',
+              borderRadius: '10px',
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              backgroundColor: '#FAFBFE',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#1B2A6B' }}>
+                Paciente sem ficha — pré-marcação
+              </span>
+              <button
+                type='button'
+                onClick={() => setNewMode(false)}
+                style={{ all: 'unset', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: '#2743A6' }}
+              >
+                Procurar ficha existente
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Input
+                id='ap-new-first'
+                name='newFirstName'
+                label='Nome *'
+                value={newFirst}
+                onChange={e => setNewFirst(e.target.value)}
+                maxLength={60}
+                autoComplete='off'
+              />
+              <Input
+                id='ap-new-last'
+                name='newLastName'
+                label='Apelido *'
+                value={newLast}
+                onChange={e => setNewLast(e.target.value)}
+                maxLength={90}
+                autoComplete='off'
+              />
+            </div>
+            <Input
+              id='ap-new-phone'
+              name='newPhone'
+              type='tel'
+              label='Telemóvel *'
+              value={newPhone}
+              onChange={e => setNewPhone(e.target.value)}
+              placeholder='9 dígitos'
+              autoComplete='off'
+              help='A ficha completa cria-se depois, ou quando o paciente chegar — a marcação não se perde.'
+            />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '12px', color: '#3D4257' }}>
+              <input
+                type='checkbox'
+                name='samePhoneOk'
+                checked={samePhoneOk}
+                onChange={e => setSamePhoneOk(e.target.checked)}
+              />
+              É outra pessoa (o telemóvel já existe noutra ficha, ex.: familiar)
+            </label>
+          </div>
+        ) : (
         <div style={{ position: 'relative' }}>
           <Input
             id='ap-patient'
@@ -255,7 +452,38 @@ export function NewAppointmentModal({
               ))}
             </div>
           )}
+          {!patient && (
+            <button
+              type='button'
+              onClick={() => {
+                // aproveita o que já foi escrito na pesquisa
+                const q = patientQuery.trim();
+                if (/^[+\d\s]+$/.test(q) && q.replace(/\D/g, '').length >= 9) {
+                  setNewPhone(q);
+                } else if (q && !/\d/.test(q)) {
+                  const parts = q.split(/\s+/);
+                  setNewFirst(parts[0] ?? '');
+                  setNewLast(parts.slice(1).join(' '));
+                }
+                setNewMode(true);
+              }}
+              style={{
+                all: 'unset',
+                cursor: 'pointer',
+                marginTop: 6,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: '13px',
+                fontWeight: 600,
+                color: '#2743A6',
+              }}
+            >
+              <UserPlus size={14} /> Paciente ainda sem ficha — marcar só com nome e telemóvel
+            </button>
+          )}
         </div>
+        )}
 
         {/* Data + Ato */}
         <div
@@ -304,11 +532,16 @@ export function NewAppointmentModal({
             label='Médico'
             value={doctorId}
             onChange={e => setDoctorId(e.target.value)}
+            help={
+              doctorsLoaded && doctorOptions.length === 0
+                ? 'Nenhum médico escalado neste dia nesta clínica.'
+                : 'Só aparecem os médicos escalados neste dia.'
+            }
           >
             <option value=''>— Atribuir depois —</option>
-            {doctors.map(d => (
+            {doctorOptions.map(d => (
               <option key={d.id} value={d.id}>
-                {d.name}
+                {d.hours ? `${d.name} · ${d.hours}` : d.name}
               </option>
             ))}
           </Select>
@@ -426,13 +659,60 @@ export function NewAppointmentModal({
           </div>
         </div>
 
+        {/* 5.ª ronda/09: como o paciente conheceu a clínica */}
+        <div>
+          <p style={{ margin: '0 0 6px', fontSize: '13px', fontWeight: 600, color: '#3A3F4A' }}>
+            Como nos conheceu <span style={{ fontWeight: 400, color: '#9AA1B4' }}>(opcional)</span>
+          </p>
+          <input type='hidden' name='referralSource' value={referral} />
+          <input type='hidden' name='referralDetail' value={referralDetail} />
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {REFERRAL_SOURCES.filter(v => v !== 'promocao' || !!promo).map(value => {
+              const active = referral === value;
+              return (
+                <button
+                  key={value}
+                  type='button'
+                  onClick={() => setReferral(active ? '' : value)}
+                  aria-pressed={active}
+                  style={{
+                    borderRadius: '10px',
+                    border: active ? '1px solid #1B2A6B' : '1px solid #D8DEEF',
+                    backgroundColor: active ? '#1B2A6B' : '#FFFFFF',
+                    color: active ? '#FFFFFF' : '#3A3F4A',
+                    padding: '7px 12px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {value === 'promocao' ? `Promoção: ${promo}` : REFERRAL_SOURCE_LABEL[value]}
+                </button>
+              );
+            })}
+          </div>
+          {(referral === 'indicacao' || referral === 'outro') && (
+            <div style={{ marginTop: 8 }}>
+              <Input
+                id='ap-referral-detail'
+                label={referral === 'indicacao' ? 'Indicado por' : 'Qual'}
+                value={referralOther}
+                onChange={e => setReferralOther(e.target.value)}
+                maxLength={120}
+                autoComplete='off'
+              />
+            </div>
+          )}
+        </div>
+
         <Textarea
           id='ap-note'
           name='note'
-          label='Nota (opcional)'
+          label='Observações (opcional)'
           maxLength={500}
           rows={2}
-          placeholder='Ex.: paciente pede RX recente'
+          placeholder='Ex.: avisar a Dra. para trazer procaína'
+          help='Aparece na linha da marcação, na agenda.'
         />
 
         {state && 'error' in state && (
@@ -462,7 +742,7 @@ export function NewAppointmentModal({
           <Button
             type='submit'
             loading={pending}
-            disabled={!patient}
+            disabled={!canSubmit}
             style={
               clinic
                 ? {

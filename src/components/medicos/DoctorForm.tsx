@@ -42,6 +42,8 @@ interface ClinicState {
   enabled: boolean;
   bookableOnline: boolean;
   days: Record<number, DayRange[]>; // weekday → intervalos
+  /** 5.ª ronda/07: weekday → data de referência do turno quinzenal */
+  biweekly: Record<number, string | null>;
 }
 
 export interface DoctorFormInitial {
@@ -54,7 +56,11 @@ export interface DoctorFormInitial {
   clinicSchedules: {
     clinicId: string;
     bookableOnline: boolean;
-    weeklySchedule: { weekday: number; ranges: DayRange[] }[];
+    weeklySchedule: {
+      weekday: number;
+      ranges: DayRange[];
+      biweeklyAnchor?: string | null;
+    }[];
   }[];
 }
 
@@ -66,6 +72,13 @@ const sectionTitle = {
   letterSpacing: '0.5px',
   color: '#6A7186',
 };
+
+/** Próxima data (hoje incluído) que calha no dia da semana indicado */
+function nextDateOfWeekday(weekday: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + ((weekday - d.getUTCDay() + 7) % 7));
+  return d.toISOString().slice(0, 10);
+}
 
 function emptyDays(): Record<number, DayRange[]> {
   return { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
@@ -97,15 +110,21 @@ export function DoctorForm({
           enabled: false,
           bookableOnline: true,
           days: emptyDays(),
+          biweekly: {},
         };
       }
       for (const cs of initial?.clinicSchedules ?? []) {
         const days = emptyDays();
-        for (const w of cs.weeklySchedule) days[w.weekday] = [...w.ranges];
+        const biweekly: Record<number, string | null> = {};
+        for (const w of cs.weeklySchedule) {
+          days[w.weekday] = [...w.ranges];
+          biweekly[w.weekday] = w.biweeklyAnchor ?? null;
+        }
         base[cs.clinicId] = {
           enabled: true,
           bookableOnline: cs.bookableOnline,
           days,
+          biweekly,
         };
       }
       return base;
@@ -121,6 +140,12 @@ export function DoctorForm({
       [id]: { ...s[id], days: { ...s[id].days, [weekday]: ranges } },
     }));
 
+  const setBiweekly = (id: string, weekday: number, anchor: string | null) =>
+    setSchedules(s => ({
+      ...s,
+      [id]: { ...s[id], biweekly: { ...s[id].biweekly, [weekday]: anchor } },
+    }));
+
   // Serialização contínua → hidden input (formato do schema Zod)
   const schedulesJson = useMemo(() => {
     const out = clinics
@@ -131,6 +156,7 @@ export function DoctorForm({
         weeklySchedule: WEEKDAYS_DISPLAY.map(w => ({
           weekday: w.value,
           ranges: schedules[c.id].days[w.value].filter(r => r.start && r.end),
+          biweeklyAnchor: schedules[c.id].biweekly[w.value] || null,
         })).filter(w => w.ranges.length > 0),
       }));
     return JSON.stringify(out);
@@ -555,6 +581,59 @@ export function DoctorForm({
                                 <Plus size={14} />
                                 Período
                               </button>
+                              {/* 5.ª ronda/07: turno quinzenal */}
+                              {ranges.length > 0 && (
+                                <label
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    flexWrap: 'wrap',
+                                    gap: '8px',
+                                    fontSize: '12px',
+                                    color: '#3D4257',
+                                  }}
+                                >
+                                  <input
+                                    type='checkbox'
+                                    checked={cs.biweekly[w.value] != null}
+                                    onChange={e =>
+                                      setBiweekly(
+                                        c.id,
+                                        w.value,
+                                        e.target.checked
+                                          ? nextDateOfWeekday(w.value)
+                                          : null,
+                                      )
+                                    }
+                                  />
+                                  Quinzenal (semana sim, semana não)
+                                  {cs.biweekly[w.value] != null && (
+                                    <>
+                                      <span style={{ color: '#6A7186' }}>
+                                        — trabalha a
+                                      </span>
+                                      <input
+                                        type='date'
+                                        value={cs.biweekly[w.value] ?? ''}
+                                        onChange={e =>
+                                          setBiweekly(
+                                            c.id,
+                                            w.value,
+                                            e.target.value || null,
+                                          )
+                                        }
+                                        style={{
+                                          border: '1px solid #D8DEEF',
+                                          borderRadius: '8px',
+                                          padding: '4px 8px',
+                                          fontSize: '12px',
+                                          color: '#1B2A6B',
+                                        }}
+                                      />
+                                    </>
+                                  )}
+                                </label>
+                              )}
                             </div>
                           </div>
                         );

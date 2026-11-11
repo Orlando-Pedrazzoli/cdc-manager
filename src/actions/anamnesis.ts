@@ -28,6 +28,7 @@ import {
   parseQuestionnaireForm,
   deriveSafetyAlerts,
   QUESTIONNAIRE_VERSION,
+  missingRequired,
 } from '@/lib/anamnesis';
 
 export type AnamnesisActionState =
@@ -70,6 +71,14 @@ async function persist(params: {
   doctorId: string | null;
 }) {
   const data = parseQuestionnaireForm(params.formData);
+  // 5.ª ronda/04: campos obrigatórios — o formulário já não deixa guardar
+  // sem eles; o servidor confirma (pedidos diretos, portal antigo em cache)
+  const missing = missingRequired(data.general);
+  if (missing.length > 0) {
+    throw new Error(
+      `Faltam campos obrigatórios da anamnese: ${missing.join('; ')}.`,
+    );
+  }
   const alerts = deriveSafetyAlerts(data);
   const now = new Date();
 

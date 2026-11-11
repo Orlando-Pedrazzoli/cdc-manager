@@ -150,6 +150,17 @@ const PatientSchema = new Schema(
       maxlength: 120,
       default: null,
     },
+    // 5.ª ronda/09 (Victor, nov. 2026): COMO o paciente conheceu a clínica
+    // (Instagram, Google, indicação, promoção do mês). Fica na ficha na
+    // primeira marcação; `referralDetail` guarda a promoção em vigor ou o
+    // texto livre. Valores canónicos em lib/domain REFERRAL_SOURCES.
+    referralSource: { type: String, trim: true, maxlength: 30, default: null },
+    referralDetail: { type: String, trim: true, maxlength: 120, default: null },
+    // 5.ª ronda/13: PRÉ-MARCAÇÃO — ficha criada na agenda só com nome,
+    // apelido e telemóvel, para não perder a marcação de quem liga pela
+    // primeira vez. true até a ficha ser completada (gravar a ficha
+    // completa limpa a marca).
+    provisional: { type: Boolean, default: false, index: true },
     // Falecido (Dentoral: flag "Falecido"). Data em vez de boolean (quando
     // se soube). Efeitos: badge na ficha/lista, recalls suprimidos
     // (spawnRecallForProcedure) e ciclos abertos dispensados ao marcar.

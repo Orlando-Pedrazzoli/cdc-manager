@@ -135,6 +135,24 @@ export function weekdayOf(dateStr: string): number {
   return new Date(Date.UTC(y, mo - 1, d)).getUTCDay();
 }
 
+/**
+ * 5.ª ronda/07: turno quinzenal. `anchor` é uma data em que o médico
+ * trabalha; a partir dela conta semana sim, semana não (para trás também).
+ * Sem âncora = todas as semanas.
+ */
+export function isBiweeklyOn(
+  anchor: string | null | undefined,
+  dateStr: string,
+): boolean {
+  if (!anchor) return true;
+  const toDay = (s: string) => {
+    const [y, mo, d] = s.split('-').map(Number);
+    return Math.floor(Date.UTC(y, mo - 1, d) / 86_400_000);
+  };
+  const weeks = Math.floor((toDay(dateStr) - toDay(anchor)) / 7);
+  return ((weeks % 2) + 2) % 2 === 0;
+}
+
 /** Data civil de HOJE em Lisboa ('YYYY-MM-DD') */
 export function todayLisbon(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
@@ -212,13 +230,14 @@ export function workingRangesForDate(
   const weekday = weekdayOf(dateStr);
 
   // Semana-tipo do médico nesta clínica para este dia da semana
+  const dayRule = schedule.weeklySchedule.find(w => w.weekday === weekday);
   let doctorRanges: MinRange[] =
-    schedule.weeklySchedule
-      .find(w => w.weekday === weekday)
-      ?.ranges.map(r => ({
-        start: hhmmToMin(r.start),
-        end: hhmmToMin(r.end),
-      })) ?? [];
+    dayRule && isBiweeklyOn(dayRule.biweeklyAnchor, dateStr)
+      ? dayRule.ranges.map(r => ({
+          start: hhmmToMin(r.start),
+          end: hhmmToMin(r.end),
+        }))
+      : [];
 
   // Exceções aplicáveis (globais + desta clínica)
   const exceptions = getExceptionsForDate(doctor, dateStr, clinicId);

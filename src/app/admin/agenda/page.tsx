@@ -69,6 +69,8 @@ import {
 import { CHANNEL_LABEL } from '@/components/agenda/AgendaGrid';
 import { DateJump } from '@/components/agenda/DateJump';
 import { doctorColor } from '@/lib/doctor-colors';
+import { getOrganizationSettings } from '@/lib/org-settings';
+import { REFERRAL_SOURCE_LABEL, type ReferralSource } from '@/lib/domain';
 
 export const dynamic = 'force-dynamic';
 
@@ -193,14 +195,18 @@ export default async function AgendaPage({
     active: true,
     'clinicSchedules.clinicId': clinic._id,
   });
-  const doctorColumns: AgendaDoctorColumn[] = allDoctors
-    .map(d => ({
-      id: String(d._id),
-      name: d.name,
-      color: doctorColor(String(d._id), d.color),
-      ranges: workingRangesForDate(d, clinic, date),
-    }))
-    .filter(d => d.ranges.length > 0);
+  const allColumns: AgendaDoctorColumn[] = allDoctors.map(d => ({
+    id: String(d._id),
+    name: d.name,
+    color: doctorColor(String(d._id), d.color),
+    ranges: workingRangesForDate(d, clinic, date),
+  }));
+  // Escalados neste dia — são os que a receção pode marcar
+  const doctorColumns: AgendaDoctorColumn[] = allColumns.filter(
+    d => d.ranges.length > 0,
+  );
+  // 5.ª ronda/11: quem não está escalado neste dia (lista por baixo dos filtros)
+  const offDoctors = allColumns.filter(d => d.ranges.length === 0);
 
   // Médicos ativos nesta clínica SEM semana-tipo (nenhum período em nenhum
   // dia): nunca aparecem como coluna, em dia nenhum — o admin precisa de saber
@@ -226,9 +232,6 @@ export default async function AgendaPage({
     medicoParam && allDoctors.some(d => String(d._id) === medicoParam)
       ? medicoParam
       : null;
-  const visibleColumns = medicoFilterDia
-    ? doctorColumns.filter(d => d.id === medicoFilterDia)
-    : doctorColumns;
 
   const doctorNameById = new Map(allDoctors.map(d => [String(d._id), d.name]));
 
@@ -347,7 +350,7 @@ export default async function AgendaPage({
 
   const appts = await Appointment.find(apptQuery)
     .select(
-      'doctorId patientId treatmentTypeId startAt endAt status channel confirmedVia isUrgent createdByUserId createdAt note cancelledByUserId cancelledAt cancelReason rescheduledToId',
+      'doctorId patientId treatmentTypeId startAt endAt status channel confirmedVia isUrgent createdByUserId createdAt note cancelledByUserId cancelledAt cancelReason rescheduledToId referralSource referralDetail',
     )
     .sort({ startAt: 1 })
     .lean();
@@ -448,7 +451,7 @@ export default async function AgendaPage({
   ];
   const [patients, treatments, rooms] = await Promise.all([
     Patient.find({ _id: { $in: patientIds } })
-      .select('name processNumber phone')
+      .select('name processNumber phone provisional')
       .lean(),
     TreatmentType.find().select('name category').sort({ name: 1 }).lean(),
     // Gabinetes da clínica (stock por local, set/2026): a receção atribui
@@ -502,8 +505,38 @@ export default async function AgendaPage({
       patientId: String(a.patientId),
       clinicId: String(a.clinicId),
       date: s.date,
+      provisional: !!p?.provisional,
+      referralLabel: a.referralSource
+        ? [
+            REFERRAL_SOURCE_LABEL[a.referralSource as ReferralSource] ??
+              a.referralSource,
+            a.referralDetail,
+          ]
+            .filter(Boolean)
+            .join(' — ')
+        : null,
     };
   });
+  const { monthlyPromo } = await getOrganizationSettings();
+
+  // 5.ª ronda/07+11: a grelha mostra quem está escalado. Um médico FORA da
+  // escala só ganha coluna se tiver marcações ativas nesse dia (ex.: vindas
+  // do Dentoral, de antes da escala nova) — coluna fechada, para a receção
+  // as ver e remarcar em vez de ficarem escondidas.
+  const offWithAppts = new Set(
+    appts
+      .filter(a => a.status !== 'cancelled' && a.doctorId)
+      .map(a => String(a.doctorId)),
+  );
+  const gridColumns: AgendaDoctorColumn[] = [
+    ...doctorColumns,
+    ...offDoctors
+      .filter(d => offWithAppts.has(d.id))
+      .map(d => ({ ...d, offSchedule: true })),
+  ];
+  const visibleColumns = medicoFilterDia
+    ? gridColumns.filter(d => d.id === medicoFilterDia)
+    : gridColumns;
 
   // P3: clínicas + médicos ativos de cada uma, para remarcar (outro médico,
   // mesmo dia ou outro; outra clínica)
@@ -755,6 +788,7 @@ export default async function AgendaPage({
               clinicId={clinicId}
               clinic={{ label: activeBadge.label, color: activeBadge.fg }}
               date={date}
+              promo={monthlyPromo}
               rooms={rooms.map(r => ({ id: String(r._id), name: r.name }))}
               doctors={doctorColumns.map(d => ({ id: d.id, name: d.name }))}
               treatments={treatments.map(t => ({
@@ -959,6 +993,51 @@ export default async function AgendaPage({
         </div>
       )}
 
+      {/* 5.ª ronda/11: quem NÃO trabalha neste dia — a cinzento, sem agenda */}
+      {view === 'dia' && offDoctors.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '12px',
+            color: '#6A7186',
+          }}
+        >
+          <span style={{ fontWeight: 700 }}>
+            Não trabalham neste dia ({offDoctors.length}):
+          </span>
+          {offDoctors.map(d => (
+            <span
+              key={d.id}
+              style={{
+                padding: '3px 9px',
+                borderRadius: '999px',
+                backgroundColor: '#E6E9F1',
+                color: '#6A7186',
+                fontWeight: 600,
+                textDecoration: offWithAppts.has(d.id) ? 'none' : undefined,
+                border: offWithAppts.has(d.id)
+                  ? '1px solid #B3261E'
+                  : '1px solid transparent',
+              }}
+              title={
+                offWithAppts.has(d.id)
+                  ? 'Fora da escala mas com marcações neste dia — ver a coluna fechada na grelha'
+                  : 'Agenda fechada neste dia'
+              }
+            >
+              {d.name}
+            </span>
+          ))}
+          <span>
+            — para abrir a agenda de um deles só neste dia use{' '}
+            <strong>Abrir dia / estender horário</strong>.
+          </span>
+        </div>
+      )}
+
       {/* Filtro de estado — só na vista Lista */}
       {view === 'lista' && (
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -1018,6 +1097,7 @@ export default async function AgendaPage({
                   category: (t.category as string | null) ?? null,
                 })),
                 rooms: rooms.map(r => ({ id: String(r._id), name: r.name })),
+                promo: monthlyPromo,
               }}
             />
           </div>

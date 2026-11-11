@@ -29,6 +29,12 @@ import ClinicalDocument from '@/models/Document';
 import { getClinicById } from '@/models/Clinic';
 import { signedPreviewUrl } from '@/lib/cloudinary';
 import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
+import { MandatoryAnamnesisGate } from '@/components/clinico/MandatoryAnamnesisGate';
+import {
+  anamnesisGateReason,
+  anesthesiaReactionAlert,
+  type QuestionnaireData,
+} from '@/lib/anamnesis';
 import { minToHhmm } from '@/lib/availability';
 import type { RxModality, RxStatus } from '@/lib/domain';
 import {
@@ -226,6 +232,27 @@ export default async function ConsultationPage({
   const allergies = record?.allergies ?? [];
   const medications = record?.currentMedications ?? [];
   const canEdit = status === 'in-progress';
+
+  // 5.ª ronda/04 (Victor, nov. 2026): anamnese obrigatória ao chamar o
+  // paciente — com a consulta EM CURSO, sem anamnese (ou com mais de 12
+  // meses, ou sem os campos obrigatórios) abre a janela que só fecha depois
+  // de preenchida. Antes disto o aviso não bloqueava.
+  const questionnaireData = (record?.questionnaire?.data ??
+    null) as QuestionnaireData | null;
+  const gateReason =
+    status === 'in-progress'
+      ? anamnesisGateReason(
+          record?.questionnaire
+            ? {
+                completedAt: record.questionnaire.completedAt ?? null,
+                data: questionnaireData,
+              }
+            : null,
+        )
+      : null;
+  const anesthesiaAlert = anesthesiaReactionAlert(questionnaireData);
+  const noKnownAllergies =
+    allergies.length === 0 && !!questionnaireData?.general?.noKnownAllergies;
 
   // Imagens dos pedidos: imageRefs manuais guardam o publicId Cloudinary
   // em externalRef → resolver formato via Document e assinar o preview
@@ -457,15 +484,29 @@ export default async function ConsultationPage({
       </div>
 
       {/* E19: anamnese em falta / desatualizada / por validar — aviso na
-          consulta, com link direto para a ficha (não bloqueia: a decisão
-          clínica é do médico) */}
+          consulta, com link direto para a ficha. Desde a 5.ª ronda/04, com a
+          consulta em curso a anamnese em falta/expirada/incompleta abre a
+          janela obrigatória (MandatoryAnamnesisGate, mais abaixo). */}
       <AnamnesisStatusBanner
         questionnaire={record?.questionnaire ?? null}
         href={`/doutor/pacientes/${String(appt.patientId)}?tab=anamnese`}
       />
 
       {/* BANNER de segurança clínica — alergias e medicação SEMPRE visíveis */}
-      {(allergies.length > 0 || medications.length > 0) && (
+      {gateReason && patient && (
+        <MandatoryAnamnesisGate
+          reason={gateReason}
+          patientId={String(appt.patientId)}
+          patientName={patient.name}
+          initial={questionnaireData}
+          isMinor={(() => {
+            const age = ageFromBirthDate(patient.birthDate ?? null);
+            return age != null && age < 18;
+          })()}
+        />
+      )}
+
+      {(allergies.length > 0 || medications.length > 0 || anesthesiaAlert) && (
         <div
           style={{
             backgroundColor: '#F6E4E3',
@@ -487,13 +528,24 @@ export default async function ConsultationPage({
                 ALERGIAS: {allergies.join(' · ')}
               </p>
             )}
+            {anesthesiaAlert && (
+              <p style={{ margin: allergies.length > 0 ? '4px 0 0' : 0, fontWeight: 700 }}>
+                REAÇÃO ANESTÉSICA: {anesthesiaAlert}
+              </p>
+            )}
             {medications.length > 0 && (
-              <p style={{ margin: allergies.length > 0 ? '4px 0 0' : 0 }}>
+              <p style={{ margin: allergies.length > 0 || anesthesiaAlert ? '4px 0 0' : 0 }}>
                 Medicação atual: {medications.join(' · ')}
               </p>
             )}
           </div>
         </div>
+      )}
+
+      {noKnownAllergies && (
+        <p style={{ margin: 0, fontSize: '12px', fontWeight: 600, color: '#1B7A3D' }}>
+          Sem alergias conhecidas (anamnese).
+        </p>
       )}
 
       {/* Corpo por estado */}

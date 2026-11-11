@@ -149,6 +149,12 @@ export default async function InvoiceDetailPage({
                   (inv.moloniDocumentId != null ||
                     (inv.paidCents ?? inv.totalCents) >= inv.totalCents)
                 }
+                summary={[
+                  { label: 'Paciente', value: patient?.name ?? '—' },
+                  { label: 'NIF', value: inv.nifSnapshot ?? 'Consumidor final' },
+                  { label: 'Linhas', value: String(inv.lines.length) },
+                  { label: 'Total', value: formatCents(inv.totalCents) },
+                ]}
               />
             </div>
           )}

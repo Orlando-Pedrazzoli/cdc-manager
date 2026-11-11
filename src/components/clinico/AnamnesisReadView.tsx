@@ -128,10 +128,14 @@ export function AnamnesisReadView({ data }: { data: QuestionnaireData }) {
         />
         <Row
           label='Alergias'
-          value={[list(ALLERGIES, g.allergies), g.allergiesOther]
-            .filter(Boolean)
-            .join(', ')}
-          danger
+          value={
+            g.noKnownAllergies
+              ? 'Sem alergias conhecidas'
+              : [list(ALLERGIES, g.allergies), g.allergiesOther]
+                  .filter(Boolean)
+                  .join(', ')
+          }
+          danger={!g.noKnownAllergies}
         />
         <Row
           label='Última consulta dentária'

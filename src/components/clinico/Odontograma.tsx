@@ -276,11 +276,16 @@ export function Odontograma({
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      {/* 5.ª ronda/03 (Victor, nov. 2026): em ecrãs normais o mapa fica à
+          esquerda e, ao lado, o dente selecionado (tratamentos/plano) e o
+          histórico, com rolagem própria — "o médico vê a boca do paciente,
+          o que já foi feito e simula o plano no mesmo ecrã". Em ecrãs
+          estreitos empilha (regras em globals.css: .cdc-odonto*). */}
+      <div className='cdc-odonto'>
         {/* Mapa das arcadas */}
         <div
+          className='cdc-odonto-chart'
           style={{
-            flex: '1 1 700px',
             backgroundColor: '#FFFFFF',
             border: '1px solid #EEF1F8',
             borderRadius: '14px',
@@ -331,8 +336,8 @@ export function Odontograma({
           </div>}
         </div>
 
-        {/* Painel do dente */}
-        <div style={{ flex: '0 1 340px', minWidth: 300 }}>
+        {/* Ao lado: dente selecionado + histórico (rolagem própria) */}
+        <div className='cdc-odonto-side'>
           {selectedTooth && selectedState ? (
             <ToothDetail
               tooth={selectedTooth}
@@ -348,11 +353,10 @@ export function Odontograma({
               Clique num dente para {readOnly ? 'ver o detalhe' : 'ver o historial e editar o registo'}.
             </div>
           )}
+          {/* 4.ª ronda/07 + 5.ª ronda/03: histórico e observações ao lado */}
+          {history && <OdontogramaHistorico history={history} selected={selected} onSelect={setSelected} />}
         </div>
       </div>
-
-      {/* 4.ª ronda/07: histórico e observações no mesmo ecrã */}
-      {history && <OdontogramaHistorico history={history} selected={selected} onSelect={setSelected} />}
 
       {/* Rodapé: versão + gravação */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>

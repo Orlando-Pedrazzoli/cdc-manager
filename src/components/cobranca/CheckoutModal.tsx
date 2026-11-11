@@ -56,6 +56,11 @@ export function CheckoutModal({
     () => new Set(acts.map(a => a.id)),
   );
   const [method, setMethod] = useState<PaymentMethod>('card');
+  // 5.ª ronda/05 (Victor, nov. 2026): "Confirmação antes de emitir, com o
+  // resumo dos dados do documento, para evitar erros com um só clique."
+  // 1.º passo = preencher; 2.º passo = rever o resumo e confirmar.
+  const [review, setReview] = useState(false);
+  const [nif, setNif] = useState(patientNif ?? '');
 
   // Efeitos do resultado no próprio callback da action (sem useEffect)
   const [, action, pending] = useActionState<BillingActionState, FormData>(
@@ -68,8 +73,10 @@ export function CheckoutModal({
           duration: 6000,
         });
         setOpen(false);
+        setReview(false);
         router.refresh();
       }
+      if (result && 'error' in result) setReview(false);
       return result;
     },
     undefined,
@@ -109,11 +116,21 @@ export function CheckoutModal({
 
       <Modal
         open={open}
-        onClose={() => setOpen(false)}
-        title={`Cobrar — ${patientName}`}
+        onClose={() => {
+          setOpen(false);
+          setReview(false);
+        }}
+        title={review ? `Confirmar cobrança — ${patientName}` : `Cobrar — ${patientName}`}
       >
         <form
           action={action}
+          onSubmit={e => {
+            // Enter num campo do 1.º passo nunca regista sem passar pelo resumo
+            if (!review) {
+              e.preventDefault();
+              if (selected.size > 0) setReview(true);
+            }
+          }}
           style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
         >
           <input type='hidden' name='clinicId' value={clinicId} />
@@ -124,6 +141,56 @@ export function CheckoutModal({
             value={JSON.stringify([...selected])}
           />
 
+          {/* 5.ª ronda/05: resumo para confirmar (2.º passo) */}
+          {review && (
+            <div
+              style={{
+                border: '1px solid #C9D6F5',
+                backgroundColor: '#F4F7FF',
+                borderRadius: '10px',
+                padding: '14px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                fontSize: '13px',
+                color: '#1C2233',
+              }}
+            >
+              <p style={{ margin: 0, fontWeight: 700, color: '#1B2A6B' }}>
+                Confirme os dados antes de registar
+              </p>
+              <SummaryRow label='Paciente' value={patientName} />
+              <SummaryRow
+                label='NIF no documento'
+                value={nif.trim() || 'Consumidor final (sem NIF)'}
+                warn={!nif.trim()}
+              />
+              <div>
+                <span style={{ color: '#6A7186' }}>Atos ({selected.size})</span>
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                  {acts
+                    .filter(a => selected.has(a.id))
+                    .map(a => (
+                      <li key={a.id}>
+                        {a.name} — {formatCents(a.priceCents)}
+                      </li>
+                    ))}
+                </ul>
+              </div>
+              <SummaryRow label='Total do documento' value={formatCents(totalCents)} strong />
+              <SummaryRow
+                label='Pago agora'
+                value={`${formatCents(partialInfo ? partialInfo.paid : totalCents)} · ${PAYMENT_METHOD_LABEL[method]}`}
+                strong
+              />
+              {partialInfo && (
+                <SummaryRow label='Fica em dívida' value={formatCents(partialInfo.due)} warn />
+              )}
+            </div>
+          )}
+
+          {/* 1.º passo: os campos ficam no formulário (escondidos no 2.º) */}
+          <div style={{ display: review ? 'none' : 'flex', flexDirection: 'column', gap: '14px' }}>
           {/* Atos selecionáveis */}
           <div
             style={{
@@ -209,7 +276,8 @@ export function CheckoutModal({
             <Input
               name='nif'
               label='NIF no documento'
-              defaultValue={patientNif ?? ''}
+              value={nif}
+              onChange={e => setNif(e.target.value)}
               placeholder='Vazio = consumidor final'
               inputMode='numeric'
               maxLength={9}
@@ -256,26 +324,77 @@ export function CheckoutModal({
             conta Moloni for ativada — o pagamento fica registado desde já.
           </p>
 
+          </div>
+
           <div
             style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}
           >
-            <Button
-              type='button'
-              variant='secondary'
-              onClick={() => setOpen(false)}
-            >
-              Cancelar
-            </Button>
-            <Button type='submit' disabled={pending || selected.size === 0}>
-              {pending
-                ? 'A registar…'
-                : partialInfo
-                  ? `Registar ${formatCents(partialInfo.paid)} (fica ${formatCents(partialInfo.due)})`
-                  : `Registar cobrança (${formatCents(totalCents)})`}
-            </Button>
+            {review ? (
+              <>
+                <Button
+                  type='button'
+                  variant='secondary'
+                  disabled={pending}
+                  onClick={() => setReview(false)}
+                >
+                  Voltar e corrigir
+                </Button>
+                <Button type='submit' disabled={pending || selected.size === 0}>
+                  {pending
+                    ? 'A registar…'
+                    : partialInfo
+                      ? `Confirmar: registar ${formatCents(partialInfo.paid)} (fica ${formatCents(partialInfo.due)})`
+                      : `Confirmar e registar (${formatCents(totalCents)})`}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  type='button'
+                  variant='secondary'
+                  onClick={() => setOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type='button'
+                  disabled={selected.size === 0}
+                  onClick={() => setReview(true)}
+                >
+                  Rever e confirmar ({formatCents(totalCents)})
+                </Button>
+              </>
+            )}
           </div>
         </form>
       </Modal>
     </>
+  );
+}
+
+function SummaryRow({
+  label,
+  value,
+  strong,
+  warn,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  warn?: boolean;
+}) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+      <span style={{ color: '#6A7186' }}>{label}</span>
+      <span
+        style={{
+          fontWeight: strong || warn ? 700 : 600,
+          color: warn ? '#9A6700' : '#1C2233',
+          textAlign: 'right',
+        }}
+      >
+        {value}
+      </span>
+    </div>
   );
 }

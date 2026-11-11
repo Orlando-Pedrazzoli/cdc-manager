@@ -255,6 +255,26 @@ export default async function PatientPage({
 
       <PatientHeader patient={header} />
 
+      {/* 5.ª ronda/13: ficha criada numa pré-marcação, só com nome e telemóvel */}
+      {patient.provisional && (
+        <div
+          role='status'
+          style={{
+            padding: '10px 14px',
+            borderRadius: '10px',
+            backgroundColor: '#FFF7E6',
+            border: '1px solid #F5C77A',
+            color: '#7A4B00',
+            fontSize: '13px',
+            lineHeight: 1.45,
+          }}
+        >
+          <strong>Ficha por completar.</strong> Foi criada na agenda só com o
+          nome e o telemóvel (pré-marcação). Preencha os dados em falta e
+          guarde — o aviso desaparece.
+        </div>
+      )}
+
       {/* E19: aviso anual da anamnese — visível a todos os utilizadores */}
       <AnamnesisStatusBanner
         questionnaire={clinicalRecord?.questionnaire ?? null}

@@ -8,6 +8,7 @@
 // clínica: readOnly SEMPRE — o registo clínico é do corpo clínico, o admin
 // consulta mas nunca edita (mesma filosofia never-delete do resto do
 // sistema). Histórico de versões navegável (?v=N), como na área do médico.
+// 5.ª ronda/02 (nov. 2026): o mapa aparece SEMPRE, mesmo sem registo manual.
 // RBAC de rota: /admin → admin + receptionist (middleware).
 // =============================================================================
 
@@ -231,34 +232,26 @@ export default async function AdminOdontogramPage({
         corpo clínico, na área do médico.
       </div>
 
-      {latestVersion === 0 ? (
-        <p
-          style={{
-            margin: 0,
-            padding: '24px',
-            textAlign: 'center',
-            fontSize: '14px',
-            color: '#6A7186',
-            border: '1px dashed #D8DEEF',
-            borderRadius: '12px',
-            backgroundColor: '#FFFFFF',
-          }}
-        >
-          Este paciente ainda não tem odontograma registado.
+      {/* 5.ª ronda/02: sem registo manual do médico o mapa aparecia vazio
+          ("ainda não tem odontograma registado") mesmo com tratamentos no
+          histórico. O mapa mostra sempre o que resulta dos atos e planos. */}
+      {latestVersion === 0 && (
+        <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
+          Ainda sem registo manual do médico — o mapa mostra o que resulta dos
+          atos executados e planeados.
         </p>
-      ) : (
-        <Odontograma
-          key={showVersion}
-          patientId={id}
-          initialTeeth={initialTeeth}
-        events={chartEvents}
-          versionLabel={versionLabel}
-          readOnly
-          proceduresByTooth={proceduresByTooth}
-          history={history}
-          planBaseHref={null}
-        />
       )}
+      <Odontograma
+        key={showVersion}
+        patientId={id}
+        initialTeeth={initialTeeth}
+        events={chartEvents}
+        versionLabel={versionLabel ?? 'Sem registo manual do médico'}
+        readOnly
+        proceduresByTooth={proceduresByTooth}
+        history={history}
+        planBaseHref={null}
+      />
     </div>
   );
 }

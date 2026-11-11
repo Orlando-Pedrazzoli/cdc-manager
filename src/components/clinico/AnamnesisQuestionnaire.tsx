@@ -10,6 +10,13 @@
 // menores de 18, ou se o utilizador ligar) → Harmonização Orofacial (ligável).
 // Campos uncontrolled com nomes por prefixo ("g.x", "p.x", "a.x"; listas com
 // "[]") — o servidor faz o parse (lib/anamnesis.ts).
+//
+// 5.ª ronda/04 (Victor, nov. 2026): quatro perguntas OBRIGATÓRIAS (cirurgia,
+// reação anestésica, medicação, alergias) com asterisco e fundo amarelo que
+// passa a verde quando respondidas; "Guardar anamnese" só fica ativo com
+// todas a verde. Essas quatro são controladas (estado `req`) para se saber
+// em cada momento o que falta; o resto continua uncontrolled e opcional.
+// `submitLabel`/`hideOptionalBlocks` servem a janela bloqueante da consulta.
 // =============================================================================
 
 'use client';
@@ -39,6 +46,9 @@ import {
   HOF_IMPROVE,
   HOF_PROCEDURES,
   HOF_CONTRAINDICATIONS,
+  REQUIRED_KEYS,
+  REQUIRED_LABEL,
+  requiredStatus,
   type QuestionnaireData,
 } from '@/lib/anamnesis';
 import { Button } from '@/components/ui/Button';
@@ -95,12 +105,46 @@ export function AnamnesisQuestionnaire({
   const p = initial?.pediatric;
   const a = initial?.aesthetic;
 
+  // --- 5.ª ronda/04: respostas obrigatórias (controladas) -------------------
+  const [req, setReq] = useState({
+    surgeryLast12m: g?.surgeryLast12m ?? null,
+    surgeryWhich: g?.surgeryWhich ?? '',
+    anesthesiaReaction: g?.anesthesiaReaction ?? null,
+    anesthesiaReactionWhich: g?.anesthesiaReactionWhich ?? '',
+    takesMedication: g?.takesMedication ?? null,
+    medicationWhich: g?.medicationWhich ?? '',
+    allergies: [...(g?.allergies ?? [])] as string[],
+    allergiesOther: g?.allergiesOther ?? '',
+    noKnownAllergies: g?.noKnownAllergies ?? false,
+  });
+  const done = requiredStatus(req);
+  const missing = REQUIRED_KEYS.filter(k => !done[k]);
+  const complete = missing.length === 0;
+
   return (
     <form
       action={formAction}
       style={{ display: 'flex', flexDirection: 'column', gap: 22 }}
     >
       {patientId && <input type='hidden' name='patientId' value={patientId} />}
+
+      <p
+        style={{
+          margin: 0,
+          padding: '8px 12px',
+          borderRadius: '8px',
+          backgroundColor: complete ? REQ_OK.bg : REQ_TODO.bg,
+          border: `1px solid ${complete ? REQ_OK.border : REQ_TODO.border}`,
+          fontSize: '12.5px',
+          color: '#3A3F4A',
+        }}
+      >
+        Os campos com <strong>*</strong> são obrigatórios: ficam a amarelo
+        enquanto faltam e a verde quando estão respondidos.{' '}
+        {complete
+          ? 'Estão todos preenchidos.'
+          : `Falta${missing.length === 1 ? '' : 'm'}: ${missing.map(k => REQUIRED_LABEL[k]).join(' · ')}.`}
+      </p>
 
       {/* ================= ANAMNESE GERAL ================= */}
       <Block title='Anamnese geral · Medicina dentária'>
@@ -123,12 +167,16 @@ export function AnamnesisQuestionnaire({
         </Group>
 
         <Group title='Cirurgia e anestesia'>
-          <YesNoWhich
+          <RequiredYesNoWhich
             label='Fez alguma cirurgia nos últimos 12 meses?'
             name='g.surgeryLast12m'
             whichName='g.surgeryWhich'
-            value={g?.surgeryLast12m}
-            which={g?.surgeryWhich}
+            value={req.surgeryLast12m}
+            which={req.surgeryWhich}
+            ok={done.surgery}
+            onChange={(value, which) =>
+              setReq(r => ({ ...r, surgeryLast12m: value, surgeryWhich: which }))
+            }
           />
           <YesNoWhich
             label='Já foi submetido(a) a anestesia?'
@@ -137,13 +185,21 @@ export function AnamnesisQuestionnaire({
             value={g?.anesthesiaBefore}
             which={g?.anesthesiaWhich}
           />
-          <YesNoWhich
+          <RequiredYesNoWhich
             label='Teve alguma reação ou complicação anestésica?'
             name='g.anesthesiaReaction'
             whichName='g.anesthesiaReactionWhich'
-            value={g?.anesthesiaReaction}
-            which={g?.anesthesiaReactionWhich}
+            value={req.anesthesiaReaction}
+            which={req.anesthesiaReactionWhich}
+            ok={done.anesthesia}
             danger
+            onChange={(value, which) =>
+              setReq(r => ({
+                ...r,
+                anesthesiaReaction: value,
+                anesthesiaReactionWhich: which,
+              }))
+            }
           />
         </Group>
 
@@ -155,12 +211,17 @@ export function AnamnesisQuestionnaire({
               maxLength={500}
             />
           </Field>
-          <YesNoWhich
+          <RequiredYesNoWhich
             label='Toma medicação regularmente?'
             name='g.takesMedication'
             whichName='g.medicationWhich'
-            value={g?.takesMedication}
-            which={g?.medicationWhich}
+            value={req.takesMedication}
+            which={req.medicationWhich}
+            ok={done.medication}
+            whichPlaceholder='Qual? Indicar sempre anticoagulantes e bisfosfonatos'
+            onChange={(value, which) =>
+              setReq(r => ({ ...r, takesMedication: value, medicationWhich: which }))
+            }
           />
           <YesNoWhich
             label='Toma suplementos?'
@@ -169,19 +230,74 @@ export function AnamnesisQuestionnaire({
             value={g?.takesSupplements}
             which={g?.supplementsWhich}
           />
-          <p style={subLabel}>Alergias ou intolerâncias</p>
-          <CheckGrid
-            name='g.allergies[]'
-            cat={ALLERGIES}
-            selected={g?.allergies}
-            danger
-          />
-          <Field label='Outra — qual?'>
-            <TextInput
-              name='g.allergiesOther'
-              defaultValue={g?.allergiesOther}
-            />
-          </Field>
+          {/* 5.ª ronda/04: obrigatório — pelo menos uma opção ou "Sem
+              alergias conhecidas" */}
+          <div style={reqBox(done.allergies)}>
+            <p style={{ ...subLabel, margin: 0 }}>
+              Alergias ou intolerâncias <ReqMark ok={done.allergies} />
+            </p>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                gap: '6px 14px',
+              }}
+            >
+              {ALLERGIES.map(([k, label]) => (
+                <label key={k} style={checkLabel(req.noKnownAllergies)}>
+                  <input
+                    type='checkbox'
+                    name='g.allergies[]'
+                    value={k}
+                    checked={req.allergies.includes(k)}
+                    disabled={req.noKnownAllergies}
+                    onChange={e =>
+                      setReq(r => ({
+                        ...r,
+                        allergies: e.target.checked
+                          ? [...r.allergies, k]
+                          : r.allergies.filter(x => x !== k),
+                      }))
+                    }
+                    style={{ width: 16, height: 16, accentColor: '#B3261E' }}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <Field label='Outra — qual?'>
+              <input
+                className='cdc-field'
+                name='g.allergiesOther'
+                value={req.allergiesOther}
+                disabled={req.noKnownAllergies}
+                onChange={e =>
+                  setReq(r => ({ ...r, allergiesOther: e.target.value }))
+                }
+                maxLength={200}
+                style={{ ...inputStyle, opacity: req.noKnownAllergies ? 0.5 : 1 }}
+              />
+            </Field>
+            <label style={{ ...checkLabel(false), fontWeight: 700 }}>
+              <input
+                type='checkbox'
+                name='g.noKnownAllergies'
+                checked={req.noKnownAllergies}
+                onChange={e =>
+                  setReq(r => ({
+                    ...r,
+                    noKnownAllergies: e.target.checked,
+                    // "sem alergias" limpa as que estavam marcadas
+                    ...(e.target.checked
+                      ? { allergies: [], allergiesOther: '' }
+                      : {}),
+                  }))
+                }
+                style={{ width: 16, height: 16, accentColor: '#1B7A3D' }}
+              />
+              Sem alergias conhecidas
+            </label>
+          </div>
         </Group>
 
         <Group title='História de medicina dentária'>
@@ -472,7 +588,16 @@ export function AnamnesisQuestionnaire({
             ? 'Ao enviar, declara que as respostas são verdadeiras.'
             : 'Guardar substitui a ficha anterior e renova a validade por 1 ano.'}
         </span>
-        <Button type='submit' loading={pending}>
+        <Button
+          type='submit'
+          loading={pending}
+          disabled={!complete}
+          title={
+            complete
+              ? undefined
+              : `Falta: ${missing.map(k => REQUIRED_LABEL[k]).join(' · ')}`
+          }
+        >
           {mode === 'patient' ? 'Enviar ficha' : 'Guardar anamnese'}
         </Button>
       </div>
@@ -630,6 +755,120 @@ function Field({
       </span>
       {children}
     </label>
+  );
+}
+
+// --- 5.ª ronda/04: campos obrigatórios (amarelo → verde) ---------------------
+const REQ_TODO = { bg: '#FFF8D6', border: '#E6C84A' };
+const REQ_OK = { bg: '#E7F6EC', border: '#8FCFA3' };
+
+function reqBox(ok: boolean): React.CSSProperties {
+  const c = ok ? REQ_OK : REQ_TODO;
+  return {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    padding: '10px 12px',
+    borderRadius: '10px',
+    backgroundColor: c.bg,
+    border: `1px solid ${c.border}`,
+  };
+}
+
+function checkLabel(disabled: boolean): React.CSSProperties {
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: '13.5px',
+    color: '#1C2233',
+    cursor: disabled ? 'default' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+  };
+}
+
+function ReqMark({ ok }: { ok: boolean }) {
+  return (
+    <span
+      title='Campo obrigatório'
+      style={{ color: ok ? '#1B7A3D' : '#B3261E', fontWeight: 800 }}
+    >
+      *
+    </span>
+  );
+}
+
+/** Sim/Não + "Qual?" obrigatório e controlado; sem resposta pré-selecionada */
+function RequiredYesNoWhich({
+  label,
+  name,
+  whichName,
+  value,
+  which,
+  ok,
+  danger,
+  whichPlaceholder = 'Qual?',
+  onChange,
+}: {
+  label: string;
+  name: string;
+  whichName: string;
+  value: boolean | null;
+  which: string;
+  ok: boolean;
+  danger?: boolean;
+  whichPlaceholder?: string;
+  onChange: (value: boolean | null, which: string) => void;
+}) {
+  return (
+    <div
+      style={{
+        ...reqBox(ok),
+        display: 'grid',
+        gridTemplateColumns:
+          'minmax(220px, 1fr) minmax(120px, auto) minmax(200px, 2fr)',
+        gap: '6px 14px',
+        alignItems: 'center',
+      }}
+    >
+      <span style={{ fontSize: '13.5px', color: '#1C2233' }}>
+        {label} <ReqMark ok={ok} />
+      </span>
+      <div style={{ display: 'flex', gap: 14 }}>
+        {(['nao', 'sim'] as const).map(v => (
+          <label
+            key={v}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: '13.5px',
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type='radio'
+              name={name}
+              value={v}
+              checked={value === (v === 'sim')}
+              onChange={() => onChange(v === 'sim', v === 'sim' ? which : '')}
+              style={{ accentColor: danger ? '#B3261E' : '#2743A6' }}
+            />
+            {v === 'sim' ? 'Sim' : 'Não'}
+          </label>
+        ))}
+      </div>
+      <input
+        className='cdc-field'
+        name={whichName}
+        value={which}
+        onChange={e => onChange(value, e.target.value)}
+        placeholder={whichPlaceholder}
+        maxLength={200}
+        disabled={value !== true}
+        style={{ ...inputStyle, opacity: value === true ? 1 : 0.5 }}
+      />
+    </div>
   );
 }
 
