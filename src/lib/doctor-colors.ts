@@ -18,7 +18,7 @@
 export const DEFAULT_DOCTOR_COLOR = '#2743A6';
 
 export const DOCTOR_PALETTE = [
-  '#D32F2F', // vermelho
+  '#00ACC1', // ciano (sem vermelho na paleta: o vermelho é das URGÊNCIAS)
   '#1976D2', // azul
   '#2E7D32', // verde
   '#F57C00', // laranja
