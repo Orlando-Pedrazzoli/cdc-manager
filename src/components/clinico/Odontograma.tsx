@@ -8,6 +8,8 @@
 //     oclusal + grelha de 5 faces (odontograma/OdontogramaAnatomico)
 //   · ESQUEMA — arcadas em vista oclusal + diagrama de 5 faces (O central,
 //     M/D/V/L em trapézios) com zona radicular, como no papel
+//   · PACIENTE 3D — boca em 3D que roda e abre, uma cor por dente, para
+//     mostrar ao paciente (odontograma/OdontogramaPaciente3D)
 //
 // O MAPA É DERIVADO, não desenhado à mão (Open Dental / CareStack / Curve):
 //   · EXISTENTE  (verde)  — registo manual do médico: estado inicial, achados
@@ -28,7 +30,7 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Save, Layers, CalendarClock, LayoutGrid, Smile } from 'lucide-react';
+import { Save, Layers, CalendarClock, LayoutGrid, Smile, Rotate3d } from 'lucide-react';
 import {
   saveOdontogramAction,
   type ConsultationActionState,
@@ -61,6 +63,7 @@ import {
   visualFaceMap,
 } from '@/components/clinico/odontograma/chart-style';
 import { OdontogramaAnatomico } from '@/components/clinico/odontograma/OdontogramaAnatomico';
+import { OdontogramaPaciente3D } from '@/components/clinico/odontograma/OdontogramaPaciente3D';
 import type { SerializedChartEvent } from '@/lib/odontogram-events';
 import {
   ToothDetail,
@@ -75,7 +78,7 @@ import { OdontogramaArcada } from '@/components/clinico/OdontogramaArcada';
 // Cores e regras de pintura: odontograma/chart-style (fonte única das 2 vistas)
 export { LAYER_COLOR, LAYER_LABEL };
 
-type ChartView = 'anatomico' | 'esquema';
+type ChartView = 'anatomico' | 'esquema' | 'paciente';
 
 // --- Dente (SVG 40×50: 40×40 faces + 10 de zona radicular) -------------------
 function ToothSvg({
@@ -424,6 +427,7 @@ export function Odontograma({
             [
               { id: 'anatomico', label: 'Anatómico', Icon: Smile },
               { id: 'esquema', label: 'Esquema', Icon: LayoutGrid },
+              { id: 'paciente', label: 'Paciente 3D', Icon: Rotate3d },
             ] as const
           ).map(({ id, label, Icon }) => (
             <button
@@ -512,7 +516,9 @@ export function Odontograma({
             overflowX: 'auto',
           }}
         >
-          {view === 'anatomico' ? (
+          {view === 'paciente' ? (
+            <OdontogramaPaciente3D states={states} selected={selected} onSelect={setSelected} />
+          ) : view === 'anatomico' ? (
             <OdontogramaAnatomico states={states} notes={notes} selected={selected} onSelect={setSelected} />
           ) : (
             <>
@@ -528,8 +534,8 @@ export function Odontograma({
             </>
           )}
 
-          {/* Legenda */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #F4F6FB', justifyContent: 'center' }}>
+          {/* Legenda (a vista do paciente tem a sua, mais simples) */}
+          {view !== 'paciente' && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #F4F6FB', justifyContent: 'center' }}>
             {(Object.entries(FINDING_COLOR) as [FaceConditionKey, string][]).map(([c, color]) => (
               <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#3D4257' }}>
                 <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: color, display: 'inline-block' }} />
@@ -562,7 +568,7 @@ export function Odontograma({
                 {TOOTH_STATUS_LABEL[st as ToothStatus]}
               </span>
             ))}
-          </div>
+          </div>}
         </div>
 
         {/* Painel do dente */}
