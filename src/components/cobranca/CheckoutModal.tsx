@@ -40,12 +40,15 @@ export function CheckoutModal({
   patientName,
   patientNif,
   acts,
+  buttonLabel = 'Cobrar',
 }: {
   clinicId: string;
   patientId: string;
   patientName: string;
   patientNif: string | null;
   acts: BillableAct[];
+  /** Texto do botão que abre o checkout (ex.: "Faturar" na conta-corrente) */
+  buttonLabel?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -101,7 +104,7 @@ export function CheckoutModal({
     <>
       <Button type='button' onClick={() => setOpen(true)}>
         <ReceiptEuro size={15} style={{ marginRight: 6 }} />
-        Cobrar
+        {buttonLabel}
       </Button>
 
       <Modal

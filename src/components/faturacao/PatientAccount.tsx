@@ -3,6 +3,11 @@
 // CDC Manager — Ficha do paciente: Conta-corrente (Fase 5C — "Extratos de
 // Contas Correntes" do Dentoral). Server component: documentos do paciente
 // com total, pago, em dívida, e saldo global; atos concluídos por cobrar.
+//
+// 4.ª ronda (Victor, nov. 2026), ponto 06: "Faturar" na própria
+// conta-corrente — abre o MESMO checkout da página Cobranças, sem sair da
+// ficha do paciente. Um botão por clínica quando há atos em mais de uma
+// (cada documento pertence a uma clínica).
 // =============================================================================
 
 import Link from 'next/link';
@@ -12,6 +17,21 @@ import Procedure from '@/models/Procedure';
 import { formatCents } from '@/lib/commissions';
 import { INVOICE_STATUS_LABEL } from '@/lib/labels';
 import { Badge } from '@/components/ui/Badge';
+import Patient from '@/models/Patient';
+import Doctor from '@/models/Doctor';
+import { getActiveClinics } from '@/models/Clinic';
+import { clinicLabel } from '@/lib/branding';
+import { CheckoutModal, type BillableAct } from '@/components/cobranca/CheckoutModal';
+
+const ptDateTime = (d: Date) =>
+  new Intl.DateTimeFormat('pt-PT', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Europe/Lisbon',
+  }).format(d);
 
 const ptDate = (d: Date) =>
   new Intl.DateTimeFormat('pt-PT', {
@@ -21,7 +41,14 @@ const ptDate = (d: Date) =>
     timeZone: 'Europe/Lisbon',
   }).format(d);
 
-export async function PatientAccount({ patientId }: { patientId: string }) {
+export async function PatientAccount({
+  patientId,
+  canBill = true,
+}: {
+  patientId: string;
+  /** Mostra o botão "Faturar" (receção/administração) */
+  canBill?: boolean;
+}) {
   await dbConnect();
   const [invoices, unbilled] = await Promise.all([
     Invoice.find({ patientId })
@@ -31,9 +58,41 @@ export async function PatientAccount({ patientId }: { patientId: string }) {
       )
       .lean(),
     Procedure.find({ patientId, status: 'completed', invoiceId: null })
-      .select('nameSnapshot priceCents executedAt')
+      .select('nameSnapshot priceCents executedAt clinicId doctorId')
+      .sort({ executedAt: 1 })
       .lean(),
   ]);
+
+  // Atos por faturar, agrupados por clínica (um checkout por clínica)
+  const billable: { clinicId: string; label: string; acts: BillableAct[] }[] = [];
+  let patientInfo: { name: string; nif: string | null } | null = null;
+  if (canBill && unbilled.length > 0) {
+    const [patient, doctors, clinics] = await Promise.all([
+      Patient.findById(patientId).select('name nif').lean(),
+      Doctor.find({ _id: { $in: [...new Set(unbilled.map(p => String(p.doctorId)))] } })
+        .select('name')
+        .lean(),
+      getActiveClinics(),
+    ]);
+    patientInfo = { name: patient?.name ?? '—', nif: (patient?.nif as string | null) ?? null };
+    const doctorName = new Map(doctors.map(d => [String(d._id), d.name]));
+    for (const p of unbilled) {
+      const cid = String(p.clinicId);
+      let group = billable.find(g => g.clinicId === cid);
+      if (!group) {
+        const clinic = clinics.find(c => String(c._id) === cid);
+        group = { clinicId: cid, label: clinic ? clinicLabel(clinic) : 'Clínica', acts: [] };
+        billable.push(group);
+      }
+      group.acts.push({
+        id: String(p._id),
+        name: p.nameSnapshot,
+        priceCents: p.priceCents,
+        executedAtLabel: p.executedAt ? ptDateTime(p.executedAt as Date) : '—',
+        doctorName: doctorName.get(String(p.doctorId)) ?? '—',
+      });
+    }
+  }
   const active = invoices.filter(i => i.status !== 'voided');
   const totalBilled = active.reduce((a, i) => a + i.totalCents, 0);
   const totalPaid = active.reduce(
@@ -193,14 +252,46 @@ export async function PatientAccount({ patientId }: { patientId: string }) {
         </table>
       </div>
       {unbilled.length > 0 && (
-        <p style={{ margin: 0, fontSize: '12.5px', color: '#B26A00' }}>
-          {unbilled.length} ato(s) concluído(s) por cobrar (
-          {formatCents(unbilledCents)}) — ver{' '}
-          <Link href='/admin/cobranca' style={{ color: '#2743A6' }}>
-            Cobrança
-          </Link>
-          .
-        </p>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+            padding: '12px 14px',
+            borderRadius: '10px',
+            backgroundColor: '#FFF8E8',
+            border: '1px solid #F3DFA8',
+          }}
+        >
+          <p style={{ margin: 0, fontSize: '13px', color: '#7A4B00' }}>
+            <strong>
+              {unbilled.length} ato{unbilled.length === 1 ? '' : 's'} concluído
+              {unbilled.length === 1 ? '' : 's'} por faturar
+            </strong>{' '}
+            ({formatCents(unbilledCents)})
+          </p>
+          {patientInfo && billable.length > 0 ? (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {billable.map(g => (
+                <CheckoutModal
+                  key={g.clinicId}
+                  clinicId={g.clinicId}
+                  patientId={patientId}
+                  patientName={patientInfo.name}
+                  patientNif={patientInfo.nif}
+                  acts={g.acts}
+                  buttonLabel={billable.length > 1 ? `Faturar · ${g.label}` : 'Faturar'}
+                />
+              ))}
+            </div>
+          ) : (
+            <Link href='/admin/cobranca' style={{ fontSize: '13px', fontWeight: 600, color: '#2743A6' }}>
+              Ver em Cobranças
+            </Link>
+          )}
+        </div>
       )}
     </div>
   );
