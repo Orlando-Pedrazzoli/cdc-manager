@@ -68,6 +68,7 @@ import {
 } from '@/components/agenda/OccupancyCalendar';
 import { CHANNEL_LABEL } from '@/components/agenda/AgendaGrid';
 import { DateJump } from '@/components/agenda/DateJump';
+import { doctorColor } from '@/lib/doctor-colors';
 
 export const dynamic = 'force-dynamic';
 
@@ -196,7 +197,7 @@ export default async function AgendaPage({
     .map(d => ({
       id: String(d._id),
       name: d.name,
-      color: d.color ?? '#2743A6',
+      color: doctorColor(String(d._id), d.color),
       ranges: workingRangesForDate(d, clinic, date),
     }))
     .filter(d => d.ranges.length > 0);
@@ -933,7 +934,7 @@ export default async function AgendaPage({
             ? allDoctors.map(d => ({
                 id: String(d._id),
                 name: d.name,
-                color: d.color ?? '#2743A6',
+                color: doctorColor(String(d._id), d.color),
               }))
             : doctorColumns
           ).map(d => (
@@ -1005,6 +1006,19 @@ export default async function AgendaPage({
               rescheduleClinics={rescheduleClinics}
               labOptions={labOptions}
               historyHref={`/admin/agenda/historico?clinic=${clinic.slug}`}
+              newAppointment={{
+                clinicId,
+                clinic: { label: activeBadge.label, color: activeBadge.fg },
+                date,
+                canCreate: date >= todayStr,
+                doctors: doctorColumns.map(d => ({ id: d.id, name: d.name })),
+                treatments: treatments.map(t => ({
+                  id: String(t._id),
+                  name: t.name,
+                  category: (t.category as string | null) ?? null,
+                })),
+                rooms: rooms.map(r => ({ id: String(r._id), name: r.name })),
+              }}
             />
           </div>
           {/* P4: calendário com cores de ocupação */}

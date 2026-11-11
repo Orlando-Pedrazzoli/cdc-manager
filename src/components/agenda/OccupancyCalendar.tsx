@@ -36,11 +36,20 @@ const MONTHS = [
   'dezembro',
 ];
 
+// 4.ª ronda/04 (Victor, nov. 2026): cores fortes — antes eram tons pastel
+// que quase não se distinguiam. Mesmas cores na legenda (OCCUPANCY).
+const OCCUPANCY = {
+  free: { bg: '#3FB56F', fg: '#FFFFFF', label: 'livre' },
+  half: { bg: '#F5B91E', fg: '#3D2C00', label: 'meio' },
+  full: { bg: '#E0463C', fg: '#FFFFFF', label: 'cheio' },
+  closed: { bg: '#E6E9F1', fg: '#9AA1B4', label: 'fechado' },
+} as const;
+
 function colorFor(ratio: number | null): { bg: string; fg: string } {
-  if (ratio == null) return { bg: '#F1F3F8', fg: '#B0B6C6' };
-  if (ratio >= 0.85) return { bg: '#F7D6D3', fg: '#8E1F19' };
-  if (ratio >= 0.5) return { bg: '#FBEBC2', fg: '#7A5800' };
-  return { bg: '#D7F0E1', fg: '#0F5C3A' };
+  if (ratio == null) return OCCUPANCY.closed;
+  if (ratio >= 0.85) return OCCUPANCY.full;
+  if (ratio >= 0.5) return OCCUPANCY.half;
+  return OCCUPANCY.free;
 }
 
 export function OccupancyCalendar({
@@ -175,16 +184,16 @@ export function OccupancyCalendar({
                 height: 28,
                 borderRadius: 6,
                 fontSize: '12px',
-                fontWeight: isToday || isSel ? 800 : 600,
+                fontWeight: isToday || isSel ? 800 : 700,
                 backgroundColor: c.bg,
                 color: c.fg,
                 textDecoration: 'none',
                 outline: isSel
-                  ? '2px solid #2743A6'
+                  ? '3px solid #1B2A6B'
                   : isToday
-                    ? '1.5px dashed #2743A6'
+                    ? '2px dashed #1B2A6B'
                     : 'none',
-                outlineOffset: -1,
+                outlineOffset: 1,
               }}
             >
               {Number(date.slice(8, 10))}
@@ -197,17 +206,12 @@ export function OccupancyCalendar({
           display: 'flex',
           gap: 8,
           marginTop: 8,
-          fontSize: '10px',
-          color: '#6A7186',
+          fontSize: '11px',
+          color: '#3D4257',
           flexWrap: 'wrap',
         }}
       >
-        {[
-          ['#D7F0E1', 'livre'],
-          ['#FBEBC2', 'meio'],
-          ['#F7D6D3', 'cheio'],
-          ['#F1F3F8', 'fechado'],
-        ].map(([bg, l]) => (
+        {Object.values(OCCUPANCY).map(({ bg, label: l }) => (
           <span
             key={l}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}

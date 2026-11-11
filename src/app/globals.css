@@ -292,9 +292,15 @@ body {
   flex-wrap: wrap;
 }
 /* Largura mínima das colunas por médico na grelha do dia (AgendaGrid lê a
-   variável): 180px em desktop, 150px em mobile → ~2 colunas visíveis + scroll */
+   variável): 210px em desktop (4.ª ronda/01: cabe o nome do paciente),
+   150px em mobile → ~2 colunas visíveis + scroll */
 .cdc-agenda-grid {
-  --cdc-col-min: 180px;
+  --cdc-col-min: 210px;
+}
+/* 4.ª ronda/05: o nome do paciente no cartão é clicável (ficha rápida) */
+.cdc-agenda-patient:hover,
+.cdc-agenda-patient:focus-visible {
+  text-decoration: underline;
 }
 /* Linha de duas alturas: [hora] [título + subtítulo] [meta à direita] */
 .cdc-line {

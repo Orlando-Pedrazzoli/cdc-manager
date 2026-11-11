@@ -23,15 +23,28 @@
 // · 02 — o nome do paciente no painel é link para a ficha → Consultas.
 // · 03 — a pastilha LAB diz QUE trabalho e de QUE laboratório; a
 //   observação da marcação aparece no próprio cartão.
+//
+// 4.ª ronda (Victor, nov. 2026):
+// · 01 — marcações legíveis: a grelha é mais alta (2,4 px/min) para cada
+//   cartão mostrar a hora, o nome e as OBSERVAÇÕES sem clicar.
+// · 03 — clicar num horário livre abre a nova marcação com a hora e o
+//   médico dessa coluna já preenchidos.
+// · 04 — cores fortes: o cartão tem a COR DO MÉDICO (fundo e barra).
+// · 05 — clicar no NOME do paciente abre a ficha rápida (contacto, alertas,
+//   saldo, próximas marcações) sem sair da agenda; o resto do cartão
+//   continua a abrir as ações da marcação.
 // =============================================================================
 
 'use client';
 
-import { useState } from 'react';
+import { useState, type KeyboardEvent, type MouseEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { ExternalLink, StickyNote } from 'lucide-react';
+import { ExternalLink, Plus, StickyNote } from 'lucide-react';
+import { tint } from '@/lib/branding';
+import { NewAppointmentModal } from '@/components/agenda/NewAppointmentModal';
+import { PatientQuickView } from '@/components/agenda/PatientQuickView';
 import {
   transitionAppointmentAction,
   updateAppointmentDurationAction,
@@ -50,7 +63,12 @@ import {
   type LabOption,
 } from '@/components/proteses/NewLabCaseModal';
 
-const PX_PER_MIN = 1.2;
+// 4.ª ronda/01: 2,4 px/min → 15 min = 2 linhas, 20 min = 3, 30 min = 5
+const PX_PER_MIN = 2.4;
+const LINE_PX = 14;
+/** 4.ª ronda/03: o clique num horário livre arredonda a 5 min */
+const CLICK_STEP_MIN = 5;
+const HOVER_BAND_MIN = 15;
 
 const STATUS_LABEL: Record<string, string> = {
   pending: 'Pendente',
@@ -227,6 +245,7 @@ export function AgendaGrid({
   rescheduleClinics = [],
   labOptions = [],
   historyHref,
+  newAppointment,
 }: {
   gridStart: number; // minutos (abertura da clínica)
   gridEnd: number; // minutos (fecho)
@@ -239,6 +258,17 @@ export function AgendaGrid({
   labOptions?: LabOption[];
   /** 3.ª reunião/01: atalho para o Histórico quando há canceladas no dia */
   historyHref?: string;
+  /** 4.ª ronda/03: dados para abrir "Nova marcação" ao clicar num horário
+   *  livre. Sem isto (ou em dias passados) a grelha não é clicável. */
+  newAppointment?: {
+    clinicId: string;
+    clinic?: { label: string; color: string };
+    date: string; // YYYY-MM-DD do dia em vista
+    canCreate: boolean; // false em dias passados
+    doctors: { id: string; name: string }[];
+    treatments: { id: string; name: string; category?: string | null }[];
+    rooms?: { id: string; name: string }[];
+  };
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<AgendaAppointment | null>(null);
@@ -247,6 +277,12 @@ export function AgendaGrid({
   const [labFor, setLabFor] = useState<AgendaAppointment | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [busy, setBusy] = useState(false);
+  // 4.ª ronda/03: horário livre sob o rato + nova marcação a partir dele
+  const [hover, setHover] = useState<{ col: string; min: number } | null>(null);
+  const [slot, setSlot] = useState<{ doctorId: string; start: string } | null>(null);
+  // 4.ª ronda/05: ficha rápida do paciente
+  const [quick, setQuick] = useState<{ id: string; name: string } | null>(null);
+  const clickable = !!newAppointment?.canCreate;
 
   const totalMin = gridEnd - gridStart;
   const height = totalMin * PX_PER_MIN;
@@ -269,6 +305,14 @@ export function AgendaGrid({
   }
   const hhmm = (m: number) =>
     `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+  /** Minuto (arredondado) do ponto onde o rato está numa coluna */
+  const minuteAt = (e: MouseEvent<HTMLDivElement>) => {
+    const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
+    const raw = gridStart + y / PX_PER_MIN;
+    const m = Math.floor(raw / CLICK_STEP_MIN) * CLICK_STEP_MIN;
+    return Math.min(Math.max(m, gridStart), gridEnd - CLICK_STEP_MIN);
+  };
 
   const doTransition = async (to: AppointmentStatus, reason?: string) => {
     if (!selected) return;
@@ -464,6 +508,7 @@ export function AgendaGrid({
               colAppts.filter(a => a.status !== 'no-show'),
             );
             const workRanges = 'ranges' in col ? col.ranges : [];
+            const colColor = 'color' in col ? col.color : '#6A7186';
             return (
               <div
                 key={col.id ?? 'unassigned'}
@@ -472,7 +517,33 @@ export function AgendaGrid({
                   height,
                   borderLeft: '1px solid #F0F2F7',
                   backgroundColor: '#F7F8FC', // fora do horário = cinza
+                  cursor: clickable ? 'copy' : 'default',
                 }}
+                title={clickable ? 'Clique num horário livre para marcar' : undefined}
+                onMouseMove={
+                  clickable
+                    ? e => {
+                        // só sobre o fundo da coluna (não sobre um cartão)
+                        if (e.target !== e.currentTarget) {
+                          if (hover) setHover(null);
+                          return;
+                        }
+                        const min = minuteAt(e);
+                        const key = col.id ?? 'unassigned';
+                        if (!hover || hover.col !== key || hover.min !== min) setHover({ col: key, min });
+                      }
+                    : undefined
+                }
+                onMouseLeave={clickable ? () => setHover(null) : undefined}
+                onClick={
+                  clickable
+                    ? e => {
+                        if (e.target !== e.currentTarget) return;
+                        setSlot({ doctorId: col.id ?? '', start: hhmm(minuteAt(e)) });
+                        setHover(null);
+                      }
+                    : undefined
+                }
               >
                 {/* Faixas de horário de trabalho (fundo branco) */}
                 {workRanges.map((r, i) => (
@@ -485,6 +556,7 @@ export function AgendaGrid({
                       left: 0,
                       right: 0,
                       backgroundColor: '#FFFFFF',
+                      pointerEvents: 'none',
                     }}
                   />
                 ))}
@@ -497,23 +569,53 @@ export function AgendaGrid({
                       top: (m - gridStart) * PX_PER_MIN,
                       left: 0,
                       right: 0,
-                      borderTop: '1px solid #F0F2F7',
+                      borderTop: '1px solid #E9ECF4',
+                      pointerEvents: 'none',
                     }}
                   />
                 ))}
+                {/* 4.ª ronda/03: horário livre sob o rato */}
+                {hover && hover.col === (col.id ?? 'unassigned') && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: (hover.min - gridStart) * PX_PER_MIN,
+                      height: HOVER_BAND_MIN * PX_PER_MIN,
+                      left: 3,
+                      right: 3,
+                      borderRadius: '8px',
+                      border: `1.5px dashed ${colColor}`,
+                      backgroundColor: tint(colColor, 0.1),
+                      color: colColor,
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '0 8px',
+                      pointerEvents: 'none',
+                      zIndex: 3,
+                    }}
+                  >
+                    <Plus size={13} /> {hhmm(hover.min)}
+                  </div>
+                )}
                 {/* Marcações */}
                 {colAppts.map(a => {
                   const cancelled = a.status === 'no-show';
                   const lp = laneMap.get(a.id) ?? { lane: 0, lanes: 1 };
                   const laneW = 100 / lp.lanes;
-                  // Altura real do slot; cartões curtos (urgência de 20 min)
-                  // mostram só a 1.ª linha em vez de a cortar a meio
+                  // Altura real do intervalo; nunca menos de uma linha
                   const slotPx = (a.endMin - a.startMin) * PX_PER_MIN - 2;
-                  const cardPx = Math.max(slotPx, 26);
-                  const twoLines = cardPx >= 42;
-                  // 3.ª reunião/03: observação no cartão quando há altura
-                  // para uma 3.ª linha; senão, ícone com o texto no hover
-                  const threeLines = cardPx >= 58 && !!a.note;
+                  const cardPx = Math.max(slotPx, 22);
+                  // 4.ª ronda/01: quantas linhas cabem → hora+nome, depois a
+                  // OBSERVAÇÃO (prioridade), depois ato · estado
+                  const lines = Math.max(1, Math.floor((cardPx - 4) / LINE_PX));
+                  // com 3+ linhas o nome pode ocupar duas (nomes compridos em
+                  // colunas estreitas deixam de ficar cortados)
+                  const nameLines = lines >= 3 ? 2 : 1;
+                  const noteLine = !!a.note && lines >= nameLines + 1;
+                  const metaLine = lines >= nameLines + (noteLine ? 1 : 0) + 1;
                   // 3.ª reunião/03: "LAB · Coroa · MPR" em vez de só "LAB"
                   const labLabel =
                     a.labDue.length === 1
@@ -521,11 +623,25 @@ export function AgendaGrid({
                       : a.labDue.length > 1
                         ? `LAB ×${a.labDue.length}`
                         : '';
+                  const labTitle = a.labDue.map(l => `${l.work} · ${l.lab} (${l.status})`).join('\n');
+                  const open = () => setSelected(a);
+                  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      open();
+                    }
+                  };
                   return (
-                    <button
+                    <div
                       key={a.id}
-                      type='button'
-                      onClick={() => setSelected(a)}
+                      role='button'
+                      tabIndex={0}
+                      onClick={open}
+                      onKeyDown={onKey}
+                      title={[`${a.start}–${a.end} · ${a.patientLabel}`, `${a.treatmentName} · ${STATUS_LABEL[a.status] ?? a.status}`, a.note ? `Obs.: ${a.note}` : null]
+                        .filter(Boolean)
+                        .join('\n')}
                       style={{
                         position: 'absolute',
                         top: (a.startMin - gridStart) * PX_PER_MIN,
@@ -534,30 +650,40 @@ export function AgendaGrid({
                         width: `calc(${laneW}% - ${lp.lanes > 1 ? 6 : 8}px)`,
                         zIndex: a.isUrgent ? 2 : 1,
                         textAlign: 'left',
-                        border: '1px solid #E3E8F5',
-                        borderLeft: `4px solid ${'color' in col ? col.color : '#9AA1B4'}`,
+                        // 4.ª ronda/04: a cor do médico pinta o cartão
+                        border: `1px solid ${cancelled ? '#D5DAE6' : a.isUrgent ? '#E59A94' : tint(colColor, 0.5)}`,
+                        borderLeft: `5px solid ${a.isUrgent ? '#B3261E' : colColor}`,
                         borderRadius: '8px',
-                        backgroundColor: cancelled
-                          ? '#F7F8FC'
-                          : a.isUrgent
-                            ? '#FDEDED'
-                            : '#EAF0FF',
-                        opacity: cancelled ? 0.55 : 1,
-                        padding: twoLines ? '4px 8px' : '2px 8px',
+                        backgroundColor: cancelled ? '#F1F3F8' : a.isUrgent ? '#FDE3E1' : tint(colColor, 0.16),
+                        opacity: cancelled ? 0.6 : 1,
+                        padding: lines >= 2 ? '2px 8px' : '0 8px',
                         cursor: 'pointer',
                         overflow: 'hidden',
+                        lineHeight: `${LINE_PX}px`,
+                        boxSizing: 'border-box',
                       }}
                     >
                       <span
                         style={{
-                          display: 'block',
                           fontSize: '12px',
                           fontWeight: 700,
-                          color: '#1B2A6B',
-                          whiteSpace: 'nowrap',
+                          color: '#141B33',
                           overflow: 'hidden',
-                          textOverflow: 'ellipsis',
                           textDecoration: cancelled ? 'line-through' : 'none',
+                          ...(nameLines === 2
+                            ? {
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical' as const,
+                                whiteSpace: 'normal' as const,
+                                lineHeight: `${LINE_PX + 1}px`,
+                              }
+                            : {
+                                display: 'block',
+                                whiteSpace: 'nowrap' as const,
+                                textOverflow: 'ellipsis',
+                                lineHeight: lines >= 2 ? `${LINE_PX + 2}px` : `${cardPx - 2}px`,
+                              }),
                         }}
                       >
                         {a.isUrgent && (
@@ -573,66 +699,56 @@ export function AgendaGrid({
                               fontWeight: 800,
                               letterSpacing: '0.5px',
                               verticalAlign: 'middle',
+                              lineHeight: '14px',
                             }}
                           >
                             URG
                           </span>
                         )}
-                        {a.start} · {a.patientLabel}
-                        {/* Cartão curto: pastilha compacta na 1.ª linha */}
-                        {a.labDue.length > 0 && !twoLines && (
-                          <span
-                            title={a.labDue
-                              .map(l => `${l.work} · ${l.lab} (${l.status})`)
-                              .join('\n')}
-                            style={labPillStyle}
-                          >
+                        {a.start} ·{' '}
+                        {/* 4.ª ronda/05: o nome abre a ficha rápida */}
+                        {/* <span> e não <button>: um botão é um bloco atómico e
+                            o "…" do cartão cortava o nome inteiro */}
+                        <span
+                          role='button'
+                          tabIndex={0}
+                          onClick={e => {
+                            e.stopPropagation();
+                            setQuick({ id: a.patientId, name: a.patientLabel });
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setQuick({ id: a.patientId, name: a.patientLabel });
+                            }
+                          }}
+                          title='Ver dados do paciente'
+                          className='cdc-agenda-patient'
+                          style={{ cursor: 'pointer' }}
+                        >
+                          {a.patientLabel}
+                        </span>
+                        {/* Sem linha própria: pastilha / observação compactas */}
+                        {a.labDue.length > 0 && !metaLine && (
+                          <span title={labTitle} style={labPillStyle}>
                             LAB
                           </span>
                         )}
-                        {a.note && !threeLines && (
-                          <StickyNote
-                            size={11}
-                            aria-label='Observação'
-                            style={{
-                              marginLeft: 5,
-                              verticalAlign: 'middle',
-                              color: '#9A6700',
-                            }}
-                          />
+                        {a.note && !noteLine && (
+                          <span style={{ marginLeft: 6, fontWeight: 500, fontStyle: 'italic', color: '#7A4B00' }}>
+                            <StickyNote size={11} aria-label='Observação' style={{ marginRight: 3, verticalAlign: 'middle', color: '#9A6700' }} />
+                            {a.note}
+                          </span>
                         )}
                       </span>
-                      {twoLines ? (
+                      {noteLine ? (
                         <span
                           style={{
                             display: 'block',
-                            fontSize: '11px',
-                            color: '#6A7186',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                        >
-                          {labLabel && (
-                            <span
-                              title={a.labDue
-                                .map(l => `${l.work} · ${l.lab} (${l.status})`)
-                                .join('\n')}
-                              style={{ ...labPillStyle, marginLeft: 0 }}
-                            >
-                              {labLabel}
-                            </span>
-                          )}
-                          {a.treatmentName} ·{' '}
-                          {STATUS_LABEL[a.status] ?? a.status}
-                        </span>
-                      ) : null}
-                      {threeLines ? (
-                        <span
-                          style={{
-                            display: 'block',
-                            fontSize: '11px',
+                            fontSize: '11.5px',
                             fontStyle: 'italic',
+                            fontWeight: 600,
                             color: '#7A4B00',
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
@@ -642,7 +758,26 @@ export function AgendaGrid({
                           {a.note}
                         </span>
                       ) : null}
-                    </button>
+                      {metaLine ? (
+                        <span
+                          style={{
+                            display: 'block',
+                            fontSize: '11px',
+                            color: '#4A5169',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {labLabel && (
+                            <span title={labTitle} style={{ ...labPillStyle, marginLeft: 0 }}>
+                              {labLabel}
+                            </span>
+                          )}
+                          {a.treatmentName} · {STATUS_LABEL[a.status] ?? a.status}
+                        </span>
+                      ) : null}
+                    </div>
                   );
                 })}
               </div>
@@ -650,6 +785,25 @@ export function AgendaGrid({
           })}
         </div>
       </div>
+
+      {/* 4.ª ronda/03: nova marcação a partir de um horário livre */}
+      {newAppointment && (
+        <NewAppointmentModal
+          open={slot !== null}
+          onClose={() => setSlot(null)}
+          clinicId={newAppointment.clinicId}
+          clinic={newAppointment.clinic}
+          initialDate={newAppointment.date}
+          initialDoctorId={slot?.doctorId ?? ''}
+          preferredStart={slot?.start ?? ''}
+          doctors={newAppointment.doctors}
+          treatments={newAppointment.treatments}
+          rooms={newAppointment.rooms ?? []}
+        />
+      )}
+
+      {/* 4.ª ronda/05: ficha rápida do paciente */}
+      <PatientQuickView patientId={quick?.id ?? null} fallbackName={quick?.name} onClose={() => setQuick(null)} />
 
       {/* Painel de ações da marcação */}
       <Modal
@@ -667,28 +821,38 @@ export function AgendaGrid({
             style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
           >
             <div>
-              {/* 3.ª reunião/02: o nome abre a ficha no separador Consultas
-                  (nova aba — a receção não perde a agenda) */}
-              <Link
-                href={`/admin/pacientes/${selected.patientId}?tab=consultas`}
-                target='_blank'
-                rel='noopener'
-                title='Abrir a ficha do paciente — marcações futuras e passadas'
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  fontSize: '15px',
-                  fontWeight: 700,
-                  color: '#1B2A6B',
-                  textDecoration: 'underline',
-                  textDecorationColor: '#C9D2EE',
-                  textUnderlineOffset: '3px',
-                }}
-              >
-                {selected.patientLabel}
-                <ExternalLink size={13} style={{ color: '#2743A6' }} />
-              </Link>
+              {/* 4.ª ronda/05: o nome abre a ficha rápida por cima da
+                  agenda; o ícone abre a ficha completa (nova aba — 3.ª
+                  reunião/02: a receção não perde a agenda) */}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type='button'
+                  onClick={() => setQuick({ id: selected.patientId, name: selected.patientLabel })}
+                  title='Ver dados do paciente (contacto, alertas, saldo, próximas marcações)'
+                  style={{
+                    all: 'unset',
+                    cursor: 'pointer',
+                    fontSize: '15px',
+                    fontWeight: 700,
+                    color: '#1B2A6B',
+                    textDecoration: 'underline',
+                    textDecorationColor: '#C9D2EE',
+                    textUnderlineOffset: '3px',
+                  }}
+                >
+                  {selected.patientLabel}
+                </button>
+                <Link
+                  href={`/admin/pacientes/${selected.patientId}?tab=consultas`}
+                  target='_blank'
+                  rel='noopener'
+                  title='Abrir a ficha completa numa nova aba'
+                  aria-label='Abrir a ficha completa numa nova aba'
+                  style={{ display: 'inline-flex', color: '#2743A6' }}
+                >
+                  <ExternalLink size={14} />
+                </Link>
+              </span>
               <p
                 style={{
                   margin: '4px 0 0',

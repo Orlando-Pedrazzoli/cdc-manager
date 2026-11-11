@@ -27,6 +27,7 @@ import {
   TR,
   TableEmpty,
 } from '@/components/ui/Table';
+import { doctorColor } from '@/lib/doctor-colors';
 
 export const dynamic = 'force-dynamic';
 
@@ -170,7 +171,7 @@ export default async function DoctorsPage({
                           width: 10,
                           height: 10,
                           borderRadius: '999px',
-                          backgroundColor: d.color ?? '#2743A6',
+                          backgroundColor: doctorColor(String(d._id), d.color),
                           flexShrink: 0,
                         }}
                       />

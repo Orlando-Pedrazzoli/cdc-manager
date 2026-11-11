@@ -16,6 +16,12 @@
 // marcar". O modal mostra a clínica em destaque, com a SUA cor, e o botão
 // de gravar diz onde vai marcar ("Criar marcação no Colombo"). A confirmação
 // é visual e permanente — um confirm() a mais seria ignorado ao 2.º dia.
+//
+// 4.ª ronda/03 (Victor, nov. 2026): "clicar num horário livre da agenda e
+// abrir logo a nova marcação, já com a hora e o médico preenchidos". A
+// grelha abre este modal com `initialDoctorId` e `preferredStart`; o médico
+// fica escolhido e, assim que há ato, o horário livre mais próximo da hora
+// clicada fica selecionado (a lista continua a mostrar SÓ horários livres).
 // =============================================================================
 
 'use client';
@@ -43,6 +49,8 @@ export function NewAppointmentModal({
   clinicId,
   clinic,
   initialDate,
+  initialDoctorId = '',
+  preferredStart = '',
   doctors,
   treatments,
   rooms = [],
@@ -53,6 +61,10 @@ export function NewAppointmentModal({
   /** 3.ª reunião/04: nome curto + cor da clínica onde se está a marcar */
   clinic?: { label: string; color: string };
   initialDate: string; // 'YYYY-MM-DD' — dia atualmente aberto na agenda
+  /** 4.ª ronda/03: médico da coluna onde se clicou na grelha */
+  initialDoctorId?: string;
+  /** 4.ª ronda/03: hora clicada na grelha ('HH:mm') */
+  preferredStart?: string;
   doctors: { id: string; name: string }[];
   /** Gabinetes ativos da clínica (Warehouse kind 'operatory') */
   rooms?: { id: string; name: string }[];
@@ -68,10 +80,6 @@ export function NewAppointmentModal({
   // "ajustar estado durante o render" (react.dev) em vez de useEffect: o
   // React repete o render de imediato, sem frame intermédio com a data velha.
   const [prevOpen, setPrevOpen] = useState(open);
-  if (open !== prevOpen) {
-    setPrevOpen(open);
-    if (open) setDate(initialDate);
-  }
 
   // --- Pesquisa de paciente (hook partilhado com WalkInModal) ---------------
   const {
@@ -85,7 +93,14 @@ export function NewAppointmentModal({
 
   // --- Ato / médico / slots --------------------------------------------------
   const [treatmentId, setTreatmentId] = useState('');
-  const [doctorId, setDoctorId] = useState('');
+  const [doctorId, setDoctorId] = useState(initialDoctorId);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) {
+      setDate(initialDate);
+      setDoctorId(initialDoctorId);
+    }
+  }
   const [channel, setChannel] = useState<'front-desk' | 'phone' | 'whatsapp'>(
     'front-desk',
   );
@@ -127,7 +142,18 @@ export function NewAppointmentModal({
 
   const slots = slotsResult?.key === slotsKey ? slotsResult.slots : [];
   const slotsLoading = !!slotsKey && slotsResult?.key !== slotsKey;
-  const start = startSel.key === slotsKey ? startSel.start : '';
+  // Hora clicada na grelha → horário livre mais próximo (até 30 min de
+  // diferença), enquanto a receção não escolher outro
+  const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const suggested =
+    preferredStart && doctorId === initialDoctorId && date === initialDate && slots.length > 0
+      ? slots.reduce((best, sl) =>
+          Math.abs(toMin(sl.start) - toMin(preferredStart)) < Math.abs(toMin(best.start) - toMin(preferredStart)) ? sl : best,
+        )
+      : null;
+  const suggestedStart =
+    suggested && Math.abs(toMin(suggested.start) - toMin(preferredStart)) <= 30 ? suggested.start : '';
+  const start = startSel.key === slotsKey ? startSel.start : suggestedStart;
   const setStart = (value: string) =>
     setStartSel({ key: slotsKey, start: value });
 
@@ -299,7 +325,17 @@ export function NewAppointmentModal({
               help={
                 treatmentId && !slotsLoading && slots.length === 0
                   ? 'Sem horários livres neste dia — escolha outra data.'
-                  : undefined
+                  : preferredStart && doctorId === initialDoctorId && date === initialDate
+                    ? !treatmentId
+                      ? `Clicou nas ${preferredStart} — escolha o ato para ver os horários livres.`
+                      : !slotsLoading && startSel.key !== slotsKey
+                        ? suggestedStart === preferredStart
+                          ? `Horário das ${preferredStart}, escolhido na agenda.`
+                          : suggestedStart
+                            ? `As ${preferredStart} não estão livres para este ato — sugerido o mais próximo.`
+                            : `As ${preferredStart} não estão livres para este ato — escolha outro horário.`
+                        : undefined
+                    : undefined
               }
             >
               <option value=''>— Selecionar —</option>
@@ -314,6 +350,7 @@ export function NewAppointmentModal({
               id='ap-start-free'
               name='start'
               type='time'
+              defaultValue={preferredStart || undefined}
               label='Hora *'
               required
               help='Sem médico — capacidade verificada ao guardar.'

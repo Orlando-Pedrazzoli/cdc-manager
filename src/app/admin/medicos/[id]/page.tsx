@@ -44,6 +44,7 @@ import { CommissionEditor } from '@/components/medicos/CommissionEditor';
 import DoctorStatusToggle from '@/components/medicos/DoctorStatusToggle';
 import DoctorInvitePanel from '@/components/medicos/DoctorInvitePanel';
 import { DateJump } from '@/components/agenda/DateJump';
+import { doctorColor } from '@/lib/doctor-colors';
 
 export const dynamic = 'force-dynamic';
 
@@ -168,7 +169,7 @@ export default async function DoctorPage({
       doctor.monthlyGoalCents != null
         ? (doctor.monthlyGoalCents / 100).toFixed(2).replace('.', ',')
         : '',
-    color: doctor.color ?? '#2743A6',
+    color: doctorColor(String(doctor._id), doctor.color),
     clinicSchedules: doctor.clinicSchedules.map(cs => ({
       clinicId: String(cs.clinicId),
       bookableOnline: cs.bookableOnline,
@@ -525,7 +526,7 @@ export default async function DoctorPage({
             width: 14,
             height: 14,
             borderRadius: '999px',
-            backgroundColor: doctor.color ?? '#2743A6',
+            backgroundColor: doctorColor(String(doctor._id), doctor.color),
           }}
         />
         <h1

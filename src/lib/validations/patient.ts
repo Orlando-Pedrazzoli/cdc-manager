@@ -86,7 +86,7 @@ const nifField = z.preprocess(
     .nullable(),
 );
 
-const phoneField = z.preprocess(
+export const phoneField = z.preprocess(
   emptyToNull,
   z
     .string()
@@ -105,7 +105,7 @@ const phoneField = z.preprocess(
     .nullable(),
 );
 
-const emailField = z.preprocess(
+export const emailField = z.preprocess(
   emptyToNull,
   z.email('Email inválido').toLowerCase().nullable(),
 );
