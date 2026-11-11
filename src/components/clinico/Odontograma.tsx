@@ -6,8 +6,6 @@
 // comutáveis sobre os MESMOS dados:
 //   · ANATÓMICO (por omissão) — dentes de anatomia real em vista vestibular e
 //     oclusal + grelha de 5 faces (odontograma/OdontogramaAnatomico)
-//   · ESQUEMA — arcadas em vista oclusal + diagrama de 5 faces (O central,
-//     M/D/V/L em trapézios) com zona radicular, como no papel
 //   · PACIENTE 3D — boca em 3D que roda e abre, uma cor por dente, para
 //     mostrar ao paciente (odontograma/OdontogramaPaciente3D)
 //
@@ -30,37 +28,29 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Save, Layers, CalendarClock, LayoutGrid, Smile, Rotate3d } from 'lucide-react';
+import { Save, Layers, CalendarClock, Smile, Rotate3d } from 'lucide-react';
 import {
   saveOdontogramAction,
   type ConsultationActionState,
 } from '@/actions/procedures';
 import {
-  UPPER_TEETH,
-  LOWER_TEETH,
   TOOTH_STATUS_LABEL,
   FACE_CONDITION_LABEL,
   type FaceCondition,
-  type ToothFace,
   type ToothStatus,
 } from '@/lib/domain';
 import {
   deriveToothStates,
   type ChartEvent,
   type ChartLayer,
-  type ToothChartState,
   type FaceConditionKey,
 } from '@/lib/odontogram-chart';
 import {
   EMPTY_STATE,
-  FACE_PATHS,
-  FACE_STROKE,
   FINDING_COLOR,
   LAYER_COLOR,
   LAYER_LABEL,
   STATUS_CHAR,
-  faceStyle,
-  visualFaceMap,
 } from '@/components/clinico/odontograma/chart-style';
 import { OdontogramaAnatomico } from '@/components/clinico/odontograma/OdontogramaAnatomico';
 import { OdontogramaPaciente3D } from '@/components/clinico/odontograma/OdontogramaPaciente3D';
@@ -73,208 +63,11 @@ import {
   type ToothProcedure,
 } from '@/components/clinico/ToothDetail';
 import { Button } from '@/components/ui/Button';
-import { OdontogramaArcada } from '@/components/clinico/OdontogramaArcada';
 
 // Cores e regras de pintura: odontograma/chart-style (fonte única das 2 vistas)
 export { LAYER_COLOR, LAYER_LABEL };
 
-type ChartView = 'anatomico' | 'esquema' | 'paciente';
-
-// --- Dente (SVG 40×50: 40×40 faces + 10 de zona radicular) -------------------
-function ToothSvg({
-  state,
-  note,
-  selected,
-  upper,
-  onSelect,
-}: {
-  state: ToothChartState;
-  note: string | null;
-  selected: boolean;
-  upper: boolean;
-  onSelect: () => void;
-}) {
-  const map = visualFaceMap(state.number);
-  const mark = STATUS_CHAR[state.status];
-  const markColor = state.statusLayer
-    ? LAYER_COLOR[state.statusLayer]
-    : '#9AA1B4';
-  const dimmed = state.status === 'missing';
-  const rootColor = state.endo ? LAYER_COLOR[state.endo] : null;
-  const postColor = state.post ? LAYER_COLOR[state.post] : null;
-  const veneerColor = state.veneer ? LAYER_COLOR[state.veneer] : null;
-  // raiz desenhada do lado oposto à vestibular… simplificação: raiz "para fora" da arcada
-  const rootY = upper ? 0 : 40;
-  const faceOffset = upper ? 10 : 0;
-  const titleBits = [
-    `Dente ${state.number}`,
-    mark ? TOOTH_STATUS_LABEL[state.status] : null,
-    state.endo ? `Endodontia (${LAYER_LABEL[state.endo]})` : null,
-    state.post ? 'Espigão' : null,
-    state.veneer ? 'Faceta' : null,
-  ].filter(Boolean);
-
-  return (
-    <button
-      type='button'
-      onClick={onSelect}
-      title={titleBits.join(' · ')}
-      style={{
-        border: 'none',
-        background: 'transparent',
-        padding: 0,
-        cursor: 'pointer',
-        lineHeight: 0,
-      }}
-    >
-      <svg width={40} height={50} viewBox='0 0 40 50'>
-        {/* zona radicular */}
-        <g transform={`translate(0 ${rootY})`}>
-          <path
-            d={
-              upper
-                ? 'M12,10 L16,1 L24,1 L28,10 Z'
-                : 'M12,0 L16,9 L24,9 L28,0 Z'
-            }
-            fill={rootColor ?? '#FFFFFF'}
-            stroke={rootColor ?? FACE_STROKE}
-            strokeWidth={rootColor ? 1.5 : 1}
-            opacity={dimmed ? 0.3 : 1}
-          />
-          {postColor && (
-            <rect
-              x={18.5}
-              y={upper ? 2 : 2}
-              width={3}
-              height={6}
-              fill={postColor}
-            />
-          )}
-        </g>
-        <g transform={`translate(0 ${faceOffset})`} opacity={dimmed ? 0.35 : 1}>
-          {(['top', 'bottom', 'left', 'right'] as const).map(pos => {
-            const st = faceStyle(state.faces[map[pos]]);
-            return (
-              <path
-                key={pos}
-                d={FACE_PATHS[pos]}
-                fill={st.fill}
-                stroke={st.stroke}
-                strokeWidth={st.strokeWidth}
-                strokeDasharray={st.dash}
-              />
-            );
-          })}
-          {(() => {
-            const st = faceStyle(state.faces.O);
-            return (
-              <rect
-                x={13}
-                y={13}
-                width={14}
-                height={14}
-                fill={st.fill}
-                stroke={st.stroke}
-                strokeWidth={st.strokeWidth}
-                strokeDasharray={st.dash}
-              />
-            );
-          })()}
-          {veneerColor && (
-            <path
-              d={FACE_PATHS[upper ? 'top' : 'bottom']}
-              fill='none'
-              stroke={veneerColor}
-              strokeWidth={3}
-            />
-          )}
-          {mark && (
-            <text
-              x={20}
-              y={20}
-              textAnchor='middle'
-              dominantBaseline='central'
-              fontSize={state.status === 'missing' ? 22 : 15}
-              fontWeight={800}
-              fill={markColor}
-              stroke='#FFFFFF'
-              strokeWidth={state.status === 'missing' ? 0 : 2}
-              paintOrder='stroke'
-              style={{ pointerEvents: 'none' }}
-            >
-              {mark}
-            </text>
-          )}
-          {note && <circle cx={35} cy={5} r={3.5} fill='#C2620A' />}
-        </g>
-        {selected && (
-          <rect
-            x={0.5}
-            y={0.5}
-            width={39}
-            height={49}
-            fill='none'
-            stroke='#2743A6'
-            strokeWidth={2.5}
-            rx={4}
-          />
-        )}
-      </svg>
-    </button>
-  );
-}
-
-// --- Arcada -------------------------------------------------------------------
-function Arch({
-  teethNumbers,
-  states,
-  notes,
-  selected,
-  onSelect,
-  upper,
-}: {
-  teethNumbers: readonly string[];
-  states: Map<string, ToothChartState>;
-  notes: Map<string, string | null>;
-  selected: string | null;
-  onSelect: (n: string) => void;
-  upper: boolean;
-}) {
-  return (
-    <div style={{ display: 'flex', gap: '3px', justifyContent: 'center' }}>
-      {teethNumbers.map((n, idx) => (
-        <div
-          key={n}
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '2px',
-            marginLeft: idx === 8 ? '12px' : 0, // linha média
-          }}
-        >
-          {upper && (
-            <span style={{ fontSize: '10px', fontWeight: 700, color: '#6A7186' }}>
-              {n}
-            </span>
-          )}
-          <ToothSvg
-            state={states.get(n) ?? EMPTY_STATE(n)}
-            note={notes.get(n) ?? null}
-            selected={selected === n}
-            upper={upper}
-            onSelect={() => onSelect(n)}
-          />
-          {!upper && (
-            <span style={{ fontSize: '10px', fontWeight: 700, color: '#6A7186' }}>
-              {n}
-            </span>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
+type ChartView = 'anatomico' | 'paciente';
 
 // --- Helpers -------------------------------------------------------------------
 /** Registo manual (ToothEntry) → eventos da camada EXISTENTE */
@@ -363,18 +156,6 @@ export function Odontograma({
 
   const notes = useMemo(() => new Map([...teeth.values()].map(t => [t.number, t.note])), [teeth]);
 
-  // entradas para a arcada anatómica (mesma fonte)
-  const archEntries = useMemo<ToothEntry[]>(
-    () =>
-      [...states.values()].map(s => ({
-        number: s.number,
-        status: s.status,
-        faces: Object.entries(s.faces).map(([face, f]) => ({ face: face as ToothFace, condition: f.condition as FaceCondition })),
-        note: notes.get(s.number) ?? null,
-      })),
-    [states, notes],
-  );
-
   const [state, action, pending] = useActionState<ConsultationActionState, FormData>(saveOdontogramAction, undefined);
   const handled = useRef<ConsultationActionState>(undefined);
   useEffect(() => {
@@ -426,7 +207,6 @@ export function Odontograma({
           {(
             [
               { id: 'anatomico', label: 'Anatómico', Icon: Smile },
-              { id: 'esquema', label: 'Esquema', Icon: LayoutGrid },
               { id: 'paciente', label: 'Paciente 3D', Icon: Rotate3d },
             ] as const
           ).map(({ id, label, Icon }) => (
@@ -490,16 +270,6 @@ export function Odontograma({
         )}
       </div>
 
-      {/* Vista em esquema: arcadas em vista oclusal — mesma fonte de dados, mesma seleção */}
-      {view === 'esquema' && (
-        <OdontogramaArcada
-          entries={archEntries}
-          selected={selected}
-          onSelect={setSelected}
-          plannedTeeth={new Set([...states.values()].filter(s => s.statusLayer === 'planned' || Object.values(s.faces).some(f => f.layer === 'planned')).map(s => s.number))}
-        />
-      )}
-
       <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         {/* Mapa das arcadas */}
         <div
@@ -518,20 +288,8 @@ export function Odontograma({
         >
           {view === 'paciente' ? (
             <OdontogramaPaciente3D states={states} selected={selected} onSelect={setSelected} />
-          ) : view === 'anatomico' ? (
-            <OdontogramaAnatomico states={states} notes={notes} selected={selected} onSelect={setSelected} />
           ) : (
-            <>
-              <p style={{ margin: '0 0 4px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#6A7186', textAlign: 'center' }}>
-                Arcada superior
-              </p>
-              <Arch teethNumbers={UPPER_TEETH} states={states} notes={notes} selected={selected} onSelect={setSelected} upper />
-              <div style={{ height: 10 }} />
-              <Arch teethNumbers={LOWER_TEETH} states={states} notes={notes} selected={selected} onSelect={setSelected} upper={false} />
-              <p style={{ margin: '4px 0 0', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#6A7186', textAlign: 'center' }}>
-                Arcada inferior
-              </p>
-            </>
+            <OdontogramaAnatomico states={states} notes={notes} selected={selected} onSelect={setSelected} />
           )}
 
           {/* Legenda (a vista do paciente tem a sua, mais simples) */}
@@ -548,10 +306,8 @@ export function Odontograma({
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#3D4257' }}>
               <span style={{ width: 10, height: 6, borderRadius: 1, backgroundColor: LAYER_COLOR.completed, display: 'inline-block' }} />
-              {view === 'anatomico' ? 'Canal pintado = endodontia' : 'Raiz pintada = endodontia'}
+              Canal pintado = endodontia
             </span>
-            {view === 'anatomico' && (
-              <>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#3D4257' }}>
                   <span style={{ width: 10, height: 10, borderRadius: '3px 3px 5px 5px', backgroundColor: `${LAYER_COLOR.completed}B3`, border: `1px solid ${LAYER_COLOR.completed}`, display: 'inline-block' }} />
                   Coroa pintada = coroa / faceta / pôntico
@@ -560,8 +316,6 @@ export function Odontograma({
                   <span style={{ width: 10, height: 10, borderRadius: 2, border: '1px dashed #9AA1B4', display: 'inline-block' }} />
                   Contorno tracejado = dente ausente
                 </span>
-              </>
-            )}
             {Object.entries(STATUS_CHAR).map(([st, ch]) => (
               <span key={st} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#3D4257' }}>
                 <span style={{ fontWeight: 800, color: '#3D4257' }}>{ch}</span>
