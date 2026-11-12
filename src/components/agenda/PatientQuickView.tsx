@@ -227,6 +227,25 @@ export function PatientQuickView({
               <p style={label}>Última consulta</p>
               <p style={{ margin: '2px 0 0', fontSize: '15px', fontWeight: 700, color: '#1B2A6B' }}>{data.lastVisitLabel ?? '—'}</p>
             </div>
+            {/* Faltas (Victor, 12/11/2026): saber se o paciente é faltoso */}
+            <div
+              style={{
+                ...box,
+                flex: '1 1 150px',
+                ...(data.attendance.warning
+                  ? { backgroundColor: '#FFF1DF', border: '1px solid #E8890C' }
+                  : {}),
+              }}
+            >
+              <p style={label}>Faltas sem aviso</p>
+              <p style={{ margin: '2px 0 0', fontSize: '18px', fontWeight: 700, color: data.attendance.noShows > 0 ? '#B45309' : '#0F7B4D' }}>
+                {data.attendance.noShows}
+              </p>
+              <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#6A7186' }}>
+                {data.attendance.lastNoShowLabel ? `última a ${data.attendance.lastNoShowLabel} · ` : ''}
+                {data.attendance.lateCancels} cancel. &lt; 24 h · {data.attendance.completed} realizadas
+              </p>
+            </div>
           </div>
 
           {/* Próximas marcações */}

@@ -15,6 +15,7 @@
 
 'use server';
 
+import { attendanceWarning, summarizeAttendance } from '@/lib/attendance';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
@@ -60,6 +61,56 @@ const dateTimeFmt = new Intl.DateTimeFormat('pt-PT', {
   timeZone: 'Europe/Lisbon',
 });
 
+export type PatientAttendance = {
+  noShows: number;
+  lateCancels: number;
+  completed: number;
+  lastNoShowLabel: string | null;
+  /** Frase pronta ("2 faltas sem aviso · …") ou null se não há nada */
+  warning: string | null;
+};
+
+async function loadAttendance(patientId: string): Promise<PatientAttendance> {
+  const appts = await Appointment.find({
+    patientId,
+    status: { $in: ['no-show', 'cancelled', 'completed'] },
+  })
+    .select('status startAt cancelledAt cancelledBy rescheduledToId')
+    .lean();
+  const s = summarizeAttendance(
+    appts.map(a => ({
+      status: a.status as string,
+      startAt: a.startAt as Date,
+      cancelledAt: (a.cancelledAt as Date | null) ?? null,
+      cancelledBy: (a.cancelledBy as string | null) ?? null,
+      rescheduledToId: a.rescheduledToId ?? null,
+    })),
+  );
+  return {
+    noShows: s.noShows,
+    lateCancels: s.lateCancels,
+    completed: s.completed,
+    lastNoShowLabel: s.lastNoShowAt ? dateFmt.format(s.lastNoShowAt) : null,
+    warning: attendanceWarning(s),
+  };
+}
+
+/**
+ * Histórico de faltas de um paciente, para a nova marcação: "ter um
+ * controle, quando a gente for remarcar esse paciente, se ele é faltoso".
+ */
+export async function getPatientAttendanceAction(
+  patientId: string,
+): Promise<PatientAttendance | null> {
+  try {
+    await requireStaff();
+  } catch {
+    return null;
+  }
+  if (!OBJECT_ID.test(patientId)) return null;
+  return loadAttendance(patientId);
+}
+
 export type PatientQuickView = {
   id: string;
   name: string;
@@ -78,6 +129,8 @@ export type PatientQuickView = {
   unbilledCents: number;
   unbilledCount: number;
   lastVisitLabel: string | null;
+  /** Faltas e cancelamentos em cima da hora (Victor, 12/11/2026) */
+  attendance: PatientAttendance;
   upcoming: { id: string; whenLabel: string; doctorName: string; treatmentName: string; clinicLabel: string; status: string }[];
 };
 
@@ -90,7 +143,7 @@ export async function getPatientQuickViewAction(patientId: string): Promise<Pati
   if (!OBJECT_ID.test(patientId)) return { error: 'Paciente inválido.' };
 
   const now = new Date();
-  const [patient, record, invoices, unbilled, upcoming, lastVisit, clinics] = await Promise.all([
+  const [patient, record, invoices, unbilled, upcoming, lastVisit, clinics, attendance] = await Promise.all([
     Patient.findById(patientId).select('name processNumber birthDate phone email nif notes status').lean(),
     ClinicalRecord.findOne({ patientId }).select('allergies questionnaire.completedAt questionnaire.data').lean(),
     Invoice.find({ patientId, status: { $ne: 'voided' } }).select('totalCents paidCents').lean(),
@@ -102,6 +155,7 @@ export async function getPatientQuickViewAction(patientId: string): Promise<Pati
       .lean(),
     Appointment.findOne({ patientId, status: 'completed', startAt: { $lt: now } }).sort({ startAt: -1 }).select('startAt').lean(),
     getActiveClinics(),
+    loadAttendance(patientId),
   ]);
   if (!patient || patient.status === 'anonymized') return { error: 'Paciente não encontrado.' };
 
@@ -139,6 +193,7 @@ export async function getPatientQuickViewAction(patientId: string): Promise<Pati
     unbilledCents: unbilled.reduce((a, p) => a + p.priceCents, 0),
     unbilledCount: unbilled.length,
     lastVisitLabel: lastVisit ? dateFmt.format(lastVisit.startAt as Date) : null,
+    attendance,
     upcoming: upcoming.map(a => ({
       id: String(a._id),
       whenLabel: dateTimeFmt.format(a.startAt as Date),

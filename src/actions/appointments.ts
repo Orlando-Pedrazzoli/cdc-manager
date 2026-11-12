@@ -513,6 +513,27 @@ export async function createAppointmentAction(
       clinicId: data.clinicId,
       summary: `Marcação criada: ${treatment.name} a ${data.date} ${data.start}${isPreBooking ? ' (pré-marcação, ficha por completar)' : ''}`,
     });
+    // Uma cancelada que ainda estava à vista neste horário sai da grelha:
+    // "só sai dali quando se vai marcar outra pessoa" (Victor, 12/11/2026).
+    // Fica registado quem a tirou; continua na caixa "Canceladas".
+    if (data.doctorId) {
+      await Appointment.updateMany(
+        {
+          doctorId: data.doctorId,
+          clinicId: data.clinicId,
+          status: 'cancelled',
+          removedFromGridAt: null,
+          startAt: { $lt: endAt },
+          endAt: { $gt: startAt },
+        },
+        {
+          $set: {
+            removedFromGridAt: new Date(),
+            removedFromGridByUserId: staff.id,
+          },
+        },
+      ).catch(() => undefined);
+    }
     // Como nos conheceu: fica na ficha na primeira vez que é indicado
     if (
       !isPreBooking &&
@@ -617,12 +638,70 @@ export async function updateAppointmentNoteAction(
 }
 
 // -----------------------------------------------------------------------------
+// RETIRAR UMA CANCELADA DA GRELHA (Victor, áudio de 12/11/2026)
+// "Recebemos uma ligação de alguém que quer marcar para hoje no mesmo
+// horário. Aí sim, a rececionista vai lá, tira aquela marcação e marca uma
+// nova. Quando ela tirou da agenda, já fica registado naquele campo."
+// Não apaga nada: a marcação continua cancelada, com motivo e autor; só
+// deixa de ocupar o lugar na grelha e fica na caixa por baixo do calendário.
+// -----------------------------------------------------------------------------
+export async function removeCancelledFromGridAction(
+  appointmentId: string,
+): Promise<{ error?: string }> {
+  if (!isObjectId(appointmentId)) return { error: 'Marcação inválida.' };
+
+  await dbConnect();
+  const appt = await Appointment.findById(appointmentId).select(
+    'clinicId patientId status removedFromGridAt',
+  );
+  if (!appt) return { error: 'Marcação não encontrada.' };
+  if (appt.status !== 'cancelled') {
+    return { error: 'Só uma marcação cancelada pode ser retirada da agenda.' };
+  }
+
+  let staff;
+  try {
+    staff = await requireStaffForClinic(String(appt.clinicId));
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  if (appt.removedFromGridAt) return {};
+
+  await Appointment.updateOne(
+    { _id: appt._id },
+    {
+      $set: {
+        removedFromGridAt: new Date(),
+        removedFromGridByUserId: staff.id,
+      },
+    },
+  );
+  await logAudit({
+    userId: staff.id,
+    action: 'update',
+    entityType: 'Appointment',
+    entityId: appointmentId,
+    patientId: String(appt.patientId),
+    clinicId: String(appt.clinicId),
+    summary: 'Marcação cancelada retirada da grelha (horário libertado)',
+    changedFields: ['removedFromGridAt'],
+  });
+  revalidatePath('/admin/agenda');
+  revalidatePath('/doutor/agenda');
+  return {};
+}
+
+// -----------------------------------------------------------------------------
 // TRANSIÇÃO DE ESTADO (confirmar, check-in, iniciar, concluir, falta)
 // -----------------------------------------------------------------------------
 export async function transitionAppointmentAction(
   appointmentId: string,
   to: AppointmentStatus,
-  options?: { cancelReason?: string },
+  options?: {
+    cancelReason?: string;
+    /** Quem cancelou: o paciente ou a clínica (por omissão, a clínica) */
+    cancelledBy?: 'patient' | 'clinic';
+  },
 ): Promise<{ error?: string }> {
   if (!isObjectId(appointmentId)) return { error: 'Marcação inválida.' };
 
@@ -654,7 +733,9 @@ export async function transitionAppointmentAction(
     if (reason.length < 3) {
       return { error: 'Indique o motivo do cancelamento (mín. 3 caracteres).' };
     }
-    $set.cancelledBy = 'clinic';
+    // "paciente cancelou" vs cancelado pela clínica — conta para o
+    // histórico de faltas do paciente (lib/attendance.ts)
+    $set.cancelledBy = options?.cancelledBy === 'patient' ? 'patient' : 'clinic';
     $set.cancelledByUserId = staff.id;
     $set.cancelReason = reason;
   }

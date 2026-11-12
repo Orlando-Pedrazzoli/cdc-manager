@@ -51,6 +51,10 @@ import {
   getWorkingDoctorsAction,
 } from '@/actions/agenda';
 import {
+  getPatientAttendanceAction,
+  type PatientAttendance,
+} from '@/actions/patient-quick';
+import {
   REFERRAL_SOURCES,
   REFERRAL_SOURCE_LABEL,
   type ReferralSource,
@@ -138,6 +142,29 @@ export function NewAppointmentModal({
   const [channel, setChannel] = useState<'front-desk' | 'phone' | 'whatsapp'>(
     'front-desk',
   );
+
+  // Faltas do paciente escolhido (Victor, 12/11/2026): "ter um controle,
+  // quando a gente for remarcar esse paciente, se ele é faltoso ou não".
+  // O resultado guarda o id do pedido; só se mostra o do paciente atual.
+  const [attendance, setAttendance] = useState<{
+    patientId: string;
+    data: PatientAttendance;
+  } | null>(null);
+  const patientId = patient?.id ?? null;
+  useEffect(() => {
+    if (!open || !patientId) return;
+    let cancelled = false;
+    getPatientAttendanceAction(patientId)
+      .then(data => {
+        if (!cancelled && data) setAttendance({ patientId, data });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [open, patientId]);
+  const faltas =
+    attendance && attendance.patientId === patientId ? attendance.data : null;
 
   // 5.ª ronda/10: médicos escalados no DIA ESCOLHIDO. Enquanto o pedido não
   // chega (ou se falhar) usa-se a lista do dia aberto na agenda, que é a
@@ -451,6 +478,24 @@ export function NewAppointmentModal({
                 />
               ))}
             </div>
+          )}
+          {patient && faltas?.warning && (
+            <p
+              role='status'
+              style={{
+                margin: '8px 0 0',
+                padding: '8px 12px',
+                borderRadius: '10px',
+                backgroundColor: '#FFF1DF',
+                border: '1px solid #E8890C',
+                color: '#8A4B00',
+                fontSize: '13px',
+                fontWeight: 600,
+              }}
+            >
+              Atenção: {faltas.warning}
+              {faltas.lastNoShowLabel ? ` (última falta a ${faltas.lastNoShowLabel})` : ''}.
+            </p>
           )}
           {!patient && (
             <button

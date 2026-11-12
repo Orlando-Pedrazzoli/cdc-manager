@@ -209,6 +209,17 @@ const AppointmentSchema = new Schema(
       maxlength: 300,
       default: null,
     },
+    // Cancelamentos na grelha (Victor, áudio de 12/11/2026): a cancelada
+    // fica à vista no seu horário, a cor, com o motivo, "e só sai dali
+    // quando se vai marcar outra pessoa". Estes campos registam QUEM a
+    // retirou e quando — a marcação nunca é apagada, passa para a caixa
+    // "Canceladas" por baixo do calendário. Ver lib/attendance.ts.
+    removedFromGridAt: { type: Date, default: null },
+    removedFromGridByUserId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     // Remarcação = cancelar + criar nova; os elos preservam o rasto completo.
     // A nova marcação pode ser NOUTRA clínica (remarcar do Colombo para a
     // Buraca é um caso real de referência entre médicos)

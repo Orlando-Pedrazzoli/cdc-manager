@@ -68,6 +68,11 @@ import {
 } from '@/components/agenda/OccupancyCalendar';
 import { CHANNEL_LABEL } from '@/components/agenda/AgendaGrid';
 import { DateJump } from '@/components/agenda/DateJump';
+import {
+  CancelledBox,
+  type CancelledEntry,
+} from '@/components/agenda/CancelledBox';
+import { cancelledVisibleIds } from '@/lib/attendance';
 import { doctorColor } from '@/lib/doctor-colors';
 import { getOrganizationSettings } from '@/lib/org-settings';
 import { REFERRAL_SOURCE_LABEL, type ReferralSource } from '@/lib/domain';
@@ -350,7 +355,7 @@ export default async function AgendaPage({
 
   const appts = await Appointment.find(apptQuery)
     .select(
-      'doctorId patientId treatmentTypeId startAt endAt status channel confirmedVia isUrgent createdByUserId createdAt note cancelledByUserId cancelledAt cancelReason rescheduledToId referralSource referralDetail',
+      'doctorId patientId treatmentTypeId startAt endAt status channel confirmedVia isUrgent createdByUserId createdAt note cancelledByUserId cancelledAt cancelledBy cancelReason rescheduledToId removedFromGridAt removedFromGridByUserId referralSource referralDetail',
     )
     .sort({ startAt: 1 })
     .lean();
@@ -359,7 +364,11 @@ export default async function AgendaPage({
   const userIds = Array.from(
     new Set(
       appts
-        .flatMap(a => [a.createdByUserId, a.cancelledByUserId])
+        .flatMap(a => [
+          a.createdByUserId,
+          a.cancelledByUserId,
+          a.removedFromGridByUserId,
+        ])
         .filter(Boolean)
         .map(String),
     ),
@@ -464,6 +473,20 @@ export default async function AgendaPage({
   const patientById = new Map(patients.map(p => [String(p._id), p]));
   const treatmentById = new Map(treatments.map(t => [String(t._id), t.name]));
 
+  // Canceladas que ainda ocupam o lugar na grelha (Victor, 12/11/2026) —
+  // regra em lib/attendance.ts
+  const cancelledOnGrid = cancelledVisibleIds(
+    appts.map(a => ({
+      id: String(a._id),
+      doctorId: a.doctorId ? String(a.doctorId) : null,
+      startMs: a.startAt.getTime(),
+      endMs: a.endAt.getTime(),
+      status: a.status,
+      removedFromGrid: !!a.removedFromGridAt,
+      rescheduled: !!a.rescheduledToId,
+    })),
+  );
+
   const gridAppointments: AgendaAppointment[] = appts.map(a => {
     const s = utcToLisbonMin(a.startAt);
     const e = utcToLisbonMin(a.endAt);
@@ -506,6 +529,8 @@ export default async function AgendaPage({
       clinicId: String(a.clinicId),
       date: s.date,
       provisional: !!p?.provisional,
+      cancelledOnGrid: cancelledOnGrid.has(String(a._id)),
+      cancelledBy: (a.cancelledBy as string | null) ?? null,
       startMs: a.startAt.getTime(),
       endMs: a.endAt.getTime(),
       referralLabel: a.referralSource
@@ -521,13 +546,67 @@ export default async function AgendaPage({
   });
   const { monthlyPromo } = await getOrganizationSettings();
 
+  // Caixa "Canceladas" por baixo do calendário: todas as do dia, na grelha
+  // ou já retiradas, por médico
+  const cancelledEntries: CancelledEntry[] = appts
+    .filter(a => a.status === 'cancelled')
+    .map(a => {
+      const s = utcToLisbonMin(a.startAt);
+      const e = utcToLisbonMin(a.endAt);
+      const p = patientById.get(String(a.patientId));
+      const noticeMs = a.cancelledAt
+        ? a.startAt.getTime() - (a.cancelledAt as Date).getTime()
+        : null;
+      const noticeH = noticeMs != null ? noticeMs / 3_600_000 : null;
+      const byPatient = a.cancelledBy === 'patient';
+      return {
+        id: String(a._id),
+        doctorName: a.doctorId
+          ? (doctorNameById.get(String(a.doctorId)) ?? 'Médico')
+          : 'Sem médico',
+        time: `${hhmm(s.min)}–${hhmm(e.date === s.date ? e.min : 24 * 60)}`,
+        patientName: p?.name ?? '(paciente removido)',
+        treatmentName: treatmentById.get(String(a.treatmentTypeId)) ?? '—',
+        kind: a.rescheduledToId
+          ? 'Remarcada'
+          : byPatient
+            ? 'Paciente cancelou'
+            : 'Cancelada pela clínica',
+        reason: (a.cancelReason as string | null) ?? null,
+        cancelledByName: a.cancelledByUserId
+          ? (userNameById.get(String(a.cancelledByUserId)) ?? null)
+          : null,
+        cancelledAtLabel: a.cancelledAt ? lisbonStamp(a.cancelledAt as Date) : null,
+        noticeLabel:
+          noticeH == null
+            ? null
+            : noticeH < 0
+              ? 'depois da hora marcada'
+              : noticeH < 48
+                ? `${Math.floor(noticeH)} h antes`
+                : `${Math.floor(noticeH / 24)} dias antes`,
+        late: byPatient && !a.rescheduledToId && noticeH != null && noticeH < 24,
+        onGrid: cancelledOnGrid.has(String(a._id)),
+        removedByName: a.removedFromGridByUserId
+          ? (userNameById.get(String(a.removedFromGridByUserId)) ?? null)
+          : null,
+        removedAtLabel: a.removedFromGridAt
+          ? lisbonStamp(a.removedFromGridAt as Date)
+          : null,
+      };
+    });
+
   // 5.ª ronda/07+11: a grelha mostra quem está escalado. Um médico FORA da
   // escala só ganha coluna se tiver marcações ativas nesse dia (ex.: vindas
   // do Dentoral, de antes da escala nova) — coluna fechada, para a receção
   // as ver e remarcar em vez de ficarem escondidas.
   const offWithAppts = new Set(
     appts
-      .filter(a => a.status !== 'cancelled' && a.doctorId)
+      .filter(
+        a =>
+          a.doctorId &&
+          (a.status !== 'cancelled' || cancelledOnGrid.has(String(a._id))),
+      )
       .map(a => String(a.doctorId)),
   );
   const gridColumns: AgendaDoctorColumn[] = [
@@ -1112,15 +1191,29 @@ export default async function AgendaPage({
               }}
             />
           </div>
-          {/* P4: calendário com cores de ocupação */}
-          <OccupancyCalendar
-            month={calMonth}
-            days={occupancy}
-            selectedDate={date}
-            todayStr={todayStr}
-            makeDayHref={d => buildHref({ date: d })}
-            makeMonthHref={m => `${buildHref({})}&cal=${m}`}
-          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* P4: calendário com cores de ocupação */}
+            <OccupancyCalendar
+              month={calMonth}
+              days={occupancy}
+              selectedDate={date}
+              todayStr={todayStr}
+              makeDayHref={d => buildHref({ date: d })}
+              makeMonthHref={m => `${buildHref({})}&cal=${m}`}
+            />
+            {/* Registo de cancelamentos do dia (Victor, 11–12/11/2026) */}
+            <CancelledBox
+              entries={
+                medicoFilterDia
+                  ? cancelledEntries.filter(
+                      e => e.doctorName === doctorNameById.get(medicoFilterDia),
+                    )
+                  : cancelledEntries
+              }
+              dateLabel={dateLabel}
+              historyHref={`/admin/agenda/historico?clinic=${clinic.slug}`}
+            />
+          </div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>

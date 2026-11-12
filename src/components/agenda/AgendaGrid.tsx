@@ -40,6 +40,13 @@
 // · 07 — fora do turno do médico a coluna fica FECHADA (escuro, tracejado)
 //   e não aceita cliques; médico fora da escala nesse dia só aparece se
 //   tiver marcações, com a coluna toda fechada e o aviso "Fora da escala".
+//
+// Cancelamentos (Victor, email de 11/11 e áudio de 12/11/2026) — INVERTE a
+// 3.ª reunião/01: a cancelada volta a ficar na grelha, a laranja, com o
+// motivo à vista, a ocupar o seu horário "até se ir marcar outra pessoa".
+// Aí a receção retira-a ("Retirar da agenda") — ou sai sozinha quando se
+// marca por cima — e fica na caixa "Canceladas" por baixo do calendário.
+// Ao cancelar indica-se QUEM cancelou (paciente ou clínica).
 // · 13 — pré-marcações (ficha por completar) levam a pastilha "S/ FICHA".
 // =============================================================================
 
@@ -57,6 +64,7 @@ import {
   transitionAppointmentAction,
   updateAppointmentDurationAction,
   updateAppointmentNoteAction,
+  removeCancelledFromGridAction,
 } from '@/actions/appointments';
 import type { AppointmentStatus } from '@/models/Appointment';
 import { Button } from '@/components/ui/Button';
@@ -229,6 +237,10 @@ export interface AgendaAppointment {
   date: string; // YYYY-MM-DD
   /** 5.ª ronda/13: ficha criada numa pré-marcação, ainda por completar */
   provisional?: boolean;
+  /** Cancelada que ainda ocupa o lugar na grelha (lib/attendance.ts) */
+  cancelledOnGrid?: boolean;
+  /** 'patient' | 'clinic' | 'system' */
+  cancelledBy?: string | null;
   /** Início e fim reais (epoch ms) — para a barra de tempo da consulta */
   startMs?: number;
   endMs?: number;
@@ -316,6 +328,7 @@ export function AgendaGrid({
   const [rescheduleMode, setRescheduleMode] = useState(false);
   const [labFor, setLabFor] = useState<AgendaAppointment | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [cancelWho, setCancelWho] = useState<'patient' | 'clinic'>('patient');
   const [busy, setBusy] = useState(false);
   // 4.ª ronda/03: horário livre sob o rato + nova marcação a partir dele
   const [hover, setHover] = useState<{ col: string; min: number } | null>(null);
@@ -353,9 +366,12 @@ export function AgendaGrid({
   const totalMin = gridEnd - gridStart;
   const height = totalMin * PX_PER_MIN;
 
-  // 3.ª reunião/01: canceladas saem da grelha (ficam no Histórico/Lista).
-  // Faltas mantêm-se — são informação operacional do próprio dia.
-  const visible = appointments.filter(a => a.status !== 'cancelled');
+  // Canceladas: ficam na grelha enquanto ocuparem o lugar (cancelledOnGrid);
+  // as retiradas, remarcadas ou com o horário já reaproveitado só aparecem
+  // na caixa "Canceladas" e no Histórico. Faltas mantêm-se sempre.
+  const visible = appointments.filter(
+    a => a.status !== 'cancelled' || a.cancelledOnGrid,
+  );
   const cancelledCount = appointments.length - visible.length;
 
   const hasUnassigned = visible.some(a => a.doctorId === null);
@@ -385,6 +401,7 @@ export function AgendaGrid({
     setBusy(true);
     const res = await transitionAppointmentAction(selected.id, to, {
       cancelReason: reason,
+      cancelledBy: cancelWho,
     });
     setBusy(false);
     if (res.error) {
@@ -397,6 +414,21 @@ export function AgendaGrid({
       setCancelReason('');
       router.refresh();
     }
+  };
+
+  /** Tirar uma cancelada da grelha para libertar o horário */
+  const removeFromGrid = async () => {
+    if (!selected) return;
+    setBusy(true);
+    const res = await removeCancelledFromGridAction(selected.id);
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success('Retirada da agenda. O registo fica na caixa "Canceladas".');
+    setSelected(null);
+    router.refresh();
   };
 
   const changeDuration = async (deltaMin: number) => {
@@ -702,6 +734,11 @@ export function AgendaGrid({
                 {/* Marcações */}
                 {colAppts.map(a => {
                   const cancelled = a.status === 'no-show';
+                  const isCancelled = a.status === 'cancelled';
+                  // Na cancelada, o que interessa ler é o MOTIVO
+                  const cardNote = isCancelled
+                    ? `Motivo: ${a.cancelReason ?? '—'}${a.cancelledBy === 'patient' ? ' (paciente)' : ''}`
+                    : a.note;
                   const lp = laneMap.get(a.id) ?? { lane: 0, lanes: 1 };
                   const laneW = 100 / lp.lanes;
                   // Altura real do intervalo; nunca menos de uma linha
@@ -713,7 +750,7 @@ export function AgendaGrid({
                   // com 3+ linhas o nome pode ocupar duas (nomes compridos em
                   // colunas estreitas deixam de ficar cortados)
                   const nameLines = lines >= 3 ? 2 : 1;
-                  const noteLine = !!a.note && lines >= nameLines + 1;
+                  const noteLine = !!cardNote && lines >= nameLines + 1;
                   const metaLine = lines >= nameLines + (noteLine ? 1 : 0) + 1;
                   // 3.ª reunião/03: "LAB · Coroa · MPR" em vez de só "LAB"
                   const labLabel =
@@ -738,7 +775,7 @@ export function AgendaGrid({
                       tabIndex={0}
                       onClick={open}
                       onKeyDown={onKey}
-                      title={[`${a.start}–${a.end} · ${a.patientLabel}`, `${a.treatmentName} · ${STATUS_LABEL[a.status] ?? a.status}`, a.note ? `Obs.: ${a.note}` : null]
+                      title={[`${a.start}–${a.end} · ${a.patientLabel}`, `${a.treatmentName} · ${STATUS_LABEL[a.status] ?? a.status}`, cardNote ? (isCancelled ? cardNote : `Obs.: ${cardNote}`) : null]
                         .filter(Boolean)
                         .join('\n')}
                       style={{
@@ -750,10 +787,11 @@ export function AgendaGrid({
                         zIndex: a.isUrgent ? 2 : 1,
                         textAlign: 'left',
                         // 4.ª ronda/04: a cor do médico pinta o cartão
-                        border: `1px solid ${cancelled ? '#D5DAE6' : a.isUrgent ? '#E59A94' : tint(colColor, 0.5)}`,
-                        borderLeft: `5px solid ${a.isUrgent ? '#B3261E' : colColor}`,
+                        // Cancelada: laranja, para o médico "bater o olho"
+                        border: `1px solid ${isCancelled ? '#E8890C' : cancelled ? '#D5DAE6' : a.isUrgent ? '#E59A94' : tint(colColor, 0.5)}`,
+                        borderLeft: `5px solid ${isCancelled ? '#D96B00' : a.isUrgent ? '#B3261E' : colColor}`,
                         borderRadius: '8px',
-                        backgroundColor: cancelled ? '#F1F3F8' : a.isUrgent ? '#FDE3E1' : tint(colColor, 0.16),
+                        backgroundColor: isCancelled ? '#FFE3C2' : cancelled ? '#F1F3F8' : a.isUrgent ? '#FDE3E1' : tint(colColor, 0.16),
                         opacity: cancelled ? 0.6 : 1,
                         padding: lines >= 2 ? '2px 8px' : '0 8px',
                         cursor: 'pointer',
@@ -804,6 +842,14 @@ export function AgendaGrid({
                             URG
                           </span>
                         )}
+                        {isCancelled && (
+                          <span
+                            title={`Cancelada${a.cancelReason ? ` — ${a.cancelReason}` : ''}`}
+                            style={{ ...provisionalPillStyle, backgroundColor: '#B45309' }}
+                          >
+                            CANCELADA
+                          </span>
+                        )}
                         {a.provisional && (
                           <span title='Pré-marcação: ficha por completar' style={provisionalPillStyle}>
                             S/ FICHA
@@ -839,10 +885,10 @@ export function AgendaGrid({
                             LAB
                           </span>
                         )}
-                        {a.note && !noteLine && (
+                        {cardNote && !noteLine && (
                           <span style={{ marginLeft: 6, fontWeight: 500, fontStyle: 'italic', color: '#7A4B00' }}>
                             <StickyNote size={11} aria-label='Observação' style={{ marginRight: 3, verticalAlign: 'middle', color: '#9A6700' }} />
-                            {a.note}
+                            {cardNote}
                           </span>
                         )}
                       </span>
@@ -859,7 +905,7 @@ export function AgendaGrid({
                             textOverflow: 'ellipsis',
                           }}
                         >
-                          {a.note}
+                          {cardNote}
                         </span>
                       ) : null}
                       {metaLine ? (
@@ -1037,7 +1083,8 @@ export function AgendaGrid({
                   <strong>
                     {selected.rescheduledToLabel ? 'Remarcada' : 'Cancelada'}
                   </strong>{' '}
-                  por {selected.cancelledByName ?? 'paciente/sistema'}
+                  {selected.cancelledBy === 'patient' ? '(paciente cancelou) ' : ''}
+                  — registado por {selected.cancelledByName ?? 'sistema'}
                   {selected.cancelledAtLabel
                     ? ` em ${selected.cancelledAtLabel}`
                     : ''}
@@ -1196,6 +1243,17 @@ export function AgendaGrid({
                     Cancelar marcação
                   </Button>
                 )}
+                {selected.status === 'cancelled' && selected.cancelledOnGrid && (
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    loading={busy}
+                    onClick={removeFromGrid}
+                    title='Liberta o horário para outra marcação. O cancelamento fica registado na caixa "Canceladas", por baixo do calendário.'
+                  >
+                    Retirar da agenda (libertar o horário)
+                  </Button>
+                )}
               </div>
             ) : (
               <div
@@ -1205,6 +1263,37 @@ export function AgendaGrid({
                   gap: '10px',
                 }}
               >
+                {/* Quem cancelou — conta para o histórico de faltas do paciente */}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {(
+                    [
+                      ['patient', 'Paciente cancelou'],
+                      ['clinic', 'Clínica / médico cancelou'],
+                    ] as ['patient' | 'clinic', string][]
+                  ).map(([value, label]) => {
+                    const active = cancelWho === value;
+                    return (
+                      <button
+                        key={value}
+                        type='button'
+                        onClick={() => setCancelWho(value)}
+                        aria-pressed={active}
+                        style={{
+                          borderRadius: '10px',
+                          border: active ? '1px solid #1B2A6B' : '1px solid #D8DEEF',
+                          backgroundColor: active ? '#1B2A6B' : '#FFFFFF',
+                          color: active ? '#FFFFFF' : '#3A3F4A',
+                          padding: '7px 12px',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
                 <Input
                   id='cancel-reason'
                   label='Motivo do cancelamento *'
@@ -1212,8 +1301,8 @@ export function AgendaGrid({
                   onChange={e => setCancelReason(e.target.value)}
                   maxLength={300}
                   required
-                  placeholder='Ex.: pedido do paciente, médico indisponível…'
-                  help='Obrigatório — fica no histórico de marcações apagadas'
+                  placeholder='Ex.: está doente, sem transporte, médico indisponível…'
+                  help='Obrigatório — o médico vê o motivo na agenda. A marcação fica no horário, a laranja, até ser retirada.'
                 />
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <Button

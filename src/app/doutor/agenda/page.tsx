@@ -38,7 +38,7 @@ const STATUS_STYLE: Record<string, { bg: string; fg: string }> = {
   'checked-in': { bg: '#E0F5EA', fg: '#0F7B4D' },
   'in-progress': { bg: '#1B2A6B', fg: '#FFFFFF' },
   completed: { bg: '#EAECF3', fg: '#3D4257' },
-  cancelled: { bg: '#F6E4E3', fg: '#B3261E' },
+  cancelled: { bg: '#FFE3C2', fg: '#8A4B00' },
   'no-show': { bg: '#F6E4E3', fg: '#B3261E' },
 };
 
@@ -211,7 +211,10 @@ export default async function DoctorAgendaPage({
           </p>
         ) : (
           appointments.map(a => {
-            const muted = ['cancelled', 'no-show'].includes(a.status);
+            // Canceladas (Victor, 12/11/2026): a laranja e com o motivo, para
+            // o médico ver de relance quem cancelou e porquê
+            const isCancelled = a.status === 'cancelled';
+            const muted = a.status === 'no-show';
             const st =
               STATUS_STYLE[a.status as AppointmentStatus] ??
               STATUS_STYLE.completed;
@@ -226,6 +229,8 @@ export default async function DoctorAgendaPage({
               padding: '12px 20px',
               borderBottom: '1px solid #F4F6FB',
               opacity: muted ? 0.55 : 1,
+              backgroundColor: isCancelled ? '#FFF1DF' : undefined,
+              borderLeft: isCancelled ? '4px solid #D96B00' : undefined,
               textDecoration: 'none',
             };
             const content = (
@@ -250,7 +255,7 @@ export default async function DoctorAgendaPage({
                       fontSize: '14px',
                       fontWeight: 600,
                       color: '#1B2A6B',
-                      textDecoration: muted ? 'line-through' : 'none',
+                      textDecoration: muted || isCancelled ? 'line-through' : 'none',
                     }}
                   >
                     {p?.name ?? '(paciente removido)'}
@@ -287,6 +292,16 @@ export default async function DoctorAgendaPage({
                     {treatmentById.get(String(a.treatmentTypeId)) ?? '—'}
                     {a.note ? ` · ${a.note}` : ''}
                   </p>
+                  {isCancelled && (
+                    <p style={{ margin: '2px 0 0', fontSize: '13px', fontWeight: 600, color: '#8A4B00' }}>
+                      {a.rescheduledToId
+                        ? 'Remarcada'
+                        : a.cancelledBy === 'patient'
+                          ? 'Paciente cancelou'
+                          : 'Cancelada pela clínica'}
+                      {a.cancelReason ? ` — ${a.cancelReason}` : ''}
+                    </p>
+                  )}
                 </div>
                 <div className='cdc-line-meta'>
                   <span
@@ -318,7 +333,7 @@ export default async function DoctorAgendaPage({
                 </div>
               </>
             );
-            return muted ? (
+            return muted || isCancelled ? (
               <div key={String(a._id)} className='cdc-line' style={rowStyle}>
                 {content}
               </div>
