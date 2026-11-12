@@ -42,9 +42,8 @@ import LabCase from '@/models/LabCase';
 import Supplier from '@/models/Supplier';
 import Warehouse from '@/models/Warehouse';
 import {
-  LAB_WORK_TYPE_LABEL,
+  labWorkLabel,
   LAB_CASE_STATUS_LABEL,
-  type LabWorkType,
   type LabCaseStatus,
 } from '@/lib/domain';
 import {
@@ -419,11 +418,11 @@ export default async function AgendaPage({
         },
       ],
     })
-      .select('patientId appointmentId labName workType status dueDate')
+      .select('patientId appointmentId labName workType workDescription status dueDate')
       .lean();
     for (const c of labCases) {
       const item: LabDue = {
-        work: LAB_WORK_TYPE_LABEL[c.workType as LabWorkType],
+        work: labWorkLabel(c.workType, c.workDescription),
         lab: c.labName,
         status: LAB_CASE_STATUS_LABEL[c.status as LabCaseStatus],
       };

@@ -301,15 +301,19 @@ export async function voidProcedureAction(
       return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
     }
 
-    const session = await getVerifiedSession(['doctor']);
-    if (!session?.user?.doctorId) {
+    // 6.ª ronda/03 (Victor, nov. 2026): "Médico e gestão podem corrigir
+    // lançamentos errados (tratamento errado ou dente errado). A receção
+    // não corrige lançamentos clínicos." Médico: só os seus; gestão: todos.
+    const session = await getVerifiedSession(['doctor', 'admin']);
+    const isAdmin = session?.user?.role === 'admin';
+    if (!session?.user?.id || (!isAdmin && !session.user.doctorId)) {
       return { error: 'Sem permissões.' };
     }
     await dbConnect();
 
     const proc = await Procedure.findById(parsed.data.procedureId);
     if (!proc) return { error: 'Ato não encontrado.' };
-    if (String(proc.doctorId) !== session.user.doctorId) {
+    if (!isAdmin && String(proc.doctorId) !== session.user.doctorId) {
       return { error: 'Este ato não lhe pertence.' };
     }
     if (proc.status === 'void') return { success: true }; // idempotente
@@ -350,7 +354,7 @@ export async function voidProcedureAction(
       entityId: String(proc._id),
       patientId: String(proc.patientId),
       clinicId: String(proc.clinicId),
-      summary: `Ato anulado: ${proc.nameSnapshot} — ${parsed.data.reason}${adjusted ? ' (estorno de comissão lançado no mês corrente)' : ''}`,
+      summary: `Ato anulado${isAdmin ? ' pela gestão' : ''}: ${proc.nameSnapshot} — ${parsed.data.reason}${adjusted ? ' (estorno de comissão lançado no mês corrente)' : ''}`,
     });
 
     // Ato anulado não deve convidar ninguém: fecha o ciclo de recall que
@@ -368,6 +372,7 @@ export async function voidProcedureAction(
     if (proc.appointmentId) {
       revalidatePath(`/doutor/consulta/${String(proc.appointmentId)}`);
     }
+    revalidatePath(`/admin/pacientes/${String(proc.patientId)}/odontograma`);
     return { success: true };
   } catch (e) {
     return fail(e);

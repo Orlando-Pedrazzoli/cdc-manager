@@ -72,17 +72,30 @@ export default async function PatientsPage({
   }
 
   // --- Query paginada -------------------------------------------------------
-  const [total, patients] = await Promise.all([
-    Patient.countDocuments(filter),
-    Patient.find(filter)
+  // 6.ª ronda/01: as pré-marcações não têm n.º de processo — ordenadas por
+  // número ficariam no fim da lista. Vão à parte, no topo da 1.ª página
+  // (são poucas: saem daqui assim que a ficha é completada).
+  const SELECT =
+    'processNumber name phone email status birthDate deceasedAt nif snsNumber';
+  const numbered = { ...filter, provisional: { $ne: true } };
+  const [totalNumbered, numberedRows, preBookings] = await Promise.all([
+    Patient.countDocuments(numbered),
+    Patient.find(numbered)
       .sort({ processNumber: -1 }) // mais recentes primeiro
       .skip((page - 1) * perPage)
       .limit(perPage)
-      .select(
-        'processNumber name phone email status birthDate deceasedAt nif snsNumber',
-      )
+      .select(SELECT)
       .lean(),
+    page === 1
+      ? Patient.find({ ...filter, provisional: true })
+          .sort({ createdAt: -1 })
+          .limit(50)
+          .select(SELECT)
+          .lean()
+      : Promise.resolve([]),
   ]);
+  const patients = [...preBookings, ...numberedRows];
+  const total = totalNumbered + preBookings.length;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
 
   const pageHref = (p: number) => {
@@ -161,7 +174,13 @@ export default async function PatientsPage({
             patients.map(p => (
               <TR key={String(p._id)} hover>
                 <TD>
-                  <span style={{ fontWeight: 600 }}>{p.processNumber}</span>
+                  <span style={{ fontWeight: 600 }}>
+                    {p.processNumber ?? (
+                      <span style={{ fontWeight: 500, color: '#9A6B00' }}>
+                        pré-marcação
+                      </span>
+                    )}
+                  </span>
                 </TD>
                 <TD>
                   <Link

@@ -20,7 +20,7 @@ import { patientSearchOr } from '@/lib/patient-search';
 
 export interface OdontogramFinderHit {
   id: string;
-  processNumber: number;
+  processNumber: number | null;
   name: string;
   /** dd/mm/aaaa ou null */
   birth: string | null;
@@ -50,7 +50,7 @@ export async function findPatientsForOdontogramAction(
 
   return patients.map(p => ({
     id: String(p._id),
-    processNumber: p.processNumber,
+    processNumber: p.processNumber ?? null,
     name: p.name,
     birth: p.birthDate ? birthFmt.format(p.birthDate) : null,
   }));

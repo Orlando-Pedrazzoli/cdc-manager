@@ -580,6 +580,34 @@ export const LAB_WORK_TYPE_LABEL: Record<LabWorkType, string> = {
   outro: 'Outro trabalho',
 };
 
+// 6.ª ronda/09 (Victor, nov. 2026): resultado de cada contacto de recall
+export const RECALL_OUTCOMES = [
+  'booked', // Agendado
+  'no-answer', // Não atendeu
+  'call-back', // Retornar mais tarde
+  'asked-later', // Pediu para ligar depois
+  'message-left', // Deixou mensagem (WhatsApp / voicemail)
+  'not-interested', // Não tem interesse
+  'wrong-number', // Número errado
+] as const;
+export type RecallOutcome = (typeof RECALL_OUTCOMES)[number];
+
+/** 6.ª ronda/01: as pré-marcações não têm nº de processo */
+export function processLabel(n: number | null | undefined): string {
+  return n != null ? String(n) : 'pré-marcação';
+}
+
+/** 6.ª ronda/08: em "Outro trabalho" mostra-se o que a clínica escreveu
+ *  ("Outro: placa de contenção"); nos restantes, o nome do tipo. */
+export function labWorkLabel(
+  workType: string,
+  workDescription?: string | null,
+): string {
+  const base = LAB_WORK_TYPE_LABEL[workType as LabWorkType] ?? workType;
+  const desc = (workDescription ?? '').trim();
+  return workType === 'outro' && desc ? `Outro: ${desc}` : base;
+}
+
 export const LAB_CASE_STATUSES = [
   'sent', // enviada ao laboratório (em curso)
   'received', // chegou à clínica

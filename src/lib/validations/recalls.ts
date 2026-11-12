@@ -12,6 +12,7 @@
 // =============================================================================
 
 import { z } from 'zod';
+import { RECALL_OUTCOMES, type RecallOutcome } from '@/lib/domain';
 import type { RecallStatus } from '@/models/Recall';
 
 const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
@@ -50,6 +51,50 @@ export const RECALL_ACTION_TARGET: Record<RecallUserAction, RecallStatus> = {
   unreachable: 'unreachable',
   reopen: 'due',
 } as const;
+
+// -----------------------------------------------------------------------------
+// 6.ª ronda/09 — resultado de cada contacto
+// -----------------------------------------------------------------------------
+export const RECALL_OUTCOME_LABEL: Record<RecallOutcome, string> = {
+  booked: 'Agendado',
+  'no-answer': 'Não atendeu',
+  'call-back': 'Retornar mais tarde',
+  'asked-later': 'Pediu para ligar depois',
+  'message-left': 'Deixou mensagem',
+  'not-interested': 'Não tem interesse',
+  'wrong-number': 'Número errado',
+};
+
+/** Estado em que o ciclo fica depois de cada resultado */
+export const RECALL_OUTCOME_TARGET: Record<RecallOutcome, RecallStatus> = {
+  booked: 'booked',
+  'no-answer': 'contacted',
+  'call-back': 'contacted',
+  'asked-later': 'contacted',
+  'message-left': 'contacted',
+  'not-interested': 'dismissed',
+  'wrong-number': 'unreachable',
+};
+
+/** Um contacto só se regista num ciclo ainda aberto */
+export const RECALL_OPEN_STATUSES: readonly RecallStatus[] = [
+  'scheduled',
+  'due',
+  'contacted',
+];
+
+export function canRegisterContact(current: RecallStatus): boolean {
+  return RECALL_OPEN_STATUSES.includes(current);
+}
+
+export const recallContactSchema = z.object({
+  id: z.string().regex(OBJECT_ID, 'Recall inválido'),
+  outcome: z.enum(RECALL_OUTCOMES, { error: 'Resultado inválido' }),
+  note: z.preprocess(
+    v => (typeof v === 'string' && v.trim() === '' ? null : v),
+    z.string().trim().max(200, 'Nota demasiado longa').nullable().default(null),
+  ),
+});
 
 /** Guarda pura usada pelas actions (e testável no sandbox) */
 export function canApplyRecallAction(

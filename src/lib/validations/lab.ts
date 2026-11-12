@@ -47,12 +47,18 @@ export const createLabCaseSchema = z
       z.string().regex(OBJECT_ID, 'Marcação inválida').nullable(),
     ),
     workType: z.enum(LAB_WORK_TYPES, { error: 'Selecione o tipo de trabalho' }),
+    // 6.ª ronda/08: obrigatória quando o tipo é "Outro trabalho"
+    workDescription: optionalShort(120, 'Descrição do trabalho'),
     toothNotes: optionalShort(60, 'Campo dentes/zona'),
     shade: optionalShort(20, 'Cor'),
     notes: optionalShort(300, 'Notas'),
     costCents: euroToCentsField,
     sentDate: z.string().regex(DATE_RE, 'Data de envio inválida'),
     dueDate: z.string().regex(DATE_RE, 'Data prevista inválida'),
+  })
+  .refine(d => d.workType !== 'outro' || (d.workDescription ?? '').length >= 3, {
+    message: 'Em "Outro trabalho", escreva qual é o trabalho',
+    path: ['workDescription'],
   })
   .refine(d => d.dueDate >= d.sentDate, {
     message: 'A data prevista não pode ser anterior ao envio',

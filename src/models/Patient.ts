@@ -31,10 +31,14 @@ const PatientSchema = new Schema(
     // Nº de processo interno — continuidade com o Dentoral (os prints mostram
     // números até ~86000). Na migração importa-se o existente; novos pacientes
     // recebem o próximo da sequência (gerido em actions/patients.ts).
+    //
+    // 6.ª ronda/01 (Victor, nov. 2026): a PRÉ-MARCAÇÃO não recebe número —
+    // a pessoa pode não vir à consulta. Fica null enquanto `provisional`; o
+    // número é atribuído quando a ficha completa é gravada. Por isso a
+    // unicidade passou a índice PARCIAL (só números), declarado em baixo.
     processNumber: {
       type: Number,
-      required: true,
-      unique: true,
+      default: null,
     },
     name: {
       type: String,
@@ -161,6 +165,15 @@ const PatientSchema = new Schema(
     // primeira vez. true até a ficha ser completada (gravar a ficha
     // completa limpa a marca).
     provisional: { type: Boolean, default: false, index: true },
+    // 6.ª ronda/07: campos obrigatórios que o paciente declarou NÃO ter ou
+    // não querer indicar — é o que deixa terminar a ficha sem os preencher
+    // (fatura sem NIF sai como Consumidor final).
+    declared: {
+      noNif: { type: Boolean, default: false },
+      noSnsNumber: { type: Boolean, default: false },
+      noPhone: { type: Boolean, default: false },
+      noEmail: { type: Boolean, default: false },
+    },
     // Falecido (Dentoral: flag "Falecido"). Data em vez de boolean (quando
     // se soube). Efeitos: badge na ficha/lista, recalls suprimidos
     // (spawnRecallForProcedure) e ciclos abertos dispensados ao marcar.
@@ -237,6 +250,17 @@ const PatientSchema = new Schema(
 
 // Pesquisa da receção: nome (text index acima), telefone, nº processo —
 // os três caminhos de pesquisa do QuickBookingCommand
+
+// Nº de processo único entre as fichas que o têm (pré-marcações = null).
+// Bases criadas antes da 6.ª ronda têm o índice único antigo, não parcial:
+// correr scripts/fix-process-number-index.ts uma vez em cada base.
+PatientSchema.index(
+  { processNumber: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { processNumber: { $type: 'number' } },
+  },
+);
 
 export type PatientDoc = InferSchemaType<typeof PatientSchema> & {
   _id: mongoose.Types.ObjectId;

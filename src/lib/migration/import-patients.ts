@@ -353,9 +353,9 @@ async function main() {
         .select('processNumber')
     )?.processNumber ?? 0;
   const usedProcess = new Set<number>(
-    (await Patient.find().select('processNumber').lean()).map(
-      p => p.processNumber,
-    ),
+    (await Patient.find().select('processNumber').lean())
+      .map(p => p.processNumber)
+      .filter((n): n is number => typeof n === 'number'),
   );
 
   type Op =

@@ -21,8 +21,12 @@ import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import {
   recallIdSchema,
+  recallContactSchema,
   canApplyRecallAction,
+  canRegisterContact,
   RECALL_ACTION_TARGET,
+  RECALL_OUTCOME_LABEL,
+  RECALL_OUTCOME_TARGET,
   type RecallUserAction,
 } from '@/lib/validations/recalls';
 import Recall from '@/models/Recall';
@@ -104,6 +108,82 @@ async function applyRecallAction(
   } catch (err) {
     console.error(`[recalls] ${action}:`, err);
     return { error: 'Erro inesperado ao atualizar o recall.' };
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 6.ª ronda/09 (Victor, nov. 2026) — REGISTAR UM CONTACTO com o resultado
+// -----------------------------------------------------------------------------
+// Cada botão da fila (Agendado, Não atendeu, Retornar mais tarde, Pediu para
+// ligar depois, Deixou mensagem, Não tem interesse, Número errado) grava uma
+// entrada em Recall.contacts com o colaborador e a hora — é o registo de
+// produtividade. O estado do ciclo segue RECALL_OUTCOME_TARGET.
+export async function registerRecallContactAction(
+  _prev: RecallsActionState,
+  formData: FormData,
+): Promise<RecallsActionState> {
+  try {
+    const parsed = recallContactSchema.safeParse({
+      id: formData.get('id'),
+      outcome: formData.get('outcome'),
+      note: formData.get('note'),
+    });
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
+    }
+    const { id, outcome, note } = parsed.data;
+
+    const session = await auth();
+    if (
+      !session?.user?.id ||
+      !['admin', 'receptionist'].includes(session.user.role ?? '')
+    ) {
+      return { error: 'Sem permissões.' };
+    }
+    await dbConnect();
+
+    const recall = await Recall.findById(id);
+    if (!recall) return { error: 'Recall não encontrado.' };
+
+    const user = await User.findById(session.user.id)
+      .select('role status clinicIds')
+      .lean();
+    if (
+      !user ||
+      user.status !== 'active' ||
+      user.role !== session.user.role ||
+      !canOperateClinic(user, String(recall.clinicId))
+    ) {
+      return { error: 'Sem permissões nesta clínica.' };
+    }
+    if (!canRegisterContact(recall.status)) {
+      return { error: 'Este recall já está fechado — reabra-o primeiro.' };
+    }
+
+    const now = new Date();
+    recall.contacts.push({ at: now, userId: session.user.id, outcome, note });
+    recall.set('status', RECALL_OUTCOME_TARGET[outcome]);
+    recall.set('lastOutcome', outcome);
+    recall.set('contactAttempts', (recall.contactAttempts ?? 0) + 1);
+    recall.set('lastContactedAt', now);
+    await recall.save();
+
+    await logAudit({
+      userId: session.user.id,
+      action: 'update',
+      entityType: 'Recall',
+      entityId: String(recall._id),
+      patientId: String(recall.patientId),
+      clinicId: String(recall.clinicId),
+      summary: `Recall: contacto registado — ${RECALL_OUTCOME_LABEL[outcome]}`,
+      changedFields: ['status', 'contacts', 'contactAttempts', 'lastContactedAt'],
+    });
+
+    revalidatePath('/admin/recalls');
+    return { success: true };
+  } catch (err) {
+    console.error('[recalls] contacto:', err);
+    return { error: 'Erro inesperado ao registar o contacto.' };
   }
 }
 

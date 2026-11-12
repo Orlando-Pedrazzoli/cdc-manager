@@ -40,6 +40,7 @@ import { createVoidAdjustment } from '@/lib/commission-adjustments';
 import { cancelRecallForProcedure } from '@/lib/recalls';
 import { reverseStockForProcedure } from '@/lib/stock-consumption';
 import { emitCreditNoteFor, tryEmitInvoice } from '@/lib/moloni-emission';
+import { FINAL_CONSUMER_ADDRESS_THRESHOLD_CENTS } from '@/lib/validations/patient';
 import Invoice from '@/models/Invoice';
 import Procedure from '@/models/Procedure';
 import Patient from '@/models/Patient';
@@ -119,8 +120,26 @@ export async function checkoutAction(
 
     // E12: seguradora + nº de cartão da ficha → cabeçalho do documento
     const patientForInvoice = await Patient.findById(data.patientId)
-      .select('insurance')
+      .select('insurance address')
       .lean();
+
+    // 6.ª ronda/07 (Victor, nov. 2026): fatura sem NIF sai como Consumidor
+    // final; a partir de 1.000 € a lei exige nome e morada reais do
+    // adquirente — sem morada na ficha, a cobrança não avança.
+    if (
+      !data.nif &&
+      totalCents >= FINAL_CONSUMER_ADDRESS_THRESHOLD_CENTS &&
+      !(
+        patientForInvoice?.address?.street &&
+        patientForInvoice.address.postalCode &&
+        patientForInvoice.address.city
+      )
+    ) {
+      return {
+        error:
+          'Fatura de 1.000 € ou mais sem NIF: a lei exige o nome e a morada do paciente. Preencha a morada completa na ficha (ou indique o NIF) e volte a cobrar.',
+      };
+    }
     const insuranceSnapshot = {
       company: patientForInvoice?.insurance?.company ?? null,
       cardNumber: patientForInvoice?.insurance?.cardNumber ?? null,
@@ -271,6 +290,7 @@ export async function voidInvoiceAction(
       await mongooseSession.withTransaction(async () => {
         invoice.set('status', 'voided');
         invoice.set('voidedAt', now);
+        invoice.set('voidedByUserId', session.user.id);
         invoice.set('voidReason', data.reason);
         await invoice.save({ session: mongooseSession });
 

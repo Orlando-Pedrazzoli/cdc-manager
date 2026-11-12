@@ -21,9 +21,8 @@ import Appointment from '@/models/Appointment';
 import { getActiveClinics } from '@/models/Clinic';
 import { lisbonToUtc, todayLisbon } from '@/lib/availability';
 import {
-  LAB_WORK_TYPE_LABEL,
+  labWorkLabel,
   LAB_CASE_STATUS_LABEL,
-  type LabWorkType,
   type LabCaseStatus,
 } from '@/lib/domain';
 import { LabCaseToolbar } from '@/components/proteses/NewLabCaseModal';
@@ -313,7 +312,7 @@ export default async function ProtesesPage({
                     {c.labName}
                   </p>
                   <p style={{ margin: '2px 0 0', color: '#6A7186' }}>
-                    {LAB_WORK_TYPE_LABEL[c.workType as LabWorkType]}
+                    {labWorkLabel(c.workType, c.workDescription)}
                     {c.toothNotes ? ` · ${c.toothNotes}` : ''}
                     {c.shade ? ` · cor ${c.shade}` : ''}
                   </p>

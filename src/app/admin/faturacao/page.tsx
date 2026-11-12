@@ -21,6 +21,8 @@ import { dbConnect } from '@/lib/mongodb';
 import Link from 'next/link';
 import Invoice, { INVOICE_STATUS, type InvoiceStatus } from '@/models/Invoice';
 import Patient from '@/models/Patient';
+import User from '@/models/User';
+import AuditLog from '@/models/AuditLog';
 import { getActiveClinics } from '@/models/Clinic';
 import { defaultClinic } from '@/lib/branding';
 import { lisbonToUtc } from '@/lib/availability';
@@ -136,6 +138,40 @@ export default async function FaturacaoPage({
         .lean()
     : [];
   const patientById = new Map(patients.map(p => [String(p._id), p]));
+
+  // 6.ª ronda/11: utilizador de cada ação. Emissão = issuedByUserId;
+  // anulação = voidedByUserId (documentos anulados antes desta ronda não o
+  // têm — vai-se buscar ao registo de auditoria).
+  const voidedWithoutUser = invoices
+    .filter(i => i.status === 'voided' && !i.voidedByUserId)
+    .map(i => i._id);
+  const voidLogs = voidedWithoutUser.length
+    ? await AuditLog.find({
+        entityType: 'Invoice',
+        action: 'invoice-void',
+        entityId: { $in: voidedWithoutUser },
+      })
+        .select('entityId userId')
+        .lean()
+    : [];
+  const voidUserByInvoice = new Map(
+    voidLogs.map(l => [String(l.entityId), l.userId ? String(l.userId) : '']),
+  );
+  const voiderOf = (i: (typeof invoices)[number]): string | null =>
+    i.voidedByUserId
+      ? String(i.voidedByUserId)
+      : voidUserByInvoice.get(String(i._id)) || null;
+  const userIds = [
+    ...new Set(
+      invoices.flatMap(i => [String(i.issuedByUserId), voiderOf(i) ?? '']),
+    ),
+  ].filter(Boolean);
+  const users = userIds.length
+    ? await User.find({ _id: { $in: userIds } })
+        .select('name')
+        .lean()
+    : [];
+  const userName = new Map(users.map(u => [String(u._id), u.name]));
 
   // Totais do conjunto filtrado + repartição por estado (anuladas fora do
   // total cobrado — dinheiro devolvido não é receita)
@@ -322,6 +358,7 @@ export default async function FaturacaoPage({
                   'Data',
                   'Documento',
                   'Paciente',
+                  'Utilizador',
                   'Meio',
                   'Total',
                   'Estado',
@@ -329,7 +366,7 @@ export default async function FaturacaoPage({
                   <th
                     key={i}
                     style={{
-                      textAlign: i >= 4 ? 'right' : 'left',
+                      textAlign: i >= 5 ? 'right' : 'left',
                       padding: '10px 14px',
                       fontSize: '12px',
                       fontWeight: 700,
@@ -348,7 +385,7 @@ export default async function FaturacaoPage({
               {invoices.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     style={{
                       padding: '28px 14px',
                       textAlign: 'center',
@@ -400,6 +437,27 @@ export default async function FaturacaoPage({
                       }}
                     >
                       {p?.name ?? 'Paciente removido'}
+                    </td>
+                    <td
+                      style={{
+                        padding: '10px 14px',
+                        fontSize: '13px',
+                        color: '#454C63',
+                      }}
+                    >
+                      {userName.get(String(inv.issuedByUserId)) ?? '—'}
+                      {inv.status === 'voided' && (
+                        <span
+                          style={{
+                            display: 'block',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            color: '#B3261E',
+                          }}
+                        >
+                          Anulou: {userName.get(voiderOf(inv) ?? '') ?? '—'}
+                        </span>
+                      )}
                     </td>
                     <td
                       style={{

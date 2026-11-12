@@ -48,7 +48,7 @@ import Doctor from '@/models/Doctor';
 import TreatmentType from '@/models/TreatmentType';
 import RxRequest from '@/models/RxRequest';
 import LabCase from '@/models/LabCase';
-import { LAB_WORK_TYPE_LABEL, type LabWorkType } from '@/lib/domain';
+import { labWorkLabel } from '@/lib/domain';
 import { Cake, FlaskConical } from 'lucide-react';
 import { HojeStrip, type HojeItem } from '@/components/dashboard/HojeStrip';
 import {
@@ -361,7 +361,7 @@ export default async function AdminDashboardPage() {
       status: 'sent',
       dueDate: { $gte: dayStart, $lt: tomorrowEnd },
     })
-      .select('labName workType patientId dueDate clinicId')
+      .select('labName workType workDescription patientId dueDate clinicId')
       .sort({ dueDate: 1, labName: 1 })
       .lean(),
     // Meta mensal da clínica = soma dos objetivos dos médicos ativos. Sem
@@ -399,7 +399,7 @@ export default async function AdminDashboardPage() {
     if (isToday) g.today++;
     g.items.push({
       id: String(c._id),
-      work: LAB_WORK_TYPE_LABEL[c.workType as LabWorkType],
+      work: labWorkLabel(c.workType, c.workDescription),
       patient: labDuePatientById.get(String(c.patientId)) ?? '—',
       isToday,
     });

@@ -33,6 +33,7 @@ import {
   adjustmentsMatch,
 } from '@/lib/commission-accounting';
 import { ExportCsvButton } from '@/components/relatorios/ExportCsvButton';
+import { processLabel } from '@/lib/domain';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Remuneração detalhada' };
@@ -156,7 +157,7 @@ export default async function ComissoesDetalhePage({
     push(String(p.doctorId), {
       key: `p-${String(p._id)}`,
       date: (p.executedAt ?? p.createdAt) as Date,
-      processNumber: pat ? String(pat.processNumber) : '—',
+      processNumber: pat ? processLabel(pat.processNumber) : '—',
       patientName: pat?.name ?? '(paciente removido)',
       category: p.categorySnapshot ?? '—',
       description:
@@ -183,7 +184,7 @@ export default async function ComissoesDetalhePage({
     push(String(a.doctorId), {
       key: `a-${String(a._id)}`,
       date: a.effectiveAt as Date,
-      processNumber: pat ? String(pat.processNumber) : '—',
+      processNumber: pat ? processLabel(pat.processNumber) : '—',
       patientName: pat?.name ?? '(paciente removido)',
       category: a.categorySnapshot ?? '—',
       description: `ESTORNO — ${a.descriptionSnapshot}`,

@@ -119,7 +119,9 @@ const isObjectId = (v: string) => /^[0-9a-fA-F]{24}$/.test(v);
 // Transições válidas (única fonte)
 // -----------------------------------------------------------------------------
 const TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> = {
-  pending: ['confirmed', 'cancelled'],
+  // 6.ª ronda/06 (Victor, nov. 2026): o paciente que chega sem ter
+  // confirmado é "lançado" para o médico num clique (pendente → chegou)
+  pending: ['confirmed', 'checked-in', 'cancelled'],
   confirmed: ['checked-in', 'cancelled', 'no-show'],
   'checked-in': ['in-progress', 'no-show', 'cancelled'],
   'in-progress': ['completed'],
@@ -400,7 +402,7 @@ export async function createAppointmentAction(
     const dup = await findPatientByPhone(data.newPhone as string);
     if (dup) {
       return {
-        error: `Já existe uma ficha com este telemóvel: ${dup.name} (processo nº ${dup.processNumber}). Escolha-a na pesquisa ou marque "É outra pessoa" para criar uma nova.`,
+        error: `Já existe uma ficha com este telemóvel: ${dup.name} (${dup.processNumber != null ? `processo nº ${dup.processNumber}` : 'pré-marcação, ainda sem n.º'}). Escolha-a na pesquisa ou marque "É outra pessoa" para criar uma nova.`,
       };
     }
   }

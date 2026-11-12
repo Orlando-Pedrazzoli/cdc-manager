@@ -129,7 +129,7 @@ export function PatientSearchResult({
               flexShrink: 0,
             }}
           >
-            Proc. {hit.processNumber}
+            {hit.processNumber ? `Proc. ${hit.processNumber}` : 'Pré-marcação'}
           </span>
         </span>
         <span

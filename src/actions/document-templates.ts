@@ -37,6 +37,7 @@ import {
 } from '@/lib/document-merge';
 import { finalizeIssuedDocument } from '@/lib/signing';
 import User from '@/models/User';
+import { processLabel } from '@/lib/domain';
 
 const OID = /^[0-9a-fA-F]{24}$/;
 
@@ -270,7 +271,7 @@ async function buildValues(params: {
     'paciente.nascimento': patient.birthDate
       ? shortDatePt(patient.birthDate)
       : null,
-    'paciente.processo': String(patient.processNumber),
+    'paciente.processo': processLabel(patient.processNumber),
     'medico.nome': doctor?.name ?? null,
     'medico.cedula': doctor?.licenseNumber ?? null,
     'clinica.nome': clinic?.name ?? null,

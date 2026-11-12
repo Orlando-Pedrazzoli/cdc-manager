@@ -50,6 +50,7 @@ async function requireStaff() {
 }
 
 const dateFmt = new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Lisbon' });
+const dayKeyFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' });
 const dateTimeFmt = new Intl.DateTimeFormat('pt-PT', {
   weekday: 'short',
   day: '2-digit',
@@ -131,7 +132,7 @@ export type PatientQuickView = {
   lastVisitLabel: string | null;
   /** Faltas e cancelamentos em cima da hora (Victor, 12/11/2026) */
   attendance: PatientAttendance;
-  upcoming: { id: string; whenLabel: string; doctorName: string; treatmentName: string; clinicLabel: string; status: string }[];
+  upcoming: { id: string; whenLabel: string; doctorName: string; treatmentName: string; clinicLabel: string; status: string; isToday: boolean }[];
 };
 
 export async function getPatientQuickViewAction(patientId: string): Promise<PatientQuickView | { error: string }> {
@@ -148,7 +149,7 @@ export async function getPatientQuickViewAction(patientId: string): Promise<Pati
     ClinicalRecord.findOne({ patientId }).select('allergies questionnaire.completedAt questionnaire.data').lean(),
     Invoice.find({ patientId, status: { $ne: 'voided' } }).select('totalCents paidCents').lean(),
     Procedure.find({ patientId, status: 'completed', invoiceId: null }).select('priceCents').lean(),
-    Appointment.find({ patientId, startAt: { $gte: now }, status: { $in: ['pending', 'confirmed', 'checked-in'] } })
+    Appointment.find({ patientId, startAt: { $gte: new Date(now.getTime() - 12 * 60 * 60 * 1000) }, status: { $in: ['pending', 'confirmed', 'checked-in'] } })
       .sort({ startAt: 1 })
       .limit(5)
       .select('startAt doctorId treatmentTypeId clinicId status')
@@ -180,7 +181,7 @@ export async function getPatientQuickViewAction(patientId: string): Promise<Pati
   return {
     id: patientId,
     name: patient.name,
-    processNumber: patient.processNumber,
+    processNumber: patient.processNumber ?? 'pré-marcação',
     age,
     birthDateLabel: patient.birthDate ? dateFmt.format(new Date(patient.birthDate)) : null,
     phone: (patient.phone as string | null) ?? null,
@@ -201,6 +202,8 @@ export async function getPatientQuickViewAction(patientId: string): Promise<Pati
       treatmentName: treatmentName.get(String(a.treatmentTypeId)) ?? '—',
       clinicLabel: clinicName.get(String(a.clinicId)) ?? '',
       status: a.status as string,
+      // 6.ª ronda/06: marcação de hoje → botão "Chegou — enviar ao médico"
+      isToday: dayKeyFmt.format(a.startAt as Date) === dayKeyFmt.format(now),
     })),
   };
 }

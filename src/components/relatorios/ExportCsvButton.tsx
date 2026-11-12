@@ -21,10 +21,13 @@ export function ExportCsvButton({
   filename,
   headers,
   rows,
+  label = 'Exportar CSV',
 }: {
   filename: string;
   headers: string[];
   rows: string[][];
+  /** Texto do botão (o ficheiro é sempre .csv em ";", que o Excel abre) */
+  label?: string;
 }) {
   const download = () => {
     const lines = [headers, ...rows]
@@ -63,7 +66,7 @@ export function ExportCsvButton({
       }}
     >
       <Download size={14} />
-      Exportar CSV
+      {label}
     </button>
   );
 }

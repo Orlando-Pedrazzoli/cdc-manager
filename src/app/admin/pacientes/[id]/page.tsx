@@ -47,6 +47,7 @@ import ClinicalRecord from '@/models/ClinicalRecord';
 import { AnamnesisQuestionnaire } from '@/components/clinico/AnamnesisQuestionnaire';
 import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
 import type { QuestionnaireData } from '@/lib/anamnesis';
+import { processLabel } from '@/lib/domain';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,7 +123,7 @@ export default async function PatientPage({
 
   const header: PatientHeaderData = {
     id,
-    processNumber: patient.processNumber,
+    processNumber: patient.processNumber ?? null,
     name: patient.name,
     status: patient.status,
     birthDate: patient.birthDate ? patient.birthDate.toISOString() : null,
@@ -233,6 +234,10 @@ export default async function PatientPage({
     hasConsentData: Boolean(patient.consents?.dataProcessingAt),
     hasConsentReminders: Boolean(patient.consents?.remindersAt),
     hasConsentMarketing: Boolean(patient.consents?.marketingAt),
+    noNif: Boolean(patient.declared?.noNif),
+    noSnsNumber: Boolean(patient.declared?.noSnsNumber),
+    noPhone: Boolean(patient.declared?.noPhone),
+    noEmail: Boolean(patient.declared?.noEmail),
   };
 
   return (
@@ -337,6 +342,7 @@ export default async function PatientPage({
             patientId={id}
             initial={initial}
             doctors={doctors}
+            completing={Boolean(patient.provisional)}
           />
         </div>
       ) : tab === 'documentos' ? (
@@ -367,7 +373,7 @@ export default async function PatientPage({
         >
           <PatientLabCases
             patientId={id}
-            patientLabel={`${patient.name} · ${patient.processNumber}`}
+            patientLabel={`${patient.name} · ${processLabel(patient.processNumber)}`}
             mode='staff'
           />
         </div>

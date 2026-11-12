@@ -14,9 +14,8 @@ import Supplier from '@/models/Supplier';
 import Doctor from '@/models/Doctor';
 import { getActiveClinics } from '@/models/Clinic';
 import {
-  LAB_WORK_TYPE_LABEL,
+  labWorkLabel,
   LAB_CASE_STATUS_LABEL,
-  type LabWorkType,
   type LabCaseStatus,
 } from '@/lib/domain';
 import { LabCaseToolbar } from '@/components/proteses/NewLabCaseModal';
@@ -146,7 +145,7 @@ export async function PatientLabCases({
                 <tr key={String(c._id)}>
                   <td style={td}>
                     <div style={{ fontWeight: 600 }}>
-                      {LAB_WORK_TYPE_LABEL[c.workType as LabWorkType]}
+                      {labWorkLabel(c.workType, c.workDescription)}
                     </div>
                     <div style={{ fontSize: '12px', color: '#6A7186' }}>
                       {[

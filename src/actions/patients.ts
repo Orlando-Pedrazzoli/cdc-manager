@@ -43,9 +43,13 @@ import { createActivationCode } from '@/lib/activation';
 import { sendActivationEmail } from '@/lib/resend';
 import { logAudit } from '@/lib/audit';
 import { finalizeGdprConsent } from '@/lib/signing';
+import { createGdprSignatureRequestAction } from '@/actions/signature-requests';
+import { processLabel } from '@/lib/domain';
 import {
   createPatientSchema,
   updatePatientSchema,
+  missingRequiredFields,
+  missingRequiredMessage,
   type CreatePatientInput,
 } from '@/lib/validations/patient';
 import {
@@ -63,7 +67,10 @@ export type PatientFormState =
   | {
       success: true;
       patientId: string;
-      processNumber: number;
+      /** null só numa pré-marcação ainda por completar */
+      processNumber: number | null;
+      /** 6.ª ronda/07: consentimento RGPD enviado para o tablet da clínica */
+      gdprSentToTablet?: boolean;
       /** Aviso não-bloqueante (ex.: telefone já existe noutra ficha) */
       warning?: string;
       /** Código de ativação para envio manual quando o email falhou */
@@ -98,7 +105,8 @@ async function requireStaff() {
 // Nº de processo sequencial (ver estratégia no cabeçalho)
 // -----------------------------------------------------------------------------
 async function nextProcessNumber(): Promise<number> {
-  const last = await Patient.findOne()
+  // 6.ª ronda/01: as pré-marcações não têm número (null) — ficam de fora
+  const last = await Patient.findOne({ processNumber: { $ne: null } })
     .sort({ processNumber: -1 })
     .select('processNumber');
   return (last?.processNumber ?? 0) + 1;
@@ -206,6 +214,10 @@ export async function createPatientAction(
   }
   const data: CreatePatientInput = parsed.data;
 
+  // 6.ª ronda/07: a ficha só é guardada com os obrigatórios preenchidos
+  const missing = missingRequiredFields(data);
+  if (missing.length > 0) return { error: missingRequiredMessage(missing) };
+
   if (data.sendActivationInvite && !data.email) {
     return {
       error: 'Para enviar o convite do portal é necessário indicar o email.',
@@ -222,7 +234,7 @@ export async function createPatientAction(
     }).select('processNumber name');
     if (dupNif) {
       return {
-        error: `Já existe um paciente com este NIF: ${dupNif.name} (processo nº ${dupNif.processNumber}).`,
+        error: `Já existe um paciente com este NIF: ${dupNif.name} (processo nº ${processLabel(dupNif.processNumber)}).`,
       };
     }
   }
@@ -234,7 +246,7 @@ export async function createPatientAction(
       status: { $ne: 'anonymized' },
     }).select('processNumber name');
     if (dupPhone) {
-      warning = `Atenção: o telefone já existe na ficha de ${dupPhone.name} (processo nº ${dupPhone.processNumber}).`;
+      warning = `Atenção: o telefone já existe na ficha de ${dupPhone.name} (processo nº ${processLabel(dupPhone.processNumber)}).`;
     }
   }
 
@@ -266,6 +278,12 @@ export async function createPatientAction(
     preferredChannel: data.preferredChannel,
     preferredDoctorId: data.preferredDoctorId,
     notes: data.notes,
+    declared: {
+      noNif: !data.nif && data.noNif,
+      noSnsNumber: !data.snsNumber && data.noSnsNumber,
+      noPhone: !data.phone && data.noPhone,
+      noEmail: !data.email && data.noEmail,
+    },
     consents: {
       dataProcessingAt: data.consentDataProcessing ? now : null,
       remindersAt: data.consentReminders ? now : null,
@@ -321,14 +339,44 @@ export async function createPatientAction(
     }
   }
 
+  // 6.ª ronda/07: o consentimento RGPD segue logo para o tablet da clínica
+  const gdpr = await sendGdprToTablet(
+    patient._id.toString(),
+    data.gdprTabletClinicId,
+  );
+  if (gdpr.warning) warning = warning ? `${warning} ${gdpr.warning}` : gdpr.warning;
+
   revalidatePath('/admin/pacientes');
   return {
     success: true,
     patientId: patient._id.toString(),
-    processNumber: patient.processNumber,
+    processNumber: patient.processNumber ?? null,
+    gdprSentToTablet: gdpr.sent,
     warning,
     manualCode,
   };
+}
+
+// -----------------------------------------------------------------------------
+// 6.ª ronda/07 — RGPD para o tablet ao criar a ficha
+// -----------------------------------------------------------------------------
+// "Ao criar a ficha, o consentimento vai automaticamente para o tablet. O
+// paciente assina e o documento fica no separador Documentos." Reutiliza o
+// pedido de assinatura da 3.ª reunião (createGdprSignatureRequestAction);
+// uma falha aqui nunca desfaz a criação da ficha — vira aviso.
+async function sendGdprToTablet(
+  patientId: string,
+  clinicId: string | null,
+): Promise<{ sent: boolean; warning?: string }> {
+  if (!clinicId) return { sent: false };
+  const res = await createGdprSignatureRequestAction({ patientId, clinicId });
+  if (res.error) {
+    return {
+      sent: false,
+      warning: `O consentimento RGPD não seguiu para o tablet (${res.error}) — envie-o pelo botão RGPD da ficha.`,
+    };
+  }
+  return { sent: true };
 }
 
 // -----------------------------------------------------------------------------
@@ -372,9 +420,17 @@ export async function updatePatientAction(
     }).select('processNumber name');
     if (dupNif) {
       return {
-        error: `Já existe um paciente com este NIF: ${dupNif.name} (processo nº ${dupNif.processNumber}).`,
+        error: `Já existe um paciente com este NIF: ${dupNif.name} (processo nº ${processLabel(dupNif.processNumber)}).`,
       };
     }
+  }
+
+  // 6.ª ronda/07: completar uma pré-marcação é criar a ficha — os campos
+  // obrigatórios aplicam-se. Fichas já existentes (migradas do Dentoral com
+  // dados em falta) continuam a poder ser corrigidas campo a campo.
+  if (patient.provisional) {
+    const missing = missingRequiredFields(data);
+    if (missing.length > 0) return { error: missingRequiredMessage(missing) };
   }
 
   const now = new Date();
@@ -412,6 +468,21 @@ export async function updatePatientAction(
       changed.push(path);
     }
   }
+  // 6.ª ronda/07: "não indica NIF" / "não tem" — só vale com o campo vazio
+  const declaredNext: [keyof NonNullable<typeof patient.declared>, unknown, unknown][] = [
+    ['noNif', data.nif, data.noNif],
+    ['noSnsNumber', data.snsNumber, data.noSnsNumber],
+    ['noPhone', data.phone, data.noPhone],
+    ['noEmail', data.email, data.noEmail],
+  ];
+  for (const [key, fieldValue, flag] of declaredNext) {
+    if (fieldValue === undefined) continue; // campo não veio no pedido
+    const next = !fieldValue && Boolean(flag);
+    if (next !== Boolean(patient.declared?.[key])) {
+      $set[`declared.${key}`] = next;
+      changed.push(`declared.${key}`);
+    }
+  }
   // Consents: checkbox marcada preenche a data SE ainda não havia; desmarcada
   // NÃO apaga (a revogação RGPD é um fluxo próprio, com registo explícito)
   if (data.consentDataProcessing && !patient.consents?.dataProcessingAt) {
@@ -445,7 +516,8 @@ export async function updatePatientAction(
   }
 
   // 5.ª ronda/13: gravar a ficha completa tira a marca de pré-marcação
-  if (patient.provisional) {
+  const completing = Boolean(patient.provisional);
+  if (completing) {
     $set['provisional'] = false;
     changed.push('provisional');
   }
@@ -454,24 +526,69 @@ export async function updatePatientAction(
     return {
       success: true,
       patientId,
-      processNumber: patient.processNumber,
+      processNumber: patient.processNumber ?? null,
     };
   }
 
-  await Patient.updateOne({ _id: patient._id }, { $set });
+  // 6.ª ronda/01: é AQUI que a pré-marcação recebe o nº de processo (com o
+  // mesmo retry otimista da criação — duas receções em simultâneo)
+  let processNumber: number | null = patient.processNumber ?? null;
+  if (completing && processNumber == null) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const candidate = await nextProcessNumber();
+      try {
+        await Patient.updateOne(
+          { _id: patient._id },
+          { $set: { ...$set, processNumber: candidate } },
+        );
+        processNumber = candidate;
+        changed.push('processNumber');
+        break;
+      } catch (err) {
+        if (isDuplicateKeyError(err) && attempt < 2) continue;
+        console.error('[patients] atribuição do nº de processo falhou:', err);
+        return {
+          error: 'Não foi possível atribuir o n.º de processo. Tente novamente.',
+        };
+      }
+    }
+  } else {
+    await Patient.updateOne({ _id: patient._id }, { $set });
+  }
   await logAudit({
     userId: staff.id,
     action: 'update',
     entityType: 'Patient',
     entityId: patientId,
     patientId,
-    summary: 'Ficha de paciente atualizada',
+    summary:
+      completing && processNumber != null
+        ? `Ficha completada (processo nº ${processNumber})`
+        : 'Ficha de paciente atualizada',
     changedFields: changed,
   });
 
+  // 6.ª ronda/07: ficha acabada de completar → RGPD para o tablet
+  let gdprWarning: string | undefined;
+  let gdprSent = false;
+  if (completing && !patient.consents?.gdprSignedAt) {
+    const gdpr = await sendGdprToTablet(
+      patientId,
+      data.gdprTabletClinicId ?? null,
+    );
+    gdprWarning = gdpr.warning;
+    gdprSent = gdpr.sent;
+  }
+
   revalidatePath('/admin/pacientes');
   revalidatePath(`/admin/pacientes/${patientId}`);
-  return { success: true, patientId, processNumber: patient.processNumber };
+  return {
+    success: true,
+    patientId,
+    processNumber,
+    gdprSentToTablet: gdprSent,
+    warning: gdprWarning,
+  };
 }
 
 // -----------------------------------------------------------------------------

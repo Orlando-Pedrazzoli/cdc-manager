@@ -114,7 +114,7 @@ export function OdontogramFinder({
                       {r.name}
                     </span>
                     <span style={{ display: 'block', fontSize: '12px', color: '#6A7186' }}>
-                      Proc. {r.processNumber}
+                      {r.processNumber != null ? `Proc. ${r.processNumber}` : 'Pré-marcação'}
                       {r.birth ? ` · nasc. ${r.birth}` : ''}
                     </span>
                   </span>

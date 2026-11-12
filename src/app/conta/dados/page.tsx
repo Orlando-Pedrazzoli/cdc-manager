@@ -14,6 +14,7 @@ import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import { getActiveClinics } from '@/models/Clinic';
+import { processLabel } from '@/lib/domain';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Os meus dados' };
@@ -155,7 +156,7 @@ export default async function MyDataPage() {
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <Field label='Nome' value={patient.name} />
-          <Field label='Nº de processo' value={String(patient.processNumber)} />
+          <Field label='Nº de processo' value={processLabel(patient.processNumber)} />
           <Field
             label='Data de nascimento'
             value={lisbonDate(patient.birthDate)}

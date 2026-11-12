@@ -23,6 +23,10 @@ import { getActiveClinics } from '@/models/Clinic';
 import { defaultClinic } from '@/lib/branding';
 import { RECALL_STATUS_LABEL } from '@/lib/labels';
 import { RecallActions } from '@/components/recalls/RecallActions';
+import { RecallContactLog } from '@/components/recalls/RecallContactLog';
+import { ExportCsvButton } from '@/components/relatorios/ExportCsvButton';
+import { RECALL_OUTCOME_LABEL } from '@/lib/validations/recalls';
+import { processLabel } from '@/lib/domain';
 import { Badge, type BadgeVariant } from '@/components/ui/Badge';
 
 export const dynamic = 'force-dynamic';
@@ -54,6 +58,9 @@ interface Row {
   dueAt: Date;
   contactAttempts: number;
   lastContactedAt: Date | null;
+  lastOutcome: RecallDoc['lastOutcome'];
+  lastNote: string | null;
+  patientProcess: string;
   patientName: string;
   patientPhone: string | null;
   patientId: string;
@@ -186,6 +193,13 @@ function RecallSection({
                       }`}
                     {r.lastContactedAt &&
                       ` (última: ${lisbonDate(r.lastContactedAt)})`}
+                    {r.lastOutcome && (
+                      <strong style={{ color: '#454C63' }}>
+                        {' '}
+                        · {RECALL_OUTCOME_LABEL[r.lastOutcome]}
+                        {r.lastNote ? ` — ${r.lastNote}` : ''}
+                      </strong>
+                    )}
                   </p>
                 </div>
 
@@ -232,9 +246,15 @@ function RecallSection({
 export default async function RecallsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ clinic?: string }>;
+  searchParams: Promise<{
+    clinic?: string;
+    vista?: string;
+    de?: string;
+    ate?: string;
+    colab?: string;
+  }>;
 }) {
-  const { clinic: clinicParam } = await searchParams;
+  const { clinic: clinicParam, vista, de, ate, colab } = await searchParams;
   const session = await auth();
   if (!session?.user) return null;
 
@@ -291,7 +311,7 @@ export default async function RecallsPage({
   const [patients, doctors, treatments] = await Promise.all([
     patientIds.length
       ? Patient.find({ _id: { $in: patientIds } })
-          .select('name phone')
+          .select('name phone processNumber')
           .lean()
       : [],
     doctorIds.length
@@ -317,6 +337,11 @@ export default async function RecallsPage({
       dueAt: r.dueAt as Date,
       contactAttempts: r.contactAttempts ?? 0,
       lastContactedAt: (r.lastContactedAt as Date | null) ?? null,
+      lastOutcome: r.lastOutcome ?? null,
+      lastNote: r.contacts?.length
+        ? (r.contacts[r.contacts.length - 1].note ?? null)
+        : null,
+      patientProcess: p ? processLabel(p.processNumber) : '—',
       patientName: p?.name ?? 'Paciente removido',
       patientPhone: p?.phone ?? null,
       patientId: String(r.patientId),
@@ -329,6 +354,59 @@ export default async function RecallsPage({
   };
 
   const now = nowDate.getTime();
+
+  // 6.ª ronda/09: registo de contactos / produtividade — só a gestão
+  const isAdmin = session.user.role === 'admin';
+  const showLog = isAdmin && vista === 'registo';
+
+  // Exportação da fila para Excel (o que está no ecrã, todas as secções)
+  const queueHeaders = [
+    'Secção',
+    'Paciente',
+    'N.º processo',
+    'Telemóvel',
+    'Ato do recall',
+    'Médico',
+    'Data do recall',
+    'Estado',
+    'Tentativas',
+    'Último contacto',
+    'Último resultado',
+    'Nota',
+  ];
+  const queueRows = (
+    [
+      ['Por contactar', due],
+      ['Em acompanhamento', contacted],
+      ['Agendados', scheduled],
+      ['Fechados recentes', closed],
+    ] as const
+  ).flatMap(([section, list]) =>
+    list.map(toRow).map(r => [
+      section,
+      r.patientName,
+      r.patientProcess,
+      r.patientPhone ?? '',
+      r.treatmentName,
+      r.doctorName ?? '',
+      lisbonDate(r.dueAt),
+      RECALL_STATUS_LABEL[r.status],
+      String(r.contactAttempts),
+      r.lastContactedAt ? lisbonDate(r.lastContactedAt) : '',
+      r.lastOutcome ? RECALL_OUTCOME_LABEL[r.lastOutcome] : '',
+      r.lastNote ?? '',
+    ]),
+  );
+  const viewTab = (active: boolean): React.CSSProperties => ({
+    padding: '7px 14px',
+    borderRadius: '8px',
+    fontSize: '13px',
+    fontWeight: 700,
+    textDecoration: 'none',
+    backgroundColor: active ? '#1B2A6B' : '#FFFFFF',
+    color: active ? '#FFFFFF' : '#454C63',
+    border: active ? '1px solid #1B2A6B' : '1px solid #E4E8F2',
+  });
 
   return (
     <div
@@ -372,7 +450,7 @@ export default async function RecallsPage({
             return (
               <Link
                 key={c.slug}
-                href={`/admin/recalls?clinic=${c.slug}`}
+                href={`/admin/recalls?clinic=${c.slug}${showLog ? '&vista=registo' : ''}`}
                 style={{
                   padding: '7px 14px',
                   borderRadius: '999px',
@@ -391,6 +469,52 @@ export default async function RecallsPage({
         </div>
       </div>
 
+      {/* Vistas: fila de contacto · registo de contactos (gestão) */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '8px',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}
+      >
+        <Link
+          href={`/admin/recalls?clinic=${clinic.slug}`}
+          style={viewTab(!showLog)}
+        >
+          Fila de contacto
+        </Link>
+        {isAdmin && (
+          <Link
+            href={`/admin/recalls?clinic=${clinic.slug}&vista=registo`}
+            style={viewTab(showLog)}
+          >
+            Registo e produtividade
+          </Link>
+        )}
+        {!showLog && (
+          <div style={{ marginLeft: 'auto' }}>
+            <ExportCsvButton
+              label='Exportar para Excel'
+              filename={`recalls-${clinic.slug}-${nowDate.toISOString().slice(0, 10)}.csv`}
+              headers={queueHeaders}
+              rows={queueRows}
+            />
+          </div>
+        )}
+      </div>
+
+      {showLog ? (
+        <RecallContactLog
+          clinicId={String(clinic._id)}
+          clinicSlug={clinic.slug}
+          clinicName={clinic.name}
+          from={de}
+          to={ate}
+          collaboratorId={colab}
+        />
+      ) : (
+        <>
       <RecallSection
         title='Por contactar'
         subtitle='data chegou — mais atrasados primeiro'
@@ -422,6 +546,8 @@ export default async function RecallsPage({
         emptyText='Nada fechado recentemente.'
         now={now}
       />
+        </>
+      )}
     </div>
   );
 }

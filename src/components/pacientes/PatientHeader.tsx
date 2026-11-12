@@ -41,7 +41,7 @@ import { GdprConsentButton } from '@/components/pacientes/GdprConsentButton';
 
 export interface PatientHeaderData {
   id: string;
-  processNumber: number;
+  processNumber: number | null;
   name: string;
   status: string;
   birthDate: string | null; // ISO
@@ -340,7 +340,13 @@ export function PatientHeader({ patient }: { patient: PatientHeaderData }) {
             )}
           </div>
           <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
-            Processo nº <strong>{patient.processNumber}</strong>
+            {patient.processNumber != null ? (
+              <>
+                Processo nº <strong>{patient.processNumber}</strong>
+              </>
+            ) : (
+              <strong>Sem n.º de processo (pré-marcação)</strong>
+            )}
             {age !== null ? ` · ${age} anos` : ''}
             {patient.portalStatus === 'active'
               ? ' · Portal ativo'

@@ -57,6 +57,9 @@ const LabCaseSchema = new Schema(
     },
     labName: { type: String, required: true, trim: true, maxlength: 120 },
     workType: { type: String, enum: LAB_WORK_TYPES, required: true },
+    // 6.ª ronda/08 (Victor, nov. 2026): "Outro trabalho" pede a descrição do
+    // trabalho — obrigatória nesse tipo, ignorada nos restantes.
+    workDescription: { type: String, trim: true, maxlength: 120, default: null },
     // Dentes/zona em texto livre ("14–16 ponte", "arcada sup.") — as
     // próteses abrangem grupos e arcadas, FDI estrito seria camisa de força
     toothNotes: { type: String, trim: true, maxlength: 60, default: null },

@@ -26,6 +26,7 @@ import Doctor from '@/models/Doctor';
 import { lisbonToUtc } from '@/lib/availability';
 import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/domain';
 import { INVOICE_STATUS_LABEL } from '@/lib/labels';
+import { processLabel } from '@/lib/domain';
 
 export type ListingKey =
   | 'aniversarios'
@@ -206,7 +207,7 @@ export async function runListing(
           const b = new Date(x.birthDate as Date);
           return {
             dia: b.getUTCDate(),
-            processo: String(x.processNumber),
+            processo: processLabel(x.processNumber),
             nome: x.name,
             idade: ageOf(
               b,
@@ -261,7 +262,7 @@ export async function runListing(
               )
             : null;
           return {
-            processo: String(x.processNumber),
+            processo: processLabel(x.processNumber),
             nome: x.name,
             idade: age,
             ultima: l ? ptDate(l.last) : 'nunca',
@@ -410,7 +411,7 @@ export async function runListing(
       const rows = procs.map(x => {
         const pt = pBy.get(String(x.patientId));
         return {
-          processo: pt ? String(pt.processNumber) : '—',
+          processo: pt ? processLabel(pt.processNumber) : '—',
           paciente: pt?.name ?? '(removido)',
           data: x.executedAt ? ptDate(x.executedAt) : '',
           categoria: x.categorySnapshot ?? '—',
@@ -540,7 +541,7 @@ export async function runListing(
           documento:
             i.moloniDocumentNumber ??
             `Interno #${String(i._id).slice(-6).toUpperCase()}`,
-          processo: pt ? String(pt.processNumber) : '—',
+          processo: pt ? processLabel(pt.processNumber) : '—',
           paciente: pt?.name ?? '(removido)',
           nif: i.nifSnapshot ?? 'Cons. final',
           meio:
@@ -600,7 +601,7 @@ export async function runListing(
         const k = String(x.patientId);
         const pt = pBy.get(k);
         const g = grouped.get(k) ?? {
-          processo: pt ? String(pt.processNumber) : '—',
+          processo: pt ? processLabel(pt.processNumber) : '—',
           paciente: pt?.name ?? '(removido)',
           telefone: pt?.phone ?? '',
           n: 0,
@@ -699,7 +700,7 @@ export async function runListing(
             documento:
               i.moloniDocumentNumber ??
               `Interno #${String(i._id).slice(-6).toUpperCase()}`,
-            processo: pt ? String(pt.processNumber) : '—',
+            processo: pt ? processLabel(pt.processNumber) : '—',
             paciente: pt?.name ?? '(removido)',
             telefone: pt?.phone ?? '',
             total: i.totalCents,
@@ -760,7 +761,7 @@ export async function runListing(
       const rows = plans.map(x => ({
         data: ptDate(x.createdAt as Date),
         processo: pBy.get(String(x.patientId))
-          ? String(pBy.get(String(x.patientId))!.processNumber)
+          ? processLabel(pBy.get(String(x.patientId))!.processNumber)
           : '—',
         paciente: pBy.get(String(x.patientId))?.name ?? '(removido)',
         titulo: x.title,

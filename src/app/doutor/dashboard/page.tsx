@@ -113,6 +113,8 @@ type DayAppointment = {
   anamnesis: string;
   clinicName: string;
   notes: string | null;
+  /** 6.ª ronda/06: hora a que a receção "lançou" o paciente (ms) */
+  checkedInAtMs: number | null;
 };
 
 function Badge({
@@ -347,6 +349,7 @@ export default async function DoctorDashboardPage() {
       anamnesis: anamnesisByPatient.get(String(a.patientId)) ?? 'missing',
       clinicName: clinic?.name ?? '—',
       notes: (a.note as string | null) ?? null,
+      checkedInAtMs: a.checkedInAt ? new Date(a.checkedInAt).getTime() : null,
     };
   });
 
@@ -364,6 +367,18 @@ export default async function DoctorDashboardPage() {
         a.endMin > nowMin,
     ) ??
     null;
+
+  // 6.ª ronda/06 (Victor, nov. 2026): pacientes que a receção já "lançou"
+  // (Chegou — enviar ao médico), por ordem de chegada. O médico "puxa" o
+  // paciente daqui: abre a consulta, que pede a anamnese se faltar.
+  const waiting = day
+    .filter(a => a.status === 'checked-in')
+    .sort(
+      (a, b) =>
+        (a.checkedInAtMs ?? Number.MAX_SAFE_INTEGER) -
+        (b.checkedInAtMs ?? Number.MAX_SAFE_INTEGER),
+    );
+  const nowMs = new Date().getTime();
 
   const active = day.filter(a => !['cancelled', 'no-show'].includes(a.status));
   const completedCount = day.filter(a => a.status === 'completed').length;
@@ -440,7 +455,8 @@ export default async function DoctorDashboardPage() {
   return (
     <div className='cdc-dash'>
       {/* A página vive aberta entre consultas — dados frescos sem F5 */}
-      <AutoRefresh intervalMs={90_000} />
+      {/* 6.ª ronda/06: 20 s — o paciente lançado pela receção aparece logo */}
+      <AutoRefresh intervalMs={20_000} />
       {/* Cabeçalho */}
       <div>
         <h1
@@ -463,6 +479,98 @@ export default async function DoctorDashboardPage() {
           {dateLabel}
         </p>
       </div>
+
+      {/* 6.ª ronda/06: sala de espera — quem a receção já enviou */}
+      {waiting.length > 0 && (
+        <div
+          style={{
+            backgroundColor: '#F1FBF5',
+            border: '1.5px solid #8FD3AC',
+            borderRadius: '14px',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              padding: '12px 20px',
+              borderBottom: '1px solid #CDEBD9',
+              fontSize: '14px',
+              fontWeight: 700,
+              color: '#0F7B4D',
+            }}
+          >
+            Na sala de espera · {waiting.length}
+          </div>
+          {waiting.map(w => {
+            const waitedMin =
+              w.checkedInAtMs != null
+                ? Math.max(0, Math.round((nowMs - w.checkedInAtMs) / 60000))
+                : null;
+            return (
+              <div
+                key={w.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                  flexWrap: 'wrap',
+                  padding: '12px 20px',
+                  borderBottom: '1px solid #E2F3E9',
+                }}
+              >
+                <div>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: '16px',
+                      fontWeight: 700,
+                      color: '#1B2A6B',
+                    }}
+                  >
+                    {w.patientLabel}
+                    {w.isUrgent && (
+                      <span
+                        style={{
+                          marginLeft: 8,
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          color: '#B3261E',
+                        }}
+                      >
+                        URGÊNCIA
+                      </span>
+                    )}
+                  </p>
+                  <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#3D4257' }}>
+                    Marcado para as {minToHhmm(w.startMin)} · {w.treatmentName}{' '}
+                    · {w.clinicName}
+                    {waitedMin != null &&
+                      ` · à espera há ${waitedMin} min`}
+                    {(w.anamnesis === 'missing' || w.anamnesis === 'expired') &&
+                      ' · anamnese por preencher'}
+                  </p>
+                </div>
+                <Link
+                  href={`/doutor/consulta/${w.id}`}
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: '10px',
+                    backgroundColor: '#0F7B4D',
+                    color: '#FFFFFF',
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Chamar paciente
+                </Link>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Destaque: consulta em curso / próximo paciente */}
       {highlight && (

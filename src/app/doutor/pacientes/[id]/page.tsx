@@ -40,6 +40,7 @@ import { IssueDocumentToolbar } from '@/components/documentos/IssueDocumentToolb
 import { DoctorAnamnesisPanel } from '@/components/clinico/DoctorAnamnesisPanel';
 import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
 import { anamnesisStatus, type QuestionnaireData } from '@/lib/anamnesis';
+import { processLabel } from '@/lib/domain';
 
 export const dynamic = 'force-dynamic';
 
@@ -382,7 +383,7 @@ export default async function DoctorPatientPage({
         >
           <PatientLabCases
             patientId={id}
-            patientLabel={`${patient.name} · ${patient.processNumber}`}
+            patientLabel={`${patient.name} · ${processLabel(patient.processNumber)}`}
             mode='doctor'
           />
         </div>

@@ -7,6 +7,12 @@
 // checkout no modal. Em baixo, as cobranças de hoje da clínica.
 // Servida pelo índice {clinicId, status, invoiceId, executedAt} criado
 // no arranque do Sprint 3 — a fila nasceu antes do ecrã.
+//
+// 6.ª ronda/10 (Victor, nov. 2026): FILTROS na fila — ano, mês, dia (data em
+// que o ato foi feito), paciente, tratamento, médico e laboratório (pacientes
+// com trabalho pedido a esse laboratório nesta clínica). Tudo em GET, para o
+// endereço se poder guardar/partilhar. Sem filtros, a fila mostra só os
+// primeiros MAX_CARDS pacientes (eram ~950 cartões de uma vez).
 // =============================================================================
 
 import { auth } from '@/lib/auth';
@@ -16,6 +22,9 @@ import Procedure from '@/models/Procedure';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
 import Invoice from '@/models/Invoice';
+import LabCase from '@/models/LabCase';
+import Supplier from '@/models/Supplier';
+import { patientSearchOr } from '@/lib/patient-search';
 import { getActiveClinics } from '@/models/Clinic';
 import { clinicLabel, defaultClinic } from '@/lib/branding';
 import { lisbonToUtc, todayLisbon } from '@/lib/availability';
@@ -25,6 +34,7 @@ import {
   CheckoutModal,
   type BillableAct,
 } from '@/components/cobranca/CheckoutModal';
+import { processLabel } from '@/lib/domain';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Cobranças' };
@@ -40,12 +50,88 @@ function lisbonDateTime(d: Date): string {
   }).format(d);
 }
 
+const MAX_CARDS = 100;
+const MONTHS = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+];
+const OID_RE = /^[0-9a-fA-F]{24}$/;
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** Ano / mês / dia → intervalo [início, fim[ em UTC (hora de Lisboa).
+ *  Mês sem ano = ano corrente; dia só conta com mês. */
+function executedRange(
+  ano: number | null,
+  mes: number | null,
+  dia: number | null,
+  currentYear: number,
+): { start: Date; end: Date } | null {
+  if (!ano && !mes) return null;
+  const y = ano ?? currentYear;
+  if (!mes) {
+    return {
+      start: lisbonToUtc(`${y}-01-01`, 0),
+      end: lisbonToUtc(`${y + 1}-01-01`, 0),
+    };
+  }
+  const daysInMonth = new Date(Date.UTC(y, mes, 0)).getUTCDate();
+  if (dia && dia <= daysInMonth) {
+    const d = `${y}-${pad2(mes)}-${pad2(dia)}`;
+    return { start: lisbonToUtc(d, 0), end: lisbonToUtc(d, 24 * 60) };
+  }
+  const nextY = mes === 12 ? y + 1 : y;
+  const nextM = mes === 12 ? 1 : mes + 1;
+  return {
+    start: lisbonToUtc(`${y}-${pad2(mes)}-01`, 0),
+    end: lisbonToUtc(`${nextY}-${pad2(nextM)}-01`, 0),
+  };
+}
+
+const filterField: React.CSSProperties = {
+  borderRadius: '8px',
+  border: '1px solid #D8DEEF',
+  padding: '7px 10px',
+  fontSize: '13px',
+  color: '#1B2A6B',
+  backgroundColor: '#FFFFFF',
+  maxWidth: '100%',
+};
+const filterLabel: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '4px',
+  fontSize: '12px',
+  fontWeight: 600,
+  color: '#6A7186',
+};
+
 export default async function CobrancaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ clinic?: string }>;
+  searchParams: Promise<{
+    clinic?: string;
+    ano?: string;
+    mes?: string;
+    dia?: string;
+    paciente?: string;
+    tratamento?: string;
+    medico?: string;
+    lab?: string;
+  }>;
 }) {
-  const { clinic: clinicParam } = await searchParams;
+  const sp = await searchParams;
+  const clinicParam = sp.clinic;
   const session = await auth();
   if (!session?.user) return null;
 
@@ -56,12 +142,63 @@ export default async function CobrancaPage({
   if (!clinic) return null;
 
   const today = todayLisbon();
-  const [pendingProcs, todayInvoices] = await Promise.all([
-    Procedure.find({
-      clinicId: clinic._id,
-      status: 'completed',
-      invoiceId: null,
-    })
+  const currentYear = Number(today.slice(0, 4));
+
+  // --- Filtros (6.ª ronda/10) -------------------------------------------------
+  const int = (v: string | undefined, min: number, max: number) => {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= min && n <= max ? n : null;
+  };
+  const fAno = int(sp.ano, 2000, currentYear + 1);
+  const fMes = int(sp.mes, 1, 12);
+  const fDia = fMes ? int(sp.dia, 1, 31) : null;
+  const fPaciente = (sp.paciente ?? '').trim().slice(0, 80);
+  const fTratamento = (sp.tratamento ?? '').trim().slice(0, 80);
+  const fMedico = sp.medico && OID_RE.test(sp.medico) ? sp.medico : '';
+  const fLab = sp.lab && OID_RE.test(sp.lab) ? sp.lab : '';
+  const hasFilters = Boolean(
+    fAno || fMes || fPaciente || fTratamento || fMedico || fLab,
+  );
+
+  const procFilter: Record<string, unknown> = {
+    clinicId: clinic._id,
+    status: 'completed',
+    invoiceId: null,
+  };
+  const range = executedRange(fAno, fMes, fDia, currentYear);
+  if (range) procFilter.executedAt = { $gte: range.start, $lt: range.end };
+  if (fTratamento) {
+    procFilter.nameSnapshot = { $regex: escapeRe(fTratamento), $options: 'i' };
+  }
+  if (fMedico) procFilter.doctorId = fMedico;
+
+  // Paciente (nome, n.º de processo, telemóvel, NIF…) e laboratório
+  // resolvem-se para listas de pacientes; os dois juntos = interseção
+  let patientIdFilter: string[] | null = null;
+  if (fPaciente) {
+    const or = patientSearchOr(fPaciente);
+    const found = or.length
+      ? await Patient.find({ $or: or }).select('_id').limit(2000).lean()
+      : [];
+    patientIdFilter = found.map(p => String(p._id));
+  }
+  if (fLab) {
+    const withLab = (
+      await LabCase.distinct('patientId', {
+        clinicId: clinic._id,
+        supplierId: fLab,
+        status: { $ne: 'cancelled' },
+      })
+    ).map(String);
+    patientIdFilter = patientIdFilter
+      ? patientIdFilter.filter(id => withLab.includes(id))
+      : withLab;
+  }
+  if (patientIdFilter) procFilter.patientId = { $in: patientIdFilter };
+
+  const [pendingProcs, todayInvoices, filterDoctors, filterLabs] =
+    await Promise.all([
+    Procedure.find(procFilter)
       .sort({ executedAt: 1 })
       .lean(),
     Invoice.find({
@@ -70,6 +207,8 @@ export default async function CobrancaPage({
     })
       .sort({ paidAt: -1 })
       .lean(),
+    Doctor.find({ active: true }).select('name').sort({ name: 1 }).lean(),
+    Supplier.find({ isLab: true }).select('name').sort({ name: 1 }).lean(),
   ]);
 
   const patientIds = [
@@ -102,6 +241,11 @@ export default async function CobrancaPage({
     queue.get(key)!.push(p);
   }
   const queueTotalCents = pendingProcs.reduce((s, p) => s + p.priceCents, 0);
+  // Sem filtros a fila inteira não cabe no ecrã: mostram-se os primeiros
+  // (os mais antigos por cobrar) e pede-se para filtrar
+  const queueEntries = [...queue.entries()];
+  const shownEntries = queueEntries.slice(0, MAX_CARDS);
+  const hiddenCount = queueEntries.length - shownEntries.length;
   const todayTotalCents = todayInvoices.reduce((s, i) => s + i.totalCents, 0);
 
   return (
@@ -130,6 +274,7 @@ export default async function CobrancaPage({
           <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6A7186' }}>
             {queue.size} paciente{queue.size === 1 ? '' : 's'} por cobrar ·{' '}
             {formatCents(queueTotalCents)}
+            {hasFilters ? ' · com os filtros aplicados' : ''}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '6px' }}>
@@ -157,6 +302,127 @@ export default async function CobrancaPage({
         </div>
       </div>
 
+      {/* 6.ª ronda/10: filtros de pesquisa */}
+      <form
+        method='get'
+        action='/admin/cobranca'
+        style={{
+          backgroundColor: '#FFFFFF',
+          border: '1px solid #EEF1F8',
+          borderRadius: '14px',
+          padding: '14px 16px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gap: '10px',
+          alignItems: 'end',
+        }}
+      >
+        <input type='hidden' name='clinic' value={clinic.slug} />
+        <label style={filterLabel}>
+          Ano
+          <select name='ano' defaultValue={fAno ?? ''} style={filterField}>
+            <option value=''>Todos</option>
+            {Array.from({ length: 8 }, (_, i) => currentYear - i).map(y => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={filterLabel}>
+          Mês
+          <select name='mes' defaultValue={fMes ?? ''} style={filterField}>
+            <option value=''>Todos</option>
+            {MONTHS.map((m, i) => (
+              <option key={m} value={i + 1}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={filterLabel}>
+          Dia
+          <select name='dia' defaultValue={fDia ?? ''} style={filterField}>
+            <option value=''>Todos</option>
+            {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={filterLabel}>
+          Paciente
+          <input
+            type='search'
+            name='paciente'
+            defaultValue={fPaciente}
+            placeholder='Nome, n.º processo, telemóvel, NIF'
+            style={filterField}
+          />
+        </label>
+        <label style={filterLabel}>
+          Tratamento
+          <input
+            type='search'
+            name='tratamento'
+            defaultValue={fTratamento}
+            placeholder='Ex.: destartarização'
+            style={filterField}
+          />
+        </label>
+        <label style={filterLabel}>
+          Médico
+          <select name='medico' defaultValue={fMedico} style={filterField}>
+            <option value=''>Todos</option>
+            {filterDoctors.map(d => (
+              <option key={String(d._id)} value={String(d._id)}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={filterLabel}>
+          Laboratório
+          <select name='lab' defaultValue={fLab} style={filterField}>
+            <option value=''>Todos</option>
+            {filterLabs.map(l => (
+              <option key={String(l._id)} value={String(l._id)}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            type='submit'
+            style={{
+              ...filterField,
+              backgroundColor: '#2743A6',
+              borderColor: '#2743A6',
+              color: '#FFFFFF',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Filtrar
+          </button>
+          {hasFilters && (
+            <Link
+              href={`/admin/cobranca?clinic=${clinic.slug}`}
+              style={{ fontSize: '13px', fontWeight: 600, color: '#2743A6' }}
+            >
+              Limpar
+            </Link>
+          )}
+        </div>
+      </form>
+      {fMes && !fAno && (
+        <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
+          Mês sem ano escolhido: a mostrar {MONTHS[fMes - 1]} de {currentYear}.
+        </p>
+      )}
+
       {/* Fila de cobrança */}
       {queue.size === 0 ? (
         <div
@@ -169,10 +435,12 @@ export default async function CobrancaPage({
             color: '#6A7186',
           }}
         >
-          Sem valores por cobrar nesta clínica. 🎉
+          {hasFilters
+            ? 'Nenhum valor por cobrar corresponde aos filtros.'
+            : 'Sem valores por cobrar nesta clínica. 🎉'}
         </div>
       ) : (
-        [...queue.entries()].map(([patientId, procs]) => {
+        shownEntries.map(([patientId, procs]) => {
           const patient = patientById.get(patientId);
           const subtotal = procs.reduce((s, p) => s + p.priceCents, 0);
           const acts: BillableAct[] = procs.map(p => ({
@@ -234,7 +502,7 @@ export default async function CobrancaPage({
                         color: '#6A7186',
                       }}
                     >
-                      Proc. {String(patient?.processNumber ?? '—')}
+                      Proc. {patient ? processLabel(patient.processNumber) : '—'}
                     </span>
                   </p>
                   <p
@@ -304,6 +572,22 @@ export default async function CobrancaPage({
             </div>
           );
         })
+      )}
+      {hiddenCount > 0 && (
+        <div
+          style={{
+            backgroundColor: '#FFF9EC',
+            border: '1px solid #F0DCB0',
+            borderRadius: '14px',
+            padding: '14px 20px',
+            fontSize: '13px',
+            color: '#6B4E00',
+          }}
+        >
+          A mostrar os {shownEntries.length} pacientes com atos mais antigos
+          por cobrar. Há mais <strong>{hiddenCount}</strong> — use os filtros
+          acima (paciente, médico, data…) para os encontrar.
+        </div>
       )}
 
       {/* Cobranças de hoje */}

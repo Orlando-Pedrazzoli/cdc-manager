@@ -14,6 +14,7 @@
 // =============================================================================
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
+import { RECALL_OUTCOMES, type RecallOutcome } from '@/lib/domain';
 
 export const RECALL_STATUS = [
   'scheduled', // aguarda a data
@@ -24,6 +25,13 @@ export const RECALL_STATUS = [
   'unreachable', // tentativas esgotadas sem resposta
 ] as const;
 export type RecallStatus = (typeof RECALL_STATUS)[number];
+
+// 6.ª ronda/09 (Victor, nov. 2026): resultado de CADA contacto. Cada clique
+// num destes botões fica registado com o colaborador, o dia e a hora — é o
+// que alimenta o registo de produtividade do recall.
+// (a lista vive em lib/domain — os botões da fila são componentes de
+// cliente e não podem importar este ficheiro, que traz o mongoose)
+export { RECALL_OUTCOMES, type RecallOutcome };
 
 const RecallSchema = new Schema(
   {
@@ -69,6 +77,26 @@ const RecallSchema = new Schema(
     },
     contactAttempts: { type: Number, min: 0, default: 0 },
     lastContactedAt: { type: Date, default: null },
+    // 6.ª ronda/09: registo de contactos (quem, quando, com que resultado)
+    lastOutcome: { type: String, enum: [...RECALL_OUTCOMES, null], default: null },
+    contacts: {
+      type: [
+        new Schema(
+          {
+            at: { type: Date, required: true },
+            userId: {
+              type: Schema.Types.ObjectId,
+              ref: 'User',
+              required: true,
+            },
+            outcome: { type: String, enum: RECALL_OUTCOMES, required: true },
+            note: { type: String, trim: true, maxlength: 200, default: null },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     bookedAppointmentId: {
       type: Schema.Types.ObjectId,
       ref: 'Appointment',
@@ -82,6 +110,8 @@ const RecallSchema = new Schema(
 // O painel /admin/recalls filtra por clínica → índice próprio
 RecallSchema.index({ status: 1, dueAt: 1 });
 RecallSchema.index({ clinicId: 1, status: 1, dueAt: 1 });
+// Registo de produtividade: contactos por período e por colaborador
+RecallSchema.index({ clinicId: 1, 'contacts.at': -1 });
 
 export type RecallDoc = InferSchemaType<typeof RecallSchema> & {
   _id: mongoose.Types.ObjectId;

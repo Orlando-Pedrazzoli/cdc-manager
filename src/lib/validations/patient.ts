@@ -250,9 +250,62 @@ export const createPatientSchema = z.object({
   consentMarketing: z.coerce.boolean().default(false),
   // Convite de ativação do portal no ato da criação (exige email OU telefone)
   sendActivationInvite: z.coerce.boolean().default(false),
+  // 6.ª ronda/07 (Victor, nov. 2026): opções que deixam terminar a ficha
+  // sem o campo obrigatório correspondente
+  noNif: z.coerce.boolean().default(false),
+  noSnsNumber: z.coerce.boolean().default(false),
+  noPhone: z.coerce.boolean().default(false),
+  noEmail: z.coerce.boolean().default(false),
+  // 6.ª ronda/07: clínica cujo tablet recebe o consentimento RGPD ao criar
+  // a ficha ('' = não enviar / sem tablet ligado)
+  gdprTabletClinicId: objectIdField.default(null),
 });
 
 export type CreatePatientInput = z.infer<typeof createPatientSchema>;
+
+// -----------------------------------------------------------------------------
+// 6.ª ronda/07 — campos obrigatórios da FICHA COMPLETA
+// -----------------------------------------------------------------------------
+// "A ficha só é guardada depois de preenchidos." NIF, nº de utente,
+// telemóvel e email têm cada um a sua saída ("não indica" / "não tem"),
+// para se conseguir terminar a ficha. Função pura: usada na criação e ao
+// completar uma pré-marcação (a edição de fichas antigas, migradas do
+// Dentoral com campos em falta, não é bloqueada).
+export interface RequiredPatientFields {
+  birthDate?: Date | null;
+  nif?: string | null;
+  sex?: string | null;
+  snsNumber?: string | null;
+  nationality?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  noNif?: boolean;
+  noSnsNumber?: boolean;
+  noPhone?: boolean;
+  noEmail?: boolean;
+}
+
+export function missingRequiredFields(d: RequiredPatientFields): string[] {
+  const missing: string[] = [];
+  if (!d.birthDate) missing.push('Data de nascimento');
+  if (!d.nif && !d.noNif) missing.push('NIF (ou "Paciente não indica NIF")');
+  if (!d.sex) missing.push('Sexo');
+  if (!d.snsNumber && !d.noSnsNumber)
+    missing.push('N.º de utente (ou "Não tem")');
+  if (!d.nationality) missing.push('Nacionalidade');
+  if (!d.phone && !d.noPhone)
+    missing.push('Telemóvel (ou "Não tem telemóvel")');
+  if (!d.email && !d.noEmail) missing.push('Email (ou "Não tem email")');
+  return missing;
+}
+
+export function missingRequiredMessage(missing: string[]): string {
+  return `Campos obrigatórios por preencher: ${missing.join(' · ')}.`;
+}
+
+/** Limiar legal: fatura a consumidor final de valor igual ou superior a
+ *  1.000 € tem de identificar o adquirente com nome e morada. */
+export const FINAL_CONSUMER_ADDRESS_THRESHOLD_CENTS = 100_000;
 
 // -----------------------------------------------------------------------------
 // Edição — mesmos campos, todos opcionais (PATCH semantics)

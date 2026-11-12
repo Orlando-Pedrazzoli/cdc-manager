@@ -22,6 +22,7 @@ import {
   updatePatientContactAction,
   type PatientQuickView as QuickView,
 } from '@/actions/patient-quick';
+import { transitionAppointmentAction } from '@/actions/appointments';
 import { formatCents } from '@/lib/commissions';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea } from '@/components/ui/Input';
@@ -66,6 +67,7 @@ export function PatientQuickView({
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ phone: '', email: '', adminNote: '' });
   const [saving, setSaving] = useState(false);
+  const [arriving, setArriving] = useState<string | null>(null);
 
   useEffect(() => {
     if (!patientId) return;
@@ -113,6 +115,21 @@ export function PatientQuickView({
     router.refresh();
   };
 
+  // 6.ª ronda/06 (Victor, nov. 2026): "lançamento" do paciente à chegada
+  const markArrived = async (appointmentId: string) => {
+    setArriving(appointmentId);
+    const res = await transitionAppointmentAction(appointmentId, 'checked-in');
+    setArriving(null);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success('Paciente enviado ao médico — está na sala de espera.');
+    setResult(null);
+    setReload(n => n + 1);
+    router.refresh();
+  };
+
   return (
     <Modal
       open={patientId !== null}
@@ -125,7 +142,7 @@ export function PatientQuickView({
       {data && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
-            Processo n.º <strong style={{ color: '#1B2A6B' }}>{String(data.processNumber)}</strong>
+            {typeof data.processNumber === 'number' ? 'Processo n.º ' : 'Sem n.º de processo · '}<strong style={{ color: '#1B2A6B' }}>{String(data.processNumber)}</strong>
             {data.age !== null && ` · ${data.age} anos`}
             {data.birthDateLabel && ` · nasc. ${data.birthDateLabel}`}
             {data.nif && ` · NIF ${data.nif}`}
@@ -262,6 +279,22 @@ export function PatientQuickView({
                       {a.treatmentName} · {a.doctorName}
                       {a.clinicLabel && ` · ${a.clinicLabel}`} · {STATUS_LABEL[a.status] ?? a.status}
                     </span>
+                    {/* 6.ª ronda/06: lançar o paciente para o médico */}
+                    {a.isToday && (a.status === 'pending' || a.status === 'confirmed') && (
+                      <button
+                        type='button'
+                        disabled={arriving !== null}
+                        onClick={() => markArrived(a.id)}
+                        style={{ flexBasis: '100%', marginTop: 4, padding: '9px 12px', borderRadius: '10px', border: 'none', backgroundColor: '#0F7B4D', color: '#FFFFFF', fontSize: '13px', fontWeight: 700, cursor: arriving ? 'default' : 'pointer', opacity: arriving ? 0.6 : 1 }}
+                      >
+                        {arriving === a.id ? 'A enviar…' : 'Chegou — enviar ao médico'}
+                      </button>
+                    )}
+                    {a.isToday && a.status === 'checked-in' && (
+                      <span style={{ flexBasis: '100%', fontSize: '12px', fontWeight: 700, color: '#0F7B4D' }}>
+                        Na sala de espera — já aparece no ecrã do médico
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>

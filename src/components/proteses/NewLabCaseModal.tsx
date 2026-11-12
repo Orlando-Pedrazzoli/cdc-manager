@@ -88,6 +88,8 @@ export function NewLabCaseModal({
   const [sentDate, setSentDate] = useState(todayStr);
   const [dueDate, setDueDate] = useState(linkedDue);
   const [labId, setLabId] = useState('');
+  // 6.ª ronda/08: "Outro trabalho" pede a descrição
+  const [workType, setWorkType] = useState('');
   const onLabChange = (id: string) => {
     setLabId(id);
     const lab = labs.find(l => l.id === id);
@@ -119,6 +121,7 @@ export function NewLabCaseModal({
     onClose();
     resetPatient(); // volta ao paciente bloqueado, se houver
     setLabId('');
+    setWorkType('');
     setDueDate(linkedDue);
     return result;
   }, undefined);
@@ -273,7 +276,14 @@ export function NewLabCaseModal({
               ))}
             </Select>
           </div>
-          <Select id='lc-type' name='workType' label='Trabalho *' required>
+          <Select
+            id='lc-type'
+            name='workType'
+            label='Trabalho *'
+            required
+            value={workType}
+            onChange={e => setWorkType(e.target.value)}
+          >
             <option value=''>— Selecionar —</option>
             {LAB_WORK_TYPES.map(t => (
               <option key={t} value={t}>
@@ -282,6 +292,19 @@ export function NewLabCaseModal({
             ))}
           </Select>
         </div>
+
+        {workType === 'outro' && (
+          <Input
+            id='lc-work-desc'
+            name='workDescription'
+            label='Qual é o trabalho? *'
+            placeholder='Ex.: placa de contenção, reparação de prótese'
+            required
+            minLength={3}
+            maxLength={120}
+            autoFocus
+          />
+        )}
 
         {/* Dentes/zona + cor + custo */}
         <div

@@ -19,6 +19,7 @@ import Invoice, { type InvoiceStatus } from '@/models/Invoice';
 import Patient from '@/models/Patient';
 import { getClinicById } from '@/models/Clinic';
 import User from '@/models/User';
+import AuditLog from '@/models/AuditLog';
 import { formatCents } from '@/lib/commissions';
 import { INVOICE_STATUS_LABEL } from '@/lib/labels';
 import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/domain';
@@ -27,6 +28,7 @@ import { VoidInvoiceModal } from '@/components/faturacao/VoidInvoiceModal';
 import { PaymentsPanel } from '@/components/faturacao/PaymentsPanel';
 import { MoloniButtons } from '@/components/faturacao/MoloniButtons';
 import { isMoloniEmissionReady } from '@/lib/moloni';
+import { processLabel } from '@/lib/domain';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Documento' };
@@ -91,6 +93,39 @@ export default async function InvoiceDetailPage({
     getClinicById(String(inv.clinicId)),
     User.findById(inv.issuedByUserId).select('name').lean(),
   ]);
+
+  // 6.ª ronda/11: histórico do documento — todas as ações registadas na
+  // auditoria (cobrança, emissão no Moloni, pagamentos, anulação), com o
+  // utilizador e a hora de cada uma.
+  const history = await AuditLog.find({ entityType: 'Invoice', entityId: inv._id })
+    .sort({ createdAt: 1 })
+    .select('userId summary action createdAt')
+    .lean();
+  const historyUserIds = [
+    ...new Set(
+      [
+        ...history.map(h => (h.userId ? String(h.userId) : '')),
+        inv.voidedByUserId ? String(inv.voidedByUserId) : '',
+      ].filter(Boolean),
+    ),
+  ];
+  const historyUsers = historyUserIds.length
+    ? await User.find({ _id: { $in: historyUserIds } })
+        .select('name')
+        .lean()
+    : [];
+  const historyUserName = new Map(
+    historyUsers.map(u => [String(u._id), u.name]),
+  );
+  const voidLog = history.find(h => h.action === 'invoice-void');
+  const voidedByName =
+    historyUserName.get(
+      inv.voidedByUserId
+        ? String(inv.voidedByUserId)
+        : voidLog?.userId
+          ? String(voidLog.userId)
+          : '',
+    ) ?? '—';
 
   const docLabel =
     inv.moloniDocumentNumber ??
@@ -203,7 +238,7 @@ export default async function InvoiceDetailPage({
           label='Paciente'
           value={
             patient
-              ? `${patient.name} (proc. ${patient.processNumber})`
+              ? `${patient.name} (proc. ${processLabel(patient.processNumber)})`
               : 'Paciente removido'
           }
         />
@@ -401,6 +436,7 @@ export default async function InvoiceDetailPage({
             label='Anulada em'
             value={inv.voidedAt ? lisbonDateTime(inv.voidedAt as Date) : '—'}
           />
+          <InfoRow label='Anulada por' value={voidedByName} />
           <InfoRow label='Motivo' value={inv.voidReason ?? '—'} />
           <InfoRow
             label='Nota de crédito'
@@ -412,6 +448,48 @@ export default async function InvoiceDetailPage({
           />
         </div>
       )}
+
+      {/* 6.ª ronda/11: quem fez cada ação neste documento */}
+      <div
+        style={{
+          backgroundColor: '#FFFFFF',
+          border: '1px solid #EEF1F8',
+          borderRadius: '14px',
+          padding: '16px 20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+        }}
+      >
+        <h2
+          style={{
+            margin: '0 0 4px',
+            fontSize: '14px',
+            fontWeight: 700,
+            color: '#1C2233',
+          }}
+        >
+          Histórico do documento
+        </h2>
+        {history.length === 0 ? (
+          <InfoRow
+            label={lisbonDateTime(inv.createdAt as Date)}
+            value={`Cobrança registada · ${issuer?.name ?? '—'}`}
+          />
+        ) : (
+          history.map(h => (
+            <InfoRow
+              key={String(h._id)}
+              label={lisbonDateTime(h.createdAt as Date)}
+              value={`${h.summary ?? h.action} · ${
+                h.userId
+                  ? (historyUserName.get(String(h.userId)) ?? '—')
+                  : 'Sistema'
+              }`}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }

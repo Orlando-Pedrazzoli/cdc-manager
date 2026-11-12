@@ -116,9 +116,14 @@ const ACTIONS_BY_STATUS: Record<
   string,
   { to: AppointmentStatus; label: string }[]
 > = {
-  pending: [{ to: 'confirmed', label: 'Confirmar' }],
+  // 6.ª ronda/06: "lançar" o paciente quando chega — aparece no ecrã do
+  // médico (O meu dia → Na sala de espera), que o chama e abre a ficha
+  pending: [
+    { to: 'checked-in', label: 'Chegou — enviar ao médico' },
+    { to: 'confirmed', label: 'Confirmar' },
+  ],
   confirmed: [
-    { to: 'checked-in', label: 'Check-in (chegou)' },
+    { to: 'checked-in', label: 'Chegou — enviar ao médico' },
     { to: 'no-show', label: 'Marcar falta' },
   ],
   'checked-in': [

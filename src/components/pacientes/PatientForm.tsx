@@ -46,6 +46,10 @@ import {
   type RelativeRow,
 } from '@/components/pacientes/RelativesEditor';
 import { Modal } from '@/components/ui/Modal';
+import {
+  listTabletsAction,
+  type TabletOption,
+} from '@/actions/signature-requests';
 
 // Valores iniciais (modo edit) — datas já serializadas para o input
 export interface PatientFormInitial {
@@ -77,6 +81,11 @@ export interface PatientFormInitial {
   hasConsentData: boolean;
   hasConsentReminders: boolean;
   hasConsentMarketing: boolean;
+  // 6.ª ronda/07: "não indica NIF" / "não tem"
+  noNif?: boolean;
+  noSnsNumber?: boolean;
+  noPhone?: boolean;
+  noEmail?: boolean;
 }
 
 const EMPTY: PatientFormInitial = {
@@ -152,6 +161,92 @@ function splitPhone(stored: string): { dial: string; national: string } {
   return { dial: 'other', national: stored };
 }
 
+// -----------------------------------------------------------------------------
+// 6.ª ronda/07 (Victor, nov. 2026): campos obrigatórios em destaque
+// -----------------------------------------------------------------------------
+// "Os campos obrigatórios (*) aparecem com cor destacada. A ficha só é
+// guardada depois de preenchidos." Caixa âmbar enquanto falta o valor,
+// verde-claro quando está resolvido (preenchido ou "não tem").
+const NATIONALITIES = [
+  'Portuguesa',
+  'Brasileira',
+  'Angolana',
+  'Cabo-verdiana',
+  'Guineense',
+  'Moçambicana',
+  'São-tomense',
+  'Ucraniana',
+  'Romena',
+  'Espanhola',
+  'Francesa',
+  'Italiana',
+  'Britânica',
+  'Alemã',
+  'Indiana',
+  'Nepalesa',
+  'Bangladechiana',
+  'Chinesa',
+  'Venezuelana',
+] as const;
+
+function RequiredBox({
+  done,
+  children,
+}: {
+  done: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '6px',
+        borderRadius: '10px',
+        padding: '8px 10px',
+        border: `1.5px solid ${done ? '#BFE3CC' : '#F0B429'}`,
+        backgroundColor: done ? '#F4FBF6' : '#FFF8E1',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function NoneOption({
+  name,
+  label,
+  checked,
+  onChange,
+}: {
+  name: string;
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        fontSize: '12px',
+        fontWeight: 600,
+        color: '#6B4E00',
+        cursor: 'pointer',
+      }}
+    >
+      <input
+        type='checkbox'
+        name={name}
+        checked={checked}
+        onChange={e => onChange(e.target.checked)}
+      />
+      {label}
+    </label>
+  );
+}
+
 const sectionTitle = {
   margin: '0 0 4px',
   fontSize: '13px',
@@ -172,14 +267,68 @@ export function PatientForm({
   patientId,
   initial,
   doctors,
+  completing = false,
 }: {
   mode: 'create' | 'edit';
   patientId?: string; // obrigatório em edit
   initial?: PatientFormInitial;
   doctors: { id: string; name: string }[];
+  /** Ficha de pré-marcação a ser completada: vale como ficha nova
+   *  (campos obrigatórios + RGPD para o tablet + nº de processo no fim) */
+  completing?: boolean;
 }) {
   const router = useRouter();
   const values = initial ?? EMPTY;
+
+  // 6.ª ronda/07: obrigatórios aplicam-se à ficha nova e à pré-marcação
+  // que se completa; nas fichas antigas ficam só assinalados.
+  const strict = mode === 'create' || completing;
+  const [name, setName] = useState(values.name);
+  const [birthDate, setBirthDate] = useState(values.birthDate);
+  const [nif, setNif] = useState(values.nif);
+  const [noNif, setNoNif] = useState(Boolean(values.noNif));
+  const [sex, setSex] = useState(values.sex);
+  const [sns, setSns] = useState(values.snsNumber);
+  const [noSns, setNoSns] = useState(Boolean(values.noSnsNumber));
+  const [noPhone, setNoPhone] = useState(Boolean(values.noPhone));
+  const [email, setEmail] = useState(values.email);
+  const [noEmail, setNoEmail] = useState(Boolean(values.noEmail));
+  const knownNationality = (NATIONALITIES as readonly string[]).includes(
+    values.nationality,
+  );
+  const [natChoice, setNatChoice] = useState<string>(
+    values.nationality === ''
+      ? mode === 'create'
+        ? 'Portuguesa'
+        : ''
+      : knownNationality
+        ? values.nationality
+        : 'other',
+  );
+  const [natOther, setNatOther] = useState(
+    knownNationality ? '' : values.nationality,
+  );
+  const nationality = natChoice === 'other' ? natOther.trim() : natChoice;
+
+  // RGPD: tablets ligados nas clínicas deste utilizador (ficha nova)
+  const [tablets, setTablets] = useState<TabletOption[]>([]);
+  const [tabletClinicId, setTabletClinicId] = useState('');
+  useEffect(() => {
+    if (!strict) return;
+    let alive = true;
+    listTabletsAction()
+      .then(list => {
+        if (!alive) return;
+        setTablets(list);
+        setTabletClinicId(prev => prev || (list[0]?.clinicId ?? ''));
+      })
+      .catch(() => {
+        /* sem tablets: o RGPD continua disponível no botão da ficha */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [strict]);
 
   const action =
     mode === 'edit' && patientId
@@ -286,13 +435,23 @@ export function PatientForm({
       return result;
     }
 
+    if (result.gdprSentToTablet) {
+      toast.success('Consentimento RGPD enviado para o tablet.', {
+        duration: 6000,
+      });
+    }
+
     if (mode === 'create') {
       toast.success(`Paciente criado (processo nº ${result.processNumber})`);
       // Fechar o formulário: voltar à LISTA (pedido da direção pós-demo —
       // ficar no formulário deixava dúvida se tinha gravado)
       router.push('/admin/pacientes');
     } else {
-      toast.success('Ficha atualizada.');
+      toast.success(
+        completing && result.processNumber != null
+          ? `Ficha completa — processo nº ${result.processNumber}`
+          : 'Ficha atualizada.',
+      );
       router.refresh();
     }
     return result;
@@ -332,50 +491,121 @@ export function PatientForm({
         >
           <h3 style={sectionTitle}>Identificação</h3>
           <div style={grid2}>
-            <Input
-              id='name'
-              name='name'
-              label='Nome completo *'
-              required
-              minLength={3}
-              maxLength={160}
-              defaultValue={values.name}
-              placeholder='Maria da Silva'
-            />
-            <Input
-              id='birthDate'
-              name='birthDate'
-              label='Data de nascimento'
-              type='date'
-              defaultValue={values.birthDate}
-            />
-            <Input
-              id='nif'
-              name='nif'
-              label='NIF'
-              inputMode='numeric'
-              maxLength={9}
-              defaultValue={values.nif}
-              placeholder='9 dígitos'
-              help='Vai nas faturas para dedução no IRS'
-            />
-            <Select id='sex' name='sex' label='Sexo' defaultValue={values.sex}>
-              <option value=''>—</option>
-              {SEXES.map(x => (
-                <option key={x} value={x}>
-                  {SEX_LABEL[x]}
-                </option>
-              ))}
-            </Select>
-            <Input
-              id='snsNumber'
-              name='snsNumber'
-              label='Nº de utente (SNS)'
-              inputMode='numeric'
-              maxLength={9}
-              defaultValue={values.snsNumber}
-              placeholder='9 dígitos'
-            />
+            <RequiredBox done={name.trim().length >= 3}>
+              <Input
+                id='name'
+                name='name'
+                label='Nome completo *'
+                required
+                minLength={3}
+                maxLength={160}
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder='Maria da Silva'
+              />
+            </RequiredBox>
+            <RequiredBox done={birthDate !== ''}>
+              <Input
+                id='birthDate'
+                name='birthDate'
+                label='Data de nascimento *'
+                type='date'
+                required={strict}
+                value={birthDate}
+                onChange={e => setBirthDate(e.target.value)}
+              />
+            </RequiredBox>
+            <RequiredBox done={nif.trim() !== '' || noNif}>
+              <Input
+                id='nif'
+                name='nif'
+                label='NIF *'
+                inputMode='numeric'
+                maxLength={9}
+                required={strict && !noNif}
+                readOnly={noNif}
+                value={noNif ? '' : nif}
+                onChange={e => setNif(e.target.value)}
+                placeholder='9 dígitos'
+                help={
+                  noNif
+                    ? 'A fatura sai como Consumidor final. A partir de 1.000 € é pedida a morada.'
+                    : 'Vai nas faturas para dedução no IRS'
+                }
+              />
+              <NoneOption
+                name='noNif'
+                label='Paciente não indica NIF'
+                checked={noNif}
+                onChange={setNoNif}
+              />
+            </RequiredBox>
+            <RequiredBox done={sex !== ''}>
+              <Select
+                id='sex'
+                name='sex'
+                label='Sexo *'
+                required={strict}
+                value={sex}
+                onChange={e => setSex(e.target.value)}
+              >
+                <option value=''>— Selecionar —</option>
+                {SEXES.map(x => (
+                  <option key={x} value={x}>
+                    {SEX_LABEL[x]}
+                  </option>
+                ))}
+              </Select>
+            </RequiredBox>
+            <RequiredBox done={sns.trim() !== '' || noSns}>
+              <Input
+                id='snsNumber'
+                name='snsNumber'
+                label='Nº de utente (SNS) *'
+                inputMode='numeric'
+                maxLength={9}
+                required={strict && !noSns}
+                readOnly={noSns}
+                value={noSns ? '' : sns}
+                onChange={e => setSns(e.target.value)}
+                placeholder='9 dígitos'
+              />
+              <NoneOption
+                name='noSnsNumber'
+                label='Não tem'
+                checked={noSns}
+                onChange={setNoSns}
+              />
+            </RequiredBox>
+            <RequiredBox done={nationality !== ''}>
+              <Select
+                id='nationalityChoice'
+                label='Nacionalidade *'
+                required={strict}
+                value={natChoice}
+                onChange={e => setNatChoice(e.target.value)}
+              >
+                <option value=''>— Selecionar —</option>
+                {NATIONALITIES.map(n => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+                <option value='other'>Outra…</option>
+              </Select>
+              {natChoice === 'other' && (
+                <Input
+                  id='nationalityOther'
+                  aria-label='Outra nacionalidade'
+                  maxLength={60}
+                  required={strict}
+                  value={natOther}
+                  onChange={e => setNatOther(e.target.value)}
+                  placeholder='Escreva a nacionalidade'
+                />
+              )}
+              <input type='hidden' name='nationality' value={nationality} />
+            </RequiredBox>
             <Input
               id='profession'
               name='profession'
@@ -397,14 +627,6 @@ export function PatientForm({
               ))}
             </Select>
             <Input
-              id='nationality'
-              name='nationality'
-              label='Nacionalidade'
-              maxLength={60}
-              defaultValue={values.nationality}
-              placeholder='Portuguesa'
-            />
-            <Input
               id='referredBy'
               name='referredBy'
               label='Indicado por'
@@ -422,14 +644,12 @@ export function PatientForm({
         >
           <h3 style={sectionTitle}>Contactos</h3>
           <div style={grid2}>
-            <div
-              style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
-            >
+            <RequiredBox done={composedPhone !== '' || noPhone}>
               <label
                 htmlFor='phone-national'
                 style={{ fontSize: '13px', fontWeight: 500, color: '#3A3F4A' }}
               >
-                Telemóvel
+                Telemóvel *
               </label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <select
@@ -456,8 +676,10 @@ export function PatientForm({
                 <input
                   id='phone-national'
                   type='tel'
-                  value={nationalNumber}
+                  value={noPhone ? '' : nationalNumber}
                   onChange={e => setNationalNumber(e.target.value)}
+                  required={strict && !noPhone}
+                  disabled={noPhone}
                   placeholder={
                     dial === 'other' ? '+ indicativo e número' : '912 345 678'
                   }
@@ -474,19 +696,40 @@ export function PatientForm({
                 />
               </div>
               {/* O que o server valida/normaliza (E.164) */}
-              <input type='hidden' name='phone' value={composedPhone} />
+              <input
+                type='hidden'
+                name='phone'
+                value={noPhone ? '' : composedPhone}
+              />
               <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
                 Usado para confirmações e lembretes WhatsApp
               </p>
-            </div>
-            <Input
-              id='email'
-              name='email'
-              label='Email'
-              type='email'
-              defaultValue={values.email}
-              placeholder='paciente@exemplo.pt'
-            />
+              <NoneOption
+                name='noPhone'
+                label='Não tem telemóvel'
+                checked={noPhone}
+                onChange={setNoPhone}
+              />
+            </RequiredBox>
+            <RequiredBox done={email.trim() !== '' || noEmail}>
+              <Input
+                id='email'
+                name='email'
+                label='Email *'
+                type='email'
+                required={strict && !noEmail}
+                readOnly={noEmail}
+                value={noEmail ? '' : email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder='paciente@exemplo.pt'
+              />
+              <NoneOption
+                name='noEmail'
+                label='Não tem email'
+                checked={noEmail}
+                onChange={setNoEmail}
+              />
+            </RequiredBox>
           </div>
           <div style={grid2}>
             <Input
@@ -622,7 +865,7 @@ export function PatientForm({
         <section
           style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
         >
-          <h3 style={sectionTitle}>Seguradora</h3>
+          <h3 style={sectionTitle}>Seguradora (opcional)</h3>
           <div style={grid2}>
             <Input
               id='insuranceCompany'
@@ -631,7 +874,7 @@ export function PatientForm({
               maxLength={120}
               defaultValue={values.insuranceCompany}
               placeholder='ex.: Médis, Multicare, ADSE'
-              help='Vai no cabeçalho da fatura para o paciente pedir o reembolso'
+              help='Opcional. Só sai na fatura quando o paciente pede, para tentar o reembolso junto do seguro'
             />
             <Input
               id='insuranceCardNumber'
@@ -675,6 +918,31 @@ export function PatientForm({
             label='Recalls e comunicações da clínica'
             defaultChecked={values.hasConsentMarketing}
           />
+          {/* 6.ª ronda/07: ao criar a ficha, o consentimento segue para o
+              tablet; assinado, fica no separador Documentos */}
+          {strict &&
+            (tablets.length === 0 ? (
+              <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
+                Sem tablet de assinatura ligado — depois de guardar, use o
+                botão RGPD da ficha para o paciente assinar.
+              </p>
+            ) : (
+              <Select
+                id='gdprTabletClinicId'
+                name='gdprTabletClinicId'
+                label='Consentimento RGPD — enviar para o tablet'
+                value={tabletClinicId}
+                onChange={e => setTabletClinicId(e.target.value)}
+                help='Ao guardar, o consentimento aparece no tablet. O paciente assina e o documento fica no separador Documentos.'
+              >
+                {tablets.map(t => (
+                  <option key={t.clinicId} value={t.clinicId}>
+                    Tablet · {t.label}
+                  </option>
+                ))}
+                <option value=''>Não enviar agora</option>
+              </Select>
+            ))}
         </section>
 
         {/* --- Portal (só na criação) ----------------------------------------- */}
@@ -690,6 +958,13 @@ export function PatientForm({
               help='Requer o email preenchido. O paciente recebe um código para criar a password.'
             />
           </section>
+        )}
+
+        {strict && (
+          <p style={{ margin: 0, fontSize: '12px', color: '#6B4E00' }}>
+            * Campos obrigatórios (em destaque). A ficha só é guardada depois
+            de preenchidos ou de assinalada a opção ao lado.
+          </p>
         )}
 
         {/* Erro da action */}
@@ -710,7 +985,11 @@ export function PatientForm({
 
         <div style={{ display: 'flex', gap: '10px' }}>
           <Button type='submit' loading={pending}>
-            {mode === 'create' ? 'Criar paciente' : 'Guardar alterações'}
+            {mode === 'create'
+              ? 'Criar paciente'
+              : completing
+                ? 'Guardar ficha completa'
+                : 'Guardar alterações'}
           </Button>
           <Button
             type='button'

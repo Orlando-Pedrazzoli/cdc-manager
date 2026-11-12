@@ -22,7 +22,7 @@ import Appointment from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import Supplier from '@/models/Supplier';
 import User from '@/models/User';
-import { LAB_WORK_TYPE_LABEL } from '@/lib/domain';
+import { labWorkLabel } from '@/lib/domain';
 import {
   createLabCaseSchema,
   labCaseIdSchema,
@@ -87,6 +87,7 @@ export async function createLabCaseAction(
       supplierId: formData.get('supplierId'),
       appointmentId: formData.get('appointmentId'),
       workType: formData.get('workType'),
+      workDescription: formData.get('workDescription'),
       toothNotes: formData.get('toothNotes'),
       shade: formData.get('shade'),
       notes: formData.get('notes'),
@@ -131,6 +132,7 @@ export async function createLabCaseAction(
       appointmentId: appointment ? appointment._id : null,
       labName: supplier.name, // snapshot
       workType: data.workType,
+      workDescription: data.workType === 'outro' ? data.workDescription : null,
       toothNotes: data.toothNotes,
       shade: data.shade,
       notes: data.notes,
@@ -148,7 +150,7 @@ export async function createLabCaseAction(
       entityId: String(created._id),
       patientId: data.patientId,
       clinicId: data.clinicId,
-      summary: `Pedido ao laboratório: ${LAB_WORK_TYPE_LABEL[data.workType]} → ${supplier.name} (prevista ${data.dueDate})${appointment ? ' · ligado a marcação' : ''}`,
+      summary: `Pedido ao laboratório: ${labWorkLabel(data.workType, data.workDescription)} → ${supplier.name} (prevista ${data.dueDate})${appointment ? ' · ligado a marcação' : ''}`,
     });
 
     revalidateAll();

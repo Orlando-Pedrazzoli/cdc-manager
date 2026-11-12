@@ -18,6 +18,9 @@ import { dbConnect } from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
 import Odontogram from '@/models/Odontogram';
+import Procedure from '@/models/Procedure';
+import { auth } from '@/lib/auth';
+import { VoidEntryButton } from '@/components/clinico/VoidEntryButton';
 import { Odontograma } from '@/components/clinico/Odontograma';
 import { loadChartEvents } from '@/lib/odontogram-events';
 import { loadOdontogramHistory } from '@/lib/odontogram-history';
@@ -83,6 +86,32 @@ export default async function AdminOdontogramPage({
       .lean(),
   ]);
   if (!patient) return <NotFound />;
+
+  // 6.ª ronda/03: a GESTÃO (não a receção) pode anular lançamentos errados
+  // ainda não faturados; os faturados corrigem-se pela fatura.
+  const session = await auth();
+  const canCorrect = session?.user?.role === 'admin';
+  const correctable = canCorrect
+    ? await Procedure.find({
+        patientId: id,
+        status: 'completed', // executados; os planeados gerem-se no plano
+        invoiceId: null,
+      })
+        .sort({ executedAt: -1, createdAt: -1 })
+        .limit(60)
+        .select('nameSnapshot toothNumbers doctorId executedAt createdAt status')
+        .lean()
+    : [];
+  const correctableDoctors = correctable.length
+    ? await Doctor.find({
+        _id: { $in: [...new Set(correctable.map(c => String(c.doctorId)))] },
+      })
+        .select('name')
+        .lean()
+    : [];
+  const correctableDoctorName = new Map(
+    correctableDoctors.map(d => [String(d._id), d.name]),
+  );
 
   const latestVersion = versions[0]?.version ?? 0;
   const requested = Number(v);
@@ -230,6 +259,9 @@ export default async function AdminOdontogramPage({
         <Eye size={15} />
         Vista de consulta (só leitura). A edição do odontograma é exclusiva do
         corpo clínico, na área do médico.
+        {canCorrect
+          ? ' A gestão pode anular lançamentos errados, no fim desta página.'
+          : ''}
       </div>
 
       {/* 5.ª ronda/02: sem registo manual do médico o mapa aparecia vazio
@@ -252,6 +284,92 @@ export default async function AdminOdontogramPage({
         history={history}
         planBaseHref={null}
       />
+
+      {/* 6.ª ronda/03: correção de lançamentos errados (só gestão) */}
+      {canCorrect && (
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #EEF1F8',
+            borderRadius: '14px',
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid #F4F6FB' }}>
+            <h2
+              style={{
+                margin: 0,
+                fontSize: '15px',
+                fontWeight: 700,
+                color: '#1C2233',
+              }}
+            >
+              Corrigir lançamentos
+            </h2>
+            <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#6A7186' }}>
+              Atos executados ainda não faturados. Um lançamento errado (tratamento
+              ou dente) anula-se aqui, com motivo; o correto é lançado pelo
+              médico. Depois de faturado, a correção faz-se pela fatura. A
+              receção não tem esta opção.
+            </p>
+          </div>
+          {correctable.length === 0 ? (
+            <p
+              style={{
+                margin: 0,
+                padding: '16px',
+                fontSize: '13px',
+                color: '#9AA1B4',
+              }}
+            >
+              Sem lançamentos por faturar neste paciente.
+            </p>
+          ) : (
+            correctable.map(c => {
+              const teeth = c.toothNumbers?.length
+                ? ` · dente${c.toothNumbers.length > 1 ? 's' : ''} ${c.toothNumbers.join(', ')}`
+                : '';
+              const when = (c.executedAt ?? c.createdAt) as Date | null;
+              return (
+                <div
+                  key={String(c._id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    flexWrap: 'wrap',
+                    padding: '10px 16px',
+                    borderBottom: '1px solid #F4F6FB',
+                  }}
+                >
+                  <div>
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        color: '#1C2233',
+                      }}
+                    >
+                      {c.nameSnapshot}
+                      {teeth}
+                    </p>
+                    <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#6A7186' }}>
+                      {when ? lisbonDateTime(when) : '—'} ·{' '}
+                      {correctableDoctorName.get(String(c.doctorId)) ?? '—'}
+                    </p>
+                  </div>
+                  <VoidEntryButton
+                    procedureId={String(c._id)}
+                    label={`${c.nameSnapshot}${teeth}`}
+                  />
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -175,6 +175,12 @@ const InvoiceSchema = new Schema(
     },
     // --- Anulação -----------------------------------------------------------
     voidedAt: { type: Date, default: null },
+    // 6.ª ronda/11 (Victor, nov. 2026): quem anulou — aparece no documento
+    voidedByUserId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     // Nota de crédito Moloni que anulou este documento
     creditNoteMoloniId: { type: Number, default: null },
     voidReason: {
