@@ -52,6 +52,17 @@ const UserSchema = new Schema(
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Email inválido'],
     },
+    // Login só com nome e senha (Victor, 11/11/2026): contas da receção
+    // sem email. Único quando existe; AUSENTE (não null) nas restantes —
+    // o índice é sparse e só ignora documentos sem o campo. Ver
+    // lib/username.ts (o `email` destas contas é um endereço interno).
+    username: {
+      type: String,
+      lowercase: true,
+      trim: true,
+      maxlength: 30,
+      index: { unique: true, sparse: true },
+    },
     // Hash bcrypt (custo 12). Ausente enquanto status === 'invited'.
     // select: false → NUNCA vem em queries por defeito; só com .select('+passwordHash')
     passwordHash: {

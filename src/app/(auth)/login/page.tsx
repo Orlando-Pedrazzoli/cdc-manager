@@ -51,7 +51,7 @@ export default function LoginPage() {
             className='mb-1.5 block text-sm font-medium'
             style={{ color: '#3A3F4A' }}
           >
-            Email
+            Email ou nome de utilizador
           </label>
           <div className='relative'>
             <Mail
@@ -61,11 +61,13 @@ export default function LoginPage() {
             <input
               id='email'
               name='email'
-              type='email'
-              autoComplete='email'
+              type='text'
+              autoComplete='username'
+              autoCapitalize='none'
+              spellCheck={false}
               autoFocus
               required
-              placeholder='o.seu.email@exemplo.pt'
+              placeholder='email ou nome de utilizador'
               className='w-full rounded-lg border py-2.5 pl-10 pr-3 text-sm outline-none transition-shadow focus:ring-2'
               style={{
                 borderColor: '#D8DEEF',

@@ -61,6 +61,7 @@ import {
 import type { AppointmentStatus } from '@/models/Appointment';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea } from '@/components/ui/Input';
+import { ConsultProgress } from '@/components/agenda/ConsultProgress';
 import {
   RescheduleForm,
   type RescheduleClinic,
@@ -228,6 +229,9 @@ export interface AgendaAppointment {
   date: string; // YYYY-MM-DD
   /** 5.ª ronda/13: ficha criada numa pré-marcação, ainda por completar */
   provisional?: boolean;
+  /** Início e fim reais (epoch ms) — para a barra de tempo da consulta */
+  startMs?: number;
+  endMs?: number;
   /** 5.ª ronda/09: como nos conheceu (rótulo pronto a mostrar) */
   referralLabel?: string | null;
 }
@@ -631,7 +635,7 @@ export function AgendaGrid({
                         if (e.target !== e.currentTarget) return;
                         const min = minuteAt(e);
                         if (!inShift(col, min)) {
-                          toast('Fora do turno do médico — use "Abrir dia / estender horário" para marcar aqui.', { icon: '🔒' });
+                          toast('Fora do turno do médico — use "Abrir / fechar dias" para marcar aqui.', { icon: '🔒' });
                           return;
                         }
                         setSlot({ doctorId: col.id ?? '', start: hhmm(min) });
@@ -877,6 +881,10 @@ export function AgendaGrid({
                           {a.treatmentName} · {STATUS_LABEL[a.status] ?? a.status}
                         </span>
                       ) : null}
+                      {/* Barra de tempo: enche enquanto a consulta decorre */}
+                      {a.status === 'in-progress' && a.startMs != null && a.endMs != null && (
+                        <ConsultProgress startMs={a.startMs} endMs={a.endMs} variant='card' />
+                      )}
                     </div>
                   );
                 })}

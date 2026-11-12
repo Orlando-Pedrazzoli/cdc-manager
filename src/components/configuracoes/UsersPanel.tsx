@@ -14,6 +14,8 @@
 
 import { useActionState, useEffect, useRef, useState } from 'react';
 import {
+  adminSetPasswordAction,
+  createUsernameAccountAction,
   inviteUserAction,
   resendInviteAction,
   setUserActiveAction,
@@ -26,7 +28,9 @@ import { Badge } from '@/components/ui/Badge';
 export interface TeamUser {
   id: string;
   name: string;
+  /** '' nas contas só com nome de utilizador */
   email: string;
+  username?: string | null;
   role: 'admin' | 'receptionist';
   status: 'invited' | 'active' | 'disabled';
   createdAt: string; // já formatado (pt-PT)
@@ -116,6 +120,16 @@ export function UsersPanel({
   );
   // Saber a que linha pertence o pending/feedback das ações por-linha
   const [rowBusy, setRowBusy] = useState<string | null>(null);
+  // Login só com nome e senha (Victor, 11/11/2026)
+  const [createState, createAction, createPending] = useActionState(
+    createUsernameAccountAction,
+    undefined,
+  );
+  const [pwState, pwAction, pwPending] = useActionState(
+    adminSetPasswordAction,
+    undefined,
+  );
+  const [pwFor, setPwFor] = useState<string | null>(null);
 
   const inviteFormRef = useRef<HTMLFormElement>(null);
   useEffect(() => {
@@ -189,6 +203,60 @@ export function UsersPanel({
         </div>
       </div>
 
+      {/* --- Conta só com nome de utilizador e senha (receção) ------------------ */}
+      <div
+        style={{
+          backgroundColor: '#FFFFFF',
+          border: '1px solid #EEF1F8',
+          borderRadius: '14px',
+          padding: '20px',
+        }}
+      >
+        <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#1C2233' }}>
+          Conta da receção sem email
+        </h2>
+        <p style={{ margin: '6px 0 14px', fontSize: '13px', color: '#6A7186', lineHeight: 1.5 }}>
+          A colaboradora entra só com o nome de utilizador e a senha. A conta
+          fica logo ativa; entregue-lhe a senha em mão. Se a esquecer, repõe-se
+          aqui na lista, em “Repor senha”.
+        </p>
+        <form
+          action={createAction}
+          autoComplete='off'
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+            gap: '12px',
+            alignItems: 'end',
+          }}
+        >
+          <Input name='name' label='Nome' required maxLength={120} placeholder='Ana Silva' />
+          <Input
+            name='username'
+            label='Nome de utilizador'
+            required
+            maxLength={30}
+            placeholder='ana.silva'
+            autoCapitalize='none'
+            autoComplete='off'
+          />
+          <Input
+            name='password'
+            type='password'
+            label='Senha inicial'
+            required
+            autoComplete='new-password'
+            help='10+ caracteres, com maiúscula, minúscula e número'
+          />
+          <Button type='submit' disabled={createPending}>
+            {createPending ? 'A criar…' : 'Criar conta'}
+          </Button>
+        </form>
+        <div style={{ marginTop: 10 }}>
+          <Feedback state={createState} />
+        </div>
+      </div>
+
       {/* --- Lista ------------------------------------------------------------- */}
       <div
         style={{
@@ -253,7 +321,9 @@ export function UsersPanel({
                     color: '#6A7186',
                   }}
                 >
-                  {u.email} · desde {u.createdAt}
+                  {u.username ? `utilizador: ${u.username}` : u.email}
+                  {u.username && u.email ? ` · ${u.email}` : ''} · desde{' '}
+                  {u.createdAt}
                 </p>
               </div>
               <Badge variant={u.role === 'admin' ? 'info' : 'neutral'}>
@@ -274,6 +344,16 @@ export function UsersPanel({
                     </Button>
                   </form>
                 )}
+                {u.role === 'receptionist' && u.status !== 'disabled' && (
+                  <Button
+                    type='button'
+                    variant='secondary'
+                    size='sm'
+                    onClick={() => setPwFor(pwFor === u.id ? null : u.id)}
+                  >
+                    Repor senha
+                  </Button>
+                )}
                 {u.status !== 'invited' && !isSelf && (
                   <form action={toggleAction} onSubmit={() => setRowBusy(u.id)}>
                     <input type='hidden' name='userId' value={u.id} />
@@ -293,10 +373,45 @@ export function UsersPanel({
                   </form>
                 )}
               </div>
+              {pwFor === u.id && (
+                <form
+                  action={pwAction}
+                  autoComplete='off'
+                  style={{
+                    flexBasis: '100%',
+                    display: 'flex',
+                    gap: '10px',
+                    alignItems: 'flex-end',
+                    flexWrap: 'wrap',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    backgroundColor: '#F8F9FD',
+                  }}
+                >
+                  <input type='hidden' name='userId' value={u.id} />
+                  <div style={{ flex: '1 1 240px' }}>
+                    <Input
+                      name='password'
+                      type='password'
+                      label={`Nova senha de ${u.name}`}
+                      required
+                      autoComplete='new-password'
+                      help='10+ caracteres, com maiúscula, minúscula e número. Entregue-a em mão.'
+                    />
+                  </div>
+                  <Button type='submit' size='sm' disabled={pwPending}>
+                    {pwPending ? 'A guardar…' : 'Guardar nova senha'}
+                  </Button>
+                  <Button type='button' size='sm' variant='secondary' onClick={() => setPwFor(null)}>
+                    Cancelar
+                  </Button>
+                </form>
+              )}
             </div>
           );
         })}
         <div style={{ padding: '10px 20px' }}>
+          <Feedback state={pwState} />
           <Feedback state={resendState} />
           <Feedback state={toggleState} />
         </div>

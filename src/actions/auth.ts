@@ -39,6 +39,7 @@ import {
 } from '@/lib/activation';
 import { sendPasswordResetEmail } from '@/lib/resend';
 import { logAudit } from '@/lib/audit';
+import { isPlaceholderEmail, loginIdentifier } from '@/lib/username';
 
 export type AuthFormState = { error: string } | undefined;
 
@@ -60,7 +61,13 @@ const HOME_BY_ROLE: Record<string, string> = {
 // LOGIN
 // -----------------------------------------------------------------------------
 const loginSchema = z.object({
-  email: z.string().email('Email inválido').toLowerCase(),
+  // email ou nome de utilizador (login só com nome e senha)
+  email: z
+    .string()
+    .trim()
+    .min(1, 'Indique o email ou o nome de utilizador')
+    .max(160)
+    .refine(v => loginIdentifier(v) !== null, 'Email ou nome de utilizador inválido'),
   password: z.string().min(1, 'Password obrigatória'),
 });
 
@@ -98,7 +105,7 @@ export async function loginAction(
       // Mensagem única para qualquer falha — nunca revelar se o email
       // existe, se a conta está bloqueada, etc. (anti-enumeração)
       return {
-        error: 'Credenciais inválidas. Verifique o email e a password.',
+        error: 'Credenciais inválidas. Verifique o email ou nome de utilizador e a password.',
       };
     }
     throw err;
@@ -106,7 +113,14 @@ export async function loginAction(
 
   // Sessão criada — role lido da BD para decidir o destino
   await dbConnect();
-  const user = await User.findOne({ email: parsed.data.email }).select('role');
+  const ident = loginIdentifier(parsed.data.email);
+  const user = ident
+    ? await User.findOne(
+        ident.kind === 'email'
+          ? { email: ident.value }
+          : { username: ident.value },
+      ).select('role')
+    : null;
   redirect(user ? (HOME_BY_ROLE[user.role] ?? '/login') : '/login');
 }
 
@@ -250,7 +264,11 @@ export async function requestPasswordResetAction(
 
   // A partir daqui, TODOS os caminhos devolvem { success: true }.
   // Diferenças de comportamento só existem do lado do servidor.
-  const user = await User.findOne({ email }).select('_id name status');
+  // Contas só com nome de utilizador não têm email: a senha é reposta
+  // pela gestão (Configurações → Utilizadores)
+  const user = isPlaceholderEmail(email)
+    ? null
+    : await User.findOne({ email }).select('_id name status');
 
   if (user && user.status === 'active') {
     // Cooldown: se já existe um código de reset criado há menos de 2 min,

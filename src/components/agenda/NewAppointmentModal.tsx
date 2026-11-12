@@ -482,6 +482,29 @@ export function NewAppointmentModal({
               <UserPlus size={14} /> Paciente ainda sem ficha — marcar só com nome e telemóvel
             </button>
           )}
+          {/* Pedido do Victor (11/11/2026): criar a ficha COMPLETA a partir
+              daqui, sem perder o horário escolhido. Abre noutro separador;
+              esta janela fica como está e a ficha nova aparece na pesquisa. */}
+          {!patient && (
+            <a
+              href='/admin/pacientes/novo'
+              target='_blank'
+              rel='noopener'
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                marginTop: 6,
+                fontSize: '13px',
+                fontWeight: 600,
+                color: '#2743A6',
+                textDecoration: 'none',
+              }}
+              title='Abre a ficha nova noutro separador. Depois de guardar, volte a esta janela e procure o paciente — o horário fica guardado.'
+            >
+              <UserPlus size={14} /> Criar ficha completa agora (abre noutro separador; o horário fica guardado aqui)
+            </a>
+          )}
         </div>
         )}
 

@@ -24,6 +24,7 @@ import User from '@/models/User';
 import { logAudit } from '@/lib/audit';
 import { authConfig } from '@/lib/auth.config';
 import { readOrganizationSettings } from '@/lib/org-settings';
+import { loginIdentifier } from '@/lib/username';
 import {
   clientIpFromHeaders,
   isBlockedByNetwork,
@@ -42,7 +43,8 @@ export class OutsideClinicError extends CredentialsSignin {
 }
 
 const credentialsSchema = z.object({
-  email: z.string().email().toLowerCase(),
+  // email OU nome de utilizador (validado por loginIdentifier)
+  email: z.string().trim().min(1).max(160),
   password: z.string().min(1).max(200),
 });
 
@@ -58,10 +60,21 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
         const parsed = credentialsSchema.safeParse(raw);
         if (!parsed.success) return null;
         const { email, password } = parsed.data;
+        // O campo chama-se "email" por compatibilidade, mas aceita também o
+        // nome de utilizador (login só com nome e senha)
+        const ident = loginIdentifier(email);
+        if (!ident) {
+          await bcrypt.compare(password, DUMMY_HASH);
+          return null;
+        }
 
         await dbConnect();
 
-        const user = await User.findOne({ email }).select('+passwordHash');
+        const user = await User.findOne(
+          ident.kind === 'email'
+            ? { email: ident.value }
+            : { username: ident.value },
+        ).select('+passwordHash');
 
         // User inexistente → compara na mesma (timing constante) e sai
         if (!user) {
@@ -69,7 +82,7 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
           await logAudit({
             action: 'login-failed',
             entityType: 'User',
-            summary: `Login falhado: email desconhecido (${email})`,
+            summary: `Login falhado: ${ident.kind === 'email' ? 'email' : 'utilizador'} desconhecido (${ident.value})`,
           });
           return null;
         }

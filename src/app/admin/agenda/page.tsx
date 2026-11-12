@@ -61,7 +61,7 @@ import {
 } from '@/components/agenda/AgendaGrid';
 import { AgendaToolbar } from '@/components/agenda/AgendaToolbar';
 import { WalkInButton } from '@/components/agenda/WalkInModal';
-import { ExtendDayButton } from '@/components/agenda/ExtendDayModal';
+import { DoctorDaysButton } from '@/components/agenda/DoctorDaysModal';
 import {
   OccupancyCalendar,
   type DayOccupancy,
@@ -506,6 +506,8 @@ export default async function AgendaPage({
       clinicId: String(a.clinicId),
       date: s.date,
       provisional: !!p?.provisional,
+      startMs: a.startAt.getTime(),
+      endMs: a.endAt.getTime(),
       referralLabel: a.referralSource
         ? [
             REFERRAL_SOURCE_LABEL[a.referralSource as ReferralSource] ??
@@ -753,18 +755,27 @@ export default async function AgendaPage({
               Histórico
             </Link>
 
-            {/* Estender horário de um médico neste dia (P3) */}
+            {/* Abrir, fechar ou repor dias da agenda de um médico — um ou
+                vários de uma vez (pedidos do Victor de 11/11/2026; substitui
+                o "Estender horário" do P3) */}
             {view === 'dia' && allDoctors.length > 0 && (
-              <ExtendDayButton
+              <DoctorDaysButton
                 clinicId={clinicId}
                 date={date}
-                dateLabel={dateLabel}
+                today={todayLisbon()}
                 doctors={allDoctors.map(d => {
                   const r = workingRangesForDate(d, clinic, date);
                   return {
                     id: String(d._id),
                     name: d.name,
-                    until: r.length ? hhmm(r[r.length - 1].end) : null,
+                    hours: r.length
+                      ? r.map(x => `${hhmm(x.start)}–${hhmm(x.end)}`).join(' · ')
+                      : null,
+                    manual: d.exceptions.some(
+                      e =>
+                        e.date === date &&
+                        (!e.clinicId || String(e.clinicId) === clinicId),
+                    ),
                   };
                 })}
               />
@@ -1033,7 +1044,7 @@ export default async function AgendaPage({
           ))}
           <span>
             — para abrir a agenda de um deles só neste dia use{' '}
-            <strong>Abrir dia / estender horário</strong>.
+            <strong>Abrir / fechar dias</strong>.
           </span>
         </div>
       )}

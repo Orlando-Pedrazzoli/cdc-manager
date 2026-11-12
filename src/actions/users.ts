@@ -27,6 +27,13 @@ import User from '@/models/User';
 import { createActivationCode } from '@/lib/activation';
 import { sendActivationEmail } from '@/lib/resend';
 import { logAudit } from '@/lib/audit';
+import bcrypt from 'bcryptjs';
+import {
+  isValidUsername,
+  normalizeUsername,
+  passwordProblem,
+  placeholderEmail,
+} from '@/lib/username';
 
 export type UsersActionState =
   | { error: string }
@@ -270,5 +277,122 @@ export async function setUserActiveAction(
   return {
     success: true,
     message: `Conta de ${user.name} ${enable ? 'reativada' : 'desativada'}.`,
+  };
+}
+
+// -----------------------------------------------------------------------------
+// CONTA SÓ COM NOME DE UTILIZADOR E SENHA (Victor, 11/11/2026)
+// -----------------------------------------------------------------------------
+// "Prefiro sem e-mail, só com nome e senha, que é mais prático. Se a
+// colaboradora se esquecer da senha, a gestão poderia redefini-la."
+// A gestão cria a conta da RECEÇÃO já ativa, com uma senha inicial que
+// entrega em mão; a colaboradora pode mudá-la em Configurações → Conta.
+// Só para a receção: administração e médicos continuam com email (têm
+// recuperação de senha autónoma e, no caso da gestão, acesso total).
+// -----------------------------------------------------------------------------
+export async function createUsernameAccountAction(
+  _prev: UsersActionState,
+  formData: FormData,
+): Promise<UsersActionState> {
+  const guard = await requireAdmin();
+  if ('error' in guard) return guard;
+
+  const name = String(formData.get('name') ?? '').trim();
+  const username = normalizeUsername(String(formData.get('username') ?? ''));
+  const password = String(formData.get('password') ?? '');
+  if (name.length < 2 || name.length > 120) return { error: 'Indique o nome.' };
+  if (!isValidUsername(username)) {
+    return {
+      error:
+        'Nome de utilizador inválido: 3 a 30 caracteres, só letras, números, ponto, hífen ou sublinhado (ex.: ana.silva).',
+    };
+  }
+  const problem = passwordProblem(password);
+  if (problem) return { error: problem };
+
+  await dbConnect();
+  const taken = await User.exists({
+    $or: [{ username }, { email: placeholderEmail(username) }],
+  });
+  if (taken) {
+    return { error: `O nome de utilizador "${username}" já existe.` };
+  }
+
+  const created = await User.create({
+    name,
+    username,
+    email: placeholderEmail(username),
+    role: 'receptionist',
+    status: 'active',
+    passwordHash: await bcrypt.hash(password, 12),
+  });
+  await logAudit({
+    userId: guard.adminId,
+    action: 'create',
+    entityType: 'User',
+    entityId: String(created._id),
+    summary: `Conta da receção criada com nome de utilizador: ${name} (${username})`,
+  });
+  revalidatePath('/admin/configuracoes');
+  return {
+    success: true,
+    message: `Conta criada. ${name} entra com o utilizador "${username}" e a senha que definiu.`,
+  };
+}
+
+// -----------------------------------------------------------------------------
+// REPOR A SENHA DE UMA CONTA DA RECEÇÃO (pela gestão)
+// -----------------------------------------------------------------------------
+// Só contas da receção: a senha de outro administrador nunca é reposta por
+// aqui (cada um recupera a sua por email). Desbloqueia também a conta se
+// estava bloqueada por tentativas falhadas.
+// -----------------------------------------------------------------------------
+export async function adminSetPasswordAction(
+  _prev: UsersActionState,
+  formData: FormData,
+): Promise<UsersActionState> {
+  const guard = await requireAdmin();
+  if ('error' in guard) return guard;
+
+  const parsed = idSchema.safeParse({ userId: formData.get('userId') });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const password = String(formData.get('password') ?? '');
+  const problem = passwordProblem(password);
+  if (problem) return { error: problem };
+
+  await dbConnect();
+  const user = await User.findById(parsed.data.userId).select(
+    'name role status username',
+  );
+  if (!user || user.role !== 'receptionist') {
+    return { error: 'Só é possível repor a senha de contas da receção.' };
+  }
+  if (user.status === 'disabled') {
+    return { error: 'Conta desativada — reative-a primeiro.' };
+  }
+
+  await User.updateOne(
+    { _id: user._id },
+    {
+      $set: {
+        passwordHash: await bcrypt.hash(password, 12),
+        status: 'active',
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      },
+    },
+  );
+  await logAudit({
+    userId: guard.adminId,
+    action: 'update',
+    entityType: 'User',
+    entityId: String(user._id),
+    summary: `Senha reposta pela gestão: ${user.name}`,
+    changedFields: ['passwordHash'],
+  });
+  revalidatePath('/admin/configuracoes');
+  return {
+    success: true,
+    message: `Senha de ${user.name} reposta. Entregue-lhe a nova senha em mão.`,
   };
 }

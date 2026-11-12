@@ -36,6 +36,7 @@ import { getOrganization } from '@/models/Organization';
 import { defaultClinic } from '@/lib/branding';
 import { isMoloniConfigured, isMoloniEmissionReady } from '@/lib/moloni';
 import User from '@/models/User';
+import { isPlaceholderEmail } from '@/lib/username';
 import { OperationsPanel } from '@/components/configuracoes/OperationsPanel';
 import { currentClientIp, getOrganizationSettings } from '@/lib/org-settings';
 
@@ -120,7 +121,7 @@ export default async function ConfiguracoesPage({
     const docs = await User.find({
       role: { $in: ['admin', 'receptionist'] },
     })
-      .select('name email role status createdAt')
+      .select('name email username role status createdAt')
       .sort({ status: 1, name: 1 })
       .lean();
     const dateFmt = new Intl.DateTimeFormat('pt-PT', {
@@ -132,7 +133,8 @@ export default async function ConfiguracoesPage({
     teamUsers = docs.map(u => ({
       id: String(u._id),
       name: u.name,
-      email: u.email ?? '',
+      email: isPlaceholderEmail(u.email) ? '' : (u.email ?? ''),
+      username: u.username ?? null,
       role: u.role as TeamUser['role'],
       status: u.status as TeamUser['status'],
       createdAt: dateFmt.format(u.createdAt as Date),
@@ -258,7 +260,13 @@ export default async function ConfiguracoesPage({
           currentIp={clientIp}
         />
       ) : activeTab === 'conta' ? (
-        <ChangePasswordForm email={session.user.email ?? ''} />
+        <ChangePasswordForm
+          email={
+            isPlaceholderEmail(session.user.email)
+              ? (session.user.name ?? 'a sua conta')
+              : (session.user.email ?? '')
+          }
+        />
       ) : activeTab === 'integracoes' ? (
         <MoloniPanel
           configured={isMoloniConfigured()}

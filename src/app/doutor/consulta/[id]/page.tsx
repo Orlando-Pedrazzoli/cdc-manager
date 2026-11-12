@@ -30,6 +30,7 @@ import { getClinicById } from '@/models/Clinic';
 import { signedPreviewUrl } from '@/lib/cloudinary';
 import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
 import { MandatoryAnamnesisGate } from '@/components/clinico/MandatoryAnamnesisGate';
+import { ConsultProgress } from '@/components/agenda/ConsultProgress';
 import {
   anamnesisGateReason,
   anesthesiaReactionAlert,
@@ -379,6 +380,14 @@ export default async function ConsultationPage({
             {treatmentName} · {clinic?.name ?? '—'}
             {appt.note ? ` · ${appt.note}` : ''}
           </p>
+          {/* Barra de tempo da consulta (ideia do Victor, 11/11/2026) */}
+          {status === 'in-progress' && (
+            <ConsultProgress
+              startMs={appt.startAt.getTime()}
+              endMs={appt.endAt.getTime()}
+              variant='header'
+            />
+          )}
           {/* Percurso na clínica: contexto imediato da triagem — primeira
               consulta (só o registo breve da receção) vs paciente com
               histórico (n consultas, última visita) */}
