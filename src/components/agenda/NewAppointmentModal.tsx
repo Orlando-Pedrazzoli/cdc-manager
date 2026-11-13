@@ -63,6 +63,7 @@ import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { TreatmentPicker } from '@/components/clinico/TreatmentPicker';
+import { PatientAlertsPopup } from '@/components/pacientes/PatientAlertsPopup';
 
 /** 7.ª ronda/B1: o que a agenda precisa para abrir o pedido ao laboratório */
 export interface NewAppointmentLabTarget {
@@ -378,6 +379,7 @@ export function NewAppointmentModal({
   const clinicColor = clinic?.color ?? '#1B2A6B';
 
   return (
+    <>
     <Modal open={open} onClose={onClose} title='Nova marcação' maxWidth={940}>
       <form
         action={formAction}
@@ -939,5 +941,9 @@ export function NewAppointmentModal({
         </div>
       </form>
     </Modal>
+    {/* 7.ª ronda/B5: ao escolher o paciente, saltam os avisos (valores por
+        faturar, faltas, observações da equipa) */}
+    <PatientAlertsPopup patientId={open && patient ? patient.id : null} />
+    </>
   );
 }

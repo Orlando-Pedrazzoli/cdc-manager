@@ -64,6 +64,15 @@ import {
 import { ClinicCard } from '@/components/dashboard/ClinicCard';
 import { PatientAppointmentsShortcut } from '@/components/dashboard/PatientAppointmentsShortcut';
 import {
+  PatientMessageButtons,
+  type MessageSentInfo,
+} from '@/components/dashboard/PatientMessageButtons';
+import { renderMessage, whatsAppLink } from '@/lib/patient-messages';
+import { getOrganizationSettings } from '@/lib/org-settings';
+import { getOrganization } from '@/models/Organization';
+import Notification from '@/models/Notification';
+import User from '@/models/User';
+import {
   ActionLink,
   C,
   EmptyLine,
@@ -284,9 +293,19 @@ export default async function AdminDashboardPage() {
       _id: mongoose.Types.ObjectId;
       name: string;
       phone: string | null;
+      email: string | null;
+      marketingAt: Date | null;
       birthDate: Date;
     }>([
-      { $match: { status: 'active', birthDate: { $ne: null } } },
+      // sem falecidos nem fichas "(NAO USAR)" do Dentoral (7.ª ronda/A1)
+      {
+        $match: {
+          status: 'active',
+          birthDate: { $ne: null },
+          deceasedAt: null,
+          name: { $not: /n[aã]o\s+usar/i },
+        },
+      },
       {
         $match: {
           $expr: {
@@ -312,7 +331,15 @@ export default async function AdminDashboardPage() {
           },
         },
       },
-      { $project: { name: 1, phone: 1, birthDate: 1 } },
+      {
+        $project: {
+          name: 1,
+          phone: 1,
+          email: 1,
+          birthDate: 1,
+          marketingAt: '$consents.marketingAt',
+        },
+      },
       { $sort: { name: 1 } },
       { $limit: 12 },
     ]),
@@ -489,7 +516,7 @@ export default async function AdminDashboardPage() {
   const [upPatients, upDoctors] = await Promise.all([
     upPatientIds.length
       ? Patient.find({ _id: { $in: upPatientIds } })
-          .select('name')
+          .select('name phone email')
           .lean()
       : [],
     upDoctorIds.length
@@ -501,6 +528,79 @@ export default async function AdminDashboardPage() {
   const patientNameById = new Map(
     upPatients.map(p => [String(p._id), p.name] as const),
   );
+  const patientContactById = new Map(
+    upPatients.map(
+      p =>
+        [
+          String(p._id),
+          {
+            phone: (p.phone as string | null) ?? null,
+            email: (p.email as string | null) ?? null,
+          },
+        ] as const,
+    ),
+  );
+
+  // --- 7.ª ronda/A1: mensagens de parabéns e de falta -------------------------
+  // Textos (da gestão ou por omissão), nome da clínica e o que já saiu hoje
+  const [opSettings, org] = await Promise.all([
+    getOrganizationSettings(),
+    getOrganization(),
+  ]);
+  const clinicInfoById = new Map(
+    clinics.map(
+      c =>
+        [
+          String(c._id),
+          { name: c.name, phone: (c.phone as string | null) ?? null },
+        ] as const,
+    ),
+  );
+  const messagePatientIds = [
+    ...birthdaysRaw.map(p => p._id),
+    ...missedRaw.filter(a => a.status === 'no-show').map(a => a.patientId),
+  ];
+  const sentToday = messagePatientIds.length
+    ? await Notification.find({
+        patientId: { $in: messagePatientIds },
+        type: { $in: ['birthday-greeting', 'no-show-followup'] },
+        status: 'sent',
+        sentAt: { $gte: dayStart, $lt: dayEnd },
+      })
+        .select('patientId type channel sentAt sentByUserId appointmentId')
+        .sort({ sentAt: 1 })
+        .lean()
+    : [];
+  const senderIds = [
+    ...new Set(sentToday.map(n => String(n.sentByUserId)).filter(v => v !== 'null')),
+  ];
+  const senders = senderIds.length
+    ? await User.find({ _id: { $in: senderIds } }).select('name').lean()
+    : [];
+  const senderNameById = new Map(senders.map(u => [String(u._id), u.name]));
+  const sentFor = (
+    patientId: string,
+    type: 'birthday-greeting' | 'no-show-followup',
+    appointmentId?: string,
+  ): MessageSentInfo[] =>
+    sentToday
+      .filter(
+        n =>
+          String(n.patientId) === patientId &&
+          n.type === type &&
+          (!appointmentId || String(n.appointmentId) === appointmentId),
+      )
+      .map(n => ({
+        channel: n.channel === 'email' ? ('email' as const) : ('whatsapp' as const),
+        byName: n.sentByUserId
+          ? (senderNameById.get(String(n.sentByUserId)) ?? null)
+          : null,
+        timeLabel: new Intl.DateTimeFormat('pt-PT', {
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Europe/Lisbon',
+        }).format(n.sentAt as Date),
+      }));
   const doctorNameById = new Map(
     upDoctors.map(dd => [String(dd._id), dd.name] as const),
   );
@@ -545,9 +645,32 @@ export default async function AdminDashboardPage() {
     'no-show': { label: 'Falta', tone: 'bad' },
     cancelled: { label: 'Cancelada', tone: 'neutral' },
   };
-  const missed = missedRaw.map(a => ({
+  const missed = missedRaw.map(a => {
+    const contact = patientContactById.get(String(a.patientId));
+    const clinicInfo = clinicInfoById.get(String(a.clinicId));
+    const time = timeFmt.format(a.startAt as Date);
+    const text =
+      a.status === 'no-show'
+        ? renderMessage('no-show', opSettings.messageTemplates.noShow, {
+            patientName:
+              patientNameById.get(String(a.patientId)) ?? 'paciente',
+            clinicName: clinicInfo?.name ?? org.name,
+            clinicPhone: clinicInfo?.phone ?? null,
+            time,
+          })
+        : null;
+    return {
+    // só quem FALTOU recebe a mensagem (não as canceladas)
+    message: text
+      ? {
+          text,
+          whatsAppUrl: whatsAppLink(contact?.phone, text),
+          email: contact?.email ?? null,
+          sent: sentFor(String(a.patientId), 'no-show-followup', String(a._id)),
+        }
+      : null,
     id: String(a._id),
-    time: timeFmt.format(a.startAt as Date),
+    time,
     patientId: String(a.patientId),
     patientName: patientNameById.get(String(a.patientId)) ?? '(paciente)',
     doctorName: a.doctorId
@@ -558,16 +681,34 @@ export default async function AdminDashboardPage() {
       label: a.status as string,
       tone: 'neutral' as Tone,
     },
-  }));
+    };
+  });
 
   // --- Aniversários de hoje --------------------------------------------------
-  const birthdays = birthdaysRaw.map(p => ({
+  const birthdays = birthdaysRaw.map(p => {
+    const text = renderMessage(
+      'birthday',
+      opSettings.messageTemplates.birthday,
+      { patientName: p.name, clinicName: org.name },
+    );
+    return {
+    message: {
+      text,
+      whatsAppUrl: whatsAppLink(p.phone, text),
+      email: p.email ?? null,
+      emailBlockedReason:
+        p.email && !p.marketingAt
+          ? 'Sem consentimento de marketing na ficha: o email de parabéns não pode ser enviado'
+          : null,
+      sent: sentFor(String(p._id), 'birthday-greeting'),
+    },
     id: String(p._id),
     name: p.name,
     phone: p.phone ?? null,
     // É hoje o aniversário → idade = ano corrente − ano de nascimento
     age: y - p.birthDate.getUTCFullYear(),
-  }));
+    };
+  });
 
   const rawDate = new Intl.DateTimeFormat('pt-PT', {
     weekday: 'long',
@@ -967,6 +1108,17 @@ export default async function AdminDashboardPage() {
                   meta={
                     <>
                       <Pill tone={f.status.tone}>{f.status.label}</Pill>
+                      {f.message && (
+                        <PatientMessageButtons
+                          patientId={f.patientId}
+                          kind='no-show'
+                          appointmentId={f.id}
+                          text={f.message.text}
+                          whatsAppUrl={f.message.whatsAppUrl}
+                          email={f.message.email}
+                          sent={f.message.sent}
+                        />
+                      )}
                       <ActionLink
                         href={`/admin/agenda?clinic=${f.clinicSlug}`}
                         small
@@ -993,19 +1145,30 @@ export default async function AdminDashboardPage() {
                   titleHref={`/admin/pacientes/${b.id}`}
                   subtitle={`Faz ${b.age} anos`}
                   meta={
-                    b.phone ? (
-                      <a
-                        href={`tel:${b.phone}`}
-                        style={{
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          color: C.action,
-                          textDecoration: 'none',
-                        }}
-                      >
-                        {b.phone}
-                      </a>
-                    ) : undefined
+                    <>
+                      {b.phone && (
+                        <a
+                          href={`tel:${b.phone}`}
+                          style={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: C.action,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          {b.phone}
+                        </a>
+                      )}
+                      <PatientMessageButtons
+                        patientId={b.id}
+                        kind='birthday'
+                        text={b.message.text}
+                        whatsAppUrl={b.message.whatsAppUrl}
+                        email={b.message.email}
+                        emailBlockedReason={b.message.emailBlockedReason}
+                        sent={b.message.sent}
+                      />
+                    </>
                   }
                 />
               ))}

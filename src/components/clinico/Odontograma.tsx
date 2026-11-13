@@ -36,6 +36,8 @@ import {
 import {
   TOOTH_STATUS_LABEL,
   FACE_CONDITION_LABEL,
+  isPrimaryTooth,
+  type Dentition,
   type FaceCondition,
   type ToothStatus,
 } from '@/lib/domain';
@@ -108,7 +110,13 @@ export function Odontograma({
   history,
   planBaseHref = null,
   consultationHref = null,
+  initialDentition = 'permanent',
+  childAge = false,
 }: {
+  /** 7.ª ronda/B6: dentição mostrada ao abrir (pela idade do paciente) */
+  initialDentition?: Dentition;
+  /** Paciente até aos 12 anos: destaca o seletor de dentição */
+  childAge?: boolean;
   patientId: string;
   /** Registo manual (camada existente) da versão em vista */
   initialTeeth: ToothEntry[];
@@ -132,6 +140,20 @@ export function Odontograma({
   const [dirty, setDirty] = useState(false);
   const [layers, setLayers] = useState<Record<ChartLayer, boolean>>({ existing: true, completed: true, planned: true });
   const [view, setView] = useState<ChartView>('anatomico');
+  // 7.ª ronda/B6: definitiva ou decídua. Abre na que tem registos, se a
+  // idade não decidir (dentes de leite já registados num adolescente, etc.)
+  const [dentition, setDentition] = useState<Dentition>(() =>
+    initialDentition === 'primary' ||
+    (initialTeeth.length > 0 && initialTeeth.every(t => isPrimaryTooth(t.number)))
+      ? 'primary'
+      : 'permanent',
+  );
+  const changeDentition = (d: Dentition) => {
+    setDentition(d);
+    setSelected(null);
+    // a boca em 3D só existe para a dentição definitiva
+    if (d === 'primary') setView('anatomico');
+  };
 
   // eventos externos (executado/planeado), já com Date
   const external = useMemo<ChartEvent[]>(
@@ -221,13 +243,20 @@ export function Odontograma({
               type='button'
               onClick={() => setView(id)}
               aria-pressed={view === id}
+              disabled={id === 'paciente' && dentition === 'primary'}
+              title={
+                id === 'paciente' && dentition === 'primary'
+                  ? 'A boca em 3D só existe para a dentição definitiva'
+                  : undefined
+              }
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 6,
                 padding: '6px 12px',
                 border: 'none',
-                cursor: 'pointer',
+                cursor: id === 'paciente' && dentition === 'primary' ? 'not-allowed' : 'pointer',
+                opacity: id === 'paciente' && dentition === 'primary' ? 0.45 : 1,
                 fontSize: '12px',
                 fontWeight: 700,
                 backgroundColor: view === id ? '#2743A6' : '#FFFFFF',
@@ -235,6 +264,43 @@ export function Odontograma({
               }}
             >
               <Icon size={14} /> {label}
+            </button>
+          ))}
+        </div>
+
+        {/* 7.ª ronda/B6: dentição definitiva / decídua (dentes de leite) */}
+        <div
+          role='group'
+          aria-label='Dentição'
+          style={{
+            display: 'inline-flex',
+            border: `1px solid ${childAge ? '#E0B100' : '#D5DBEA'}`,
+            borderRadius: '9px',
+            overflow: 'hidden',
+          }}
+        >
+          {(
+            [
+              { id: 'permanent', label: 'Definitiva' },
+              { id: 'primary', label: 'Infantil (de leite)' },
+            ] as const
+          ).map(({ id, label }) => (
+            <button
+              key={id}
+              type='button'
+              onClick={() => changeDentition(id)}
+              aria-pressed={dentition === id}
+              style={{
+                padding: '6px 12px',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: 700,
+                backgroundColor: dentition === id ? '#2743A6' : '#FFFFFF',
+                color: dentition === id ? '#FFFFFF' : '#3D4257',
+              }}
+            >
+              {label}
             </button>
           ))}
         </div>
@@ -300,7 +366,7 @@ export function Odontograma({
           {view === 'paciente' ? (
             <OdontogramaPaciente3D states={states} selected={selected} onSelect={setSelected} />
           ) : (
-            <OdontogramaAnatomico states={states} notes={notes} selected={selected} onSelect={setSelected} />
+            <OdontogramaAnatomico states={states} notes={notes} selected={selected} onSelect={setSelected} dentition={dentition} />
           )}
 
           {/* Legenda (a vista do paciente tem a sua, mais simples) */}

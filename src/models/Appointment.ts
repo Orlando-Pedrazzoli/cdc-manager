@@ -220,6 +220,15 @@ const AppointmentSchema = new Schema(
       ref: 'User',
       default: null,
     },
+    // 7.ª ronda/A3: "Tudo OK" — a receção fecha o atendimento depois de
+    // cobrar e tratar do que ficou pendente. A marcação fica azul na agenda
+    // (lib/agenda-colors) e regista quem fechou e quando.
+    closedAt: { type: Date, default: null },
+    closedByUserId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     // Remarcação = cancelar + criar nova; os elos preservam o rasto completo.
     // A nova marcação pode ser NOUTRA clínica (remarcar do Colombo para a
     // Buraca é um caso real de referência entre médicos)

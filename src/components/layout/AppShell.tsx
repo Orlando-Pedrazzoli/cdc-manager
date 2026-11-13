@@ -19,8 +19,13 @@
 
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
-import { Menu, X } from 'lucide-react';
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
+import { Menu, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import { AdminSidebar } from './AdminSidebar';
 import { DoctorSidebar } from './DoctorSidebar';
 import { BrandMark, type BrandMarkProps } from './BrandMark';
@@ -38,6 +43,35 @@ type Props = {
   children: ReactNode;
 };
 
+// --- Preferência "menu escondido" (por browser) --------------------------------
+const SIDEBAR_KEY = 'cdc:sidebar-hidden';
+const SIDEBAR_EVENT = 'cdc:sidebar-change';
+
+function subscribeSidebar(onChange: () => void) {
+  window.addEventListener('storage', onChange);
+  window.addEventListener(SIDEBAR_EVENT, onChange);
+  return () => {
+    window.removeEventListener('storage', onChange);
+    window.removeEventListener(SIDEBAR_EVENT, onChange);
+  };
+}
+function readSidebarHidden(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_KEY) === '1';
+  } catch {
+    return false; // modo privado / armazenamento bloqueado
+  }
+}
+function writeSidebarHidden(hidden: boolean) {
+  try {
+    if (hidden) window.localStorage.setItem(SIDEBAR_KEY, '1');
+    else window.localStorage.removeItem(SIDEBAR_KEY);
+  } catch {
+    /* sem armazenamento: vale só até recarregar */
+  }
+  window.dispatchEvent(new Event(SIDEBAR_EVENT));
+}
+
 export function AppShell({
   area,
   brand,
@@ -47,6 +81,12 @@ export function AppShell({
   children,
 }: Props) {
   const [open, setOpen] = useState(false);
+  // no servidor (e na 1.ª pintura) o menu está sempre visível
+  const sidebarHidden = useSyncExternalStore(
+    subscribeSidebar,
+    readSidebarHidden,
+    () => false,
+  );
   const home = area === 'admin' ? '/admin/dashboard' : '/doutor/dashboard';
   const Sidebar = area === 'admin' ? AdminSidebar : DoctorSidebar;
 
@@ -73,6 +113,7 @@ export function AppShell({
     <div
       className='cdc-shell'
       data-drawer={open ? 'open' : 'closed'}
+      data-sidebar={sidebarHidden ? 'hidden' : 'shown'}
       style={{ backgroundColor: '#F4F6FB' }}
     >
       {/* Sidebar desktop */}
@@ -180,6 +221,36 @@ export function AppShell({
             borderBottom: '1px solid #EEF1F8',
           }}
         >
+          <button
+            type='button'
+            className='cdc-sidebar-toggle'
+            onClick={() => writeSidebarHidden(!sidebarHidden)}
+            aria-label={sidebarHidden ? 'Mostrar o menu' : 'Esconder o menu'}
+            aria-pressed={sidebarHidden}
+            title={
+              sidebarHidden
+                ? 'Mostrar o menu lateral'
+                : 'Esconder o menu lateral (mais espaço para a agenda)'
+            }
+            style={{
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 38,
+              height: 38,
+              flexShrink: 0,
+              borderRadius: '10px',
+              border: '1px solid #D8DEEF',
+              backgroundColor: sidebarHidden ? '#F2F5FC' : '#FFFFFF',
+              color: '#1B2A6B',
+              cursor: 'pointer',
+            }}
+          >
+            {sidebarHidden ? (
+              <PanelLeftOpen size={18} />
+            ) : (
+              <PanelLeftClose size={18} />
+            )}
+          </button>
           {topbar}
         </header>
 

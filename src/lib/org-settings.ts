@@ -20,6 +20,8 @@ import {
 
 export interface OrganizationSettings {
   monthlyPromo: string | null;
+  /** 7.ª ronda/A1: textos das mensagens (null = texto por omissão) */
+  messageTemplates: { birthday: string | null; noShow: string | null };
   network: NetworkRestriction;
 }
 
@@ -28,10 +30,14 @@ export async function readOrganizationSettings(): Promise<OrganizationSettings> 
   try {
     await dbConnect();
     const org = await Organization.findOne()
-      .select('monthlyPromo networkRestriction')
+      .select('monthlyPromo networkRestriction messageTemplates')
       .lean();
     return {
       monthlyPromo: org?.monthlyPromo?.trim() || null,
+      messageTemplates: {
+        birthday: org?.messageTemplates?.birthday?.trim() || null,
+        noShow: org?.messageTemplates?.noShow?.trim() || null,
+      },
       network: org?.networkRestriction
         ? {
             enabled: !!org.networkRestriction.enabled,
@@ -42,7 +48,11 @@ export async function readOrganizationSettings(): Promise<OrganizationSettings> 
     };
   } catch (err) {
     console.error('[org-settings] leitura falhou — a usar defaults:', err);
-    return { monthlyPromo: null, network: NO_RESTRICTION };
+    return {
+      monthlyPromo: null,
+      messageTemplates: { birthday: null, noShow: null },
+      network: NO_RESTRICTION,
+    };
   }
 }
 

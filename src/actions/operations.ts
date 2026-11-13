@@ -19,6 +19,7 @@ import { logAudit } from '@/lib/audit';
 import Organization from '@/models/Organization';
 import User from '@/models/User';
 import { RESTRICTABLE_ROLES, isValidAllowEntry } from '@/lib/network-access';
+import { MESSAGE_TEMPLATE_MAX } from '@/lib/patient-messages';
 
 export type OperationsActionState =
   | { success: true; message: string }
@@ -77,6 +78,48 @@ export async function updateMonthlyPromoAction(
     success: true,
     message: parsed.data ? 'Promoção do mês guardada.' : 'Promoção removida.',
   };
+}
+
+/**
+ * 7.ª ronda/A1: textos das mensagens de parabéns e de falta. Só a gestão.
+ * Campo vazio = volta ao texto por omissão.
+ */
+export async function updateMessageTemplatesAction(
+  _prev: OperationsActionState,
+  formData: FormData,
+): Promise<OperationsActionState> {
+  const adminId = await requireAdminId();
+  if (!adminId) return { error: 'Sem permissões.' };
+
+  const field = z
+    .string()
+    .trim()
+    .max(
+      MESSAGE_TEMPLATE_MAX,
+      `Texto demasiado longo (máx. ${MESSAGE_TEMPLATE_MAX} caracteres)`,
+    );
+  const birthday = field.safeParse(formData.get('birthday') ?? '');
+  const noShow = field.safeParse(formData.get('noShow') ?? '');
+  if (!birthday.success) return { error: birthday.error.issues[0].message };
+  if (!noShow.success) return { error: noShow.error.issues[0].message };
+
+  const org = await organizationDoc();
+  org.messageTemplates = {
+    birthday: birthday.data === '' ? null : birthday.data,
+    noShow: noShow.data === '' ? null : noShow.data,
+  };
+  await org.save();
+  await logAudit({
+    userId: adminId,
+    action: 'update',
+    entityType: 'Organization',
+    entityId: String(org._id),
+    summary: 'Textos das mensagens (parabéns e falta) atualizados',
+    changedFields: ['messageTemplates'],
+  });
+  revalidatePath('/admin/configuracoes');
+  revalidatePath('/admin/dashboard');
+  return { success: true, message: 'Textos das mensagens guardados.' };
 }
 
 export async function updateNetworkRestrictionAction(

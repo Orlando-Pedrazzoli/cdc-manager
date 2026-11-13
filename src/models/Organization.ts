@@ -55,6 +55,13 @@ const OrganizationSchema = new Schema(
     /** 5.ª ronda/09: promoção do mês (ex.: "Branqueamento") — aparece como
         opção em "Como nos conheceu" na nova marcação; vazio = sem promoção */
     monthlyPromo: { type: String, default: null, trim: true, maxlength: 80 },
+    /** 7.ª ronda/A1: textos das mensagens enviadas do dashboard (parabéns e
+        falta). Vazio = texto por omissão de lib/patient-messages. Só a
+        gestão edita (Configurações → Operação). */
+    messageTemplates: {
+      birthday: { type: String, default: null, trim: true, maxlength: 600 },
+      noShow: { type: String, default: null, trim: true, maxlength: 600 },
+    },
     /** 5.ª ronda/14: acesso só dentro da clínica. Com `enabled`, os perfis
         em `roles` só entram (e só navegam) a partir dos IP em `allowedIps`
         (IPv4/IPv6 exatos ou prefixos CIDR IPv4). Desligado por omissão. */

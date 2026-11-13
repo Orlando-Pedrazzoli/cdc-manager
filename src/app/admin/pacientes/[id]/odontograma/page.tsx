@@ -28,6 +28,9 @@ import type {
   ToothEntry,
 } from '@/components/clinico/ToothDetail';
 import type { ToothStatus, FaceCondition, ToothFace } from '@/lib/domain';
+import { PatientAlertsPopup } from '@/components/pacientes/PatientAlertsPopup';
+import { ageInYears } from '@/lib/age';
+import { defaultDentition, isChildAge } from '@/lib/domain';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,7 +82,7 @@ export default async function AdminOdontogramPage({
 
   await dbConnect();
   const [patient, versions] = await Promise.all([
-    Patient.findById(id).select('name processNumber').lean(),
+    Patient.findById(id).select('name processNumber birthDate').lean(),
     Odontogram.find({ patientId: id })
       .select('version createdAt updatedBy')
       .sort({ version: -1 })
@@ -158,23 +161,38 @@ export default async function AdminOdontogramPage({
       }`
     : null;
 
+  // 7.ª ronda/B6: a idade decide a dentição mostrada ao abrir
+  const ageYears = ageInYears((patient as { birthDate?: Date | null }).birthDate ?? null);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <Link
-        href={`/admin/pacientes/${id}`}
+      {/* 7.ª ronda/B5: avisos do paciente ao abrir o odontograma */}
+      <div
         style={{
-          display: 'inline-flex',
+          display: 'flex',
+          justifyContent: 'space-between',
           alignItems: 'center',
-          gap: '6px',
-          fontSize: '13px',
-          fontWeight: 600,
-          color: '#6A7186',
-          textDecoration: 'none',
+          gap: 12,
+          flexWrap: 'wrap',
         }}
       >
-        <ArrowLeft size={15} />
-        Ficha de {patient.name}
-      </Link>
+        <Link
+          href={`/admin/pacientes/${id}`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '13px',
+            fontWeight: 600,
+            color: '#6A7186',
+            textDecoration: 'none',
+          }}
+        >
+          <ArrowLeft size={15} />
+          Ficha de {patient.name}
+        </Link>
+        <PatientAlertsPopup patientId={id} showButton />
+      </div>
 
       <div
         style={{
@@ -276,6 +294,8 @@ export default async function AdminOdontogramPage({
       <Odontograma
         key={showVersion}
         patientId={id}
+        initialDentition={defaultDentition(ageYears)}
+        childAge={isChildAge(ageYears)}
         initialTeeth={initialTeeth}
         events={chartEvents}
         versionLabel={versionLabel ?? 'Sem registo manual do médico'}

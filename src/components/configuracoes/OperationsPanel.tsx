@@ -10,12 +10,18 @@
 
 import { useActionState } from 'react';
 import {
+  updateMessageTemplatesAction,
   updateMonthlyPromoAction,
   updateNetworkRestrictionAction,
   type OperationsActionState,
 } from '@/actions/operations';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea } from '@/components/ui/Input';
+import {
+  DEFAULT_MESSAGE_TEMPLATES,
+  MESSAGE_PLACEHOLDERS,
+  MESSAGE_TEMPLATE_MAX,
+} from '@/lib/patient-messages';
 
 const card: React.CSSProperties = {
   backgroundColor: '#FFFFFF',
@@ -64,10 +70,13 @@ const ROLE_LABEL: Record<string, string> = {
 
 export function OperationsPanel({
   monthlyPromo,
+  messageTemplates,
   network,
   currentIp,
 }: {
   monthlyPromo: string | null;
+  /** 7.ª ronda/A1: textos guardados (null = texto por omissão) */
+  messageTemplates: { birthday: string | null; noShow: string | null };
   network: { enabled: boolean; allowedIps: string[]; roles: string[] };
   /** IP público deste computador, visto pelo servidor */
   currentIp: string | null;
@@ -76,6 +85,10 @@ export function OperationsPanel({
     OperationsActionState,
     FormData
   >(updateMonthlyPromoAction, undefined);
+  const [msgState, msgAction, msgPending] = useActionState<
+    OperationsActionState,
+    FormData
+  >(updateMessageTemplatesAction, undefined);
   const [netState, netAction, netPending] = useActionState<
     OperationsActionState,
     FormData
@@ -107,6 +120,53 @@ export function OperationsPanel({
           <div>
             <Button type='submit' loading={promoPending}>
               Guardar promoção
+            </Button>
+          </div>
+        </form>
+      </div>
+
+      {/* --- Mensagens ao paciente (7.ª ronda/A1) --------------------------- */}
+      <div style={card}>
+        <h2 style={h2}>Mensagens de parabéns e de falta</h2>
+        <p style={lead}>
+          Textos usados pelos botões WhatsApp e Email do dashboard, em
+          “Aniversários hoje” e “Faltas e cancelamentos hoje”. Só a gestão os
+          altera. Campo vazio = texto por omissão (o que aparece a cinzento).
+          Marcadores:{' '}
+          {Object.entries(MESSAGE_PLACEHOLDERS).map(([k, v], i) => (
+            <span key={k}>
+              {i > 0 && '; '}
+              <code>{k}</code> = {v}
+            </span>
+          ))}
+          .
+        </p>
+        <form
+          action={msgAction}
+          style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
+        >
+          <Textarea
+            id='msg-birthday'
+            name='birthday'
+            label='Parabéns (aniversário)'
+            rows={3}
+            maxLength={MESSAGE_TEMPLATE_MAX}
+            defaultValue={messageTemplates.birthday ?? ''}
+            placeholder={DEFAULT_MESSAGE_TEMPLATES.birthday}
+          />
+          <Textarea
+            id='msg-no-show'
+            name='noShow'
+            label='Falta à consulta'
+            rows={3}
+            maxLength={MESSAGE_TEMPLATE_MAX}
+            defaultValue={messageTemplates.noShow ?? ''}
+            placeholder={DEFAULT_MESSAGE_TEMPLATES['no-show']}
+          />
+          <Feedback state={msgState} />
+          <div>
+            <Button type='submit' loading={msgPending}>
+              Guardar textos
             </Button>
           </div>
         </form>

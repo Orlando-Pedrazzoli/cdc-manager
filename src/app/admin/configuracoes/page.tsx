@@ -256,6 +256,7 @@ export default async function ConfiguracoesPage({
       ) : activeTab === 'operacao' ? (
         <OperationsPanel
           monthlyPromo={opSettings.monthlyPromo}
+          messageTemplates={opSettings.messageTemplates}
           network={opSettings.network}
           currentIp={clientIp}
         />

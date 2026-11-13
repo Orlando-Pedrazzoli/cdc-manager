@@ -354,7 +354,7 @@ export default async function AgendaPage({
 
   const appts = await Appointment.find(apptQuery)
     .select(
-      'doctorId patientId treatmentTypeId startAt endAt status channel confirmedVia isUrgent createdByUserId createdAt note cancelledByUserId cancelledAt cancelledBy cancelReason rescheduledToId removedFromGridAt removedFromGridByUserId referralSource referralDetail',
+      'doctorId patientId treatmentTypeId startAt endAt status channel confirmedVia isUrgent createdByUserId createdAt note cancelledByUserId cancelledAt cancelledBy cancelReason rescheduledToId removedFromGridAt removedFromGridByUserId referralSource referralDetail closedAt closedByUserId',
     )
     .sort({ startAt: 1 })
     .lean();
@@ -367,6 +367,7 @@ export default async function AgendaPage({
           a.createdByUserId,
           a.cancelledByUserId,
           a.removedFromGridByUserId,
+          a.closedByUserId,
         ])
         .filter(Boolean)
         .map(String),
@@ -509,6 +510,11 @@ export default async function AgendaPage({
       note: (a.note as string | null) ?? null,
       cancelledByName: a.cancelledByUserId
         ? (userNameById.get(String(a.cancelledByUserId)) ?? null)
+        : null,
+      // 7.ª ronda/A3: "Tudo OK"
+      closedAtLabel: a.closedAt ? lisbonStamp(a.closedAt as Date) : null,
+      closedByName: a.closedByUserId
+        ? (userNameById.get(String(a.closedByUserId)) ?? null)
         : null,
       cancelledAtLabel: a.cancelledAt
         ? lisbonStamp(a.cancelledAt as Date)

@@ -47,6 +47,7 @@ import {
   ListChecks,
   UsersRound,
   FileSignature,
+  ShoppingBag,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 
@@ -80,6 +81,8 @@ const NAV: { section: string; items: NavItem[] }[] = [
         label: 'Tratamentos',
         icon: ClipboardList,
       },
+      // 7.ª ronda/B2b: produtos de venda ao balcão, "abaixo de Tratamentos"
+      { href: '/admin/produtos', label: 'Produtos', icon: ShoppingBag },
       // 5.ª ronda/12: atalho — procurar o paciente e abrir o odontograma
       { href: '/admin/odontograma', label: 'Odontograma', icon: Smile },
       { href: '/admin/rx', label: 'Raio-X', icon: ScanLine },

@@ -171,6 +171,60 @@ export const LOWER_TEETH = [
   '38',
 ] as const;
 
+/**
+ * 7.ª ronda/B6 (Victor, 13/11/2026): "dentição para crianças". Dentição
+ * decídua (20 dentes, FDI 51–85) na mesma ordem de exibição: direita do
+ * paciente à esquerda do ecrã.
+ */
+export const UPPER_PRIMARY_TEETH = [
+  '55',
+  '54',
+  '53',
+  '52',
+  '51',
+  '61',
+  '62',
+  '63',
+  '64',
+  '65',
+] as const;
+export const LOWER_PRIMARY_TEETH = [
+  '85',
+  '84',
+  '83',
+  '82',
+  '81',
+  '71',
+  '72',
+  '73',
+  '74',
+  '75',
+] as const;
+
+export type Dentition = 'permanent' | 'primary';
+
+/** Dente decíduo? (quadrantes FDI 5 a 8) */
+export function isPrimaryTooth(fdi: string): boolean {
+  return /^[5-8][1-5]$/.test(fdi);
+}
+
+/**
+ * Dentição mostrada por omissão ao abrir o odontograma, pela idade: até aos
+ * 5 anos só há dentes de leite; dos 6 aos 12 a dentição é mista e o médico
+ * alterna entre as duas; a partir dos 13 é a definitiva. Sem data de
+ * nascimento assume-se adulto.
+ */
+export function defaultDentition(ageYears: number | null): Dentition {
+  return ageYears != null && ageYears >= 0 && ageYears <= 5
+    ? 'primary'
+    : 'permanent';
+}
+
+/** A idade justifica oferecer a dentição decídua em destaque? (até aos 12) */
+export function isChildAge(ageYears: number | null): boolean {
+  return ageYears != null && ageYears >= 0 && ageYears <= 12;
+}
+
 // =============================================================================
 // CATÁLOGO DE ATOS — constantes partilhadas (client: forms de Configurações)
 // Canónicos aqui; models/TreatmentType re-exporta.

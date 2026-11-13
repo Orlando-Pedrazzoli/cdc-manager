@@ -68,8 +68,10 @@ import {
   updateAppointmentDurationAction,
   updateAppointmentNoteAction,
   removeCancelledFromGridAction,
+  setAttendanceClosedAction,
   undoCheckInAction,
 } from '@/actions/appointments';
+import { AGENDA_COLORS, AGENDA_LEGEND, agendaColor } from '@/lib/agenda-colors';
 import type { AppointmentStatus } from '@/models/Appointment';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea } from '@/components/ui/Input';
@@ -234,6 +236,9 @@ export interface AgendaAppointment {
   cancelledByName: string | null;
   cancelledAtLabel: string | null;
   cancelReason: string | null;
+  /** 7.ª ronda/A3: "Tudo OK" — quando e quem fechou o atendimento */
+  closedAtLabel?: string | null;
+  closedByName?: string | null;
   /** Remarcada → id/hora da nova marcação */
   rescheduledToLabel: string | null;
   /** P2 + apontamento 05: trabalhos de laboratório ligados a esta marcação
@@ -427,6 +432,23 @@ export function AgendaGrid({
     }
   };
 
+  /** 7.ª ronda/A3: "Tudo OK" — fechar (ou reabrir) o atendimento */
+  const setClosed = async (closed: boolean) => {
+    if (!selected) return;
+    setBusy(true);
+    const res = await setAttendanceClosedAction(selected.id, closed);
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success(
+      closed ? 'Atendimento fechado. Tudo OK.' : 'Atendimento reaberto.',
+    );
+    setSelected(null);
+    router.refresh();
+  };
+
   /** 7.ª ronda/A5: tirar o paciente da sala de espera (anular a chegada) */
   const undoCheckIn = async () => {
     if (!selected) return;
@@ -504,6 +526,42 @@ export function AgendaGrid({
           overflowX: 'auto',
         }}
       >
+        {/* 7.ª ronda/A2: legenda das cores por estado */}
+        <div
+          aria-label='Legenda das cores das marcações'
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '4px 12px',
+            padding: '6px 12px',
+            fontSize: '11px',
+            color: '#4A5169',
+            borderBottom: '1px solid #EEF1F8',
+          }}
+        >
+          {AGENDA_LEGEND.map(k => (
+            <span
+              key={k}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: 3,
+                  backgroundColor: AGENDA_COLORS[k].bg,
+                  border: `1px solid ${AGENDA_COLORS[k].border}`,
+                }}
+              />
+              {AGENDA_COLORS[k].label}
+            </span>
+          ))}
+          <span style={{ color: '#9AA1B4' }}>
+            · barra à esquerda = cor do médico
+          </span>
+        </div>
         {/* 3.ª reunião/01: as canceladas não se desenham; fica só o rasto */}
         {cancelledCount > 0 && (
           <div
@@ -759,8 +817,10 @@ export function AgendaGrid({
                 )}
                 {/* Marcações */}
                 {colAppts.map(a => {
-                  const cancelled = a.status === 'no-show';
                   const isCancelled = a.status === 'cancelled';
+                  // 7.ª ronda/A2: a cor do cartão é a do ESTADO (semáforo);
+                  // a cor do médico fica na barra lateral esquerda
+                  const sc = agendaColor(a.status, !!a.closedAtLabel);
                   // Na cancelada, o que interessa ler é o MOTIVO
                   const cardNote = isCancelled
                     ? `Motivo: ${a.cancelReason ?? '—'}${a.cancelledBy === 'patient' ? ' (paciente)' : ''}`
@@ -801,7 +861,7 @@ export function AgendaGrid({
                       tabIndex={0}
                       onClick={open}
                       onKeyDown={onKey}
-                      title={[`${a.start}–${a.end} · ${a.patientLabel}`, `${a.treatmentName} · ${STATUS_LABEL[a.status] ?? a.status}`, cardNote ? (isCancelled ? cardNote : `Obs.: ${cardNote}`) : null]
+                      title={[`${a.start}–${a.end} · ${a.patientLabel}`, `${a.treatmentName} · ${sc.label}`, cardNote ? (isCancelled ? cardNote : `Obs.: ${cardNote}`) : null]
                         .filter(Boolean)
                         .join('\n')}
                       style={{
@@ -812,13 +872,13 @@ export function AgendaGrid({
                         width: `calc(${laneW}% - ${lp.lanes > 1 ? 6 : 8}px)`,
                         zIndex: a.isUrgent ? 2 : 1,
                         textAlign: 'left',
-                        // 4.ª ronda/04: a cor do médico pinta o cartão
-                        // Cancelada: laranja, para o médico "bater o olho"
-                        border: `1px solid ${isCancelled ? '#E8890C' : cancelled ? '#D5DAE6' : a.isUrgent ? '#E59A94' : tint(colColor, 0.5)}`,
-                        borderLeft: `5px solid ${isCancelled ? '#D96B00' : a.isUrgent ? '#B3261E' : colColor}`,
+                        // 7.ª ronda/A2: fundo e contorno pelo estado; a
+                        // barra da esquerda mantém a cor do médico (ou
+                        // vermelho numa urgência)
+                        border: `1px solid ${sc.border}`,
+                        borderLeft: `5px solid ${a.isUrgent ? '#B3261E' : colColor}`,
                         borderRadius: '8px',
-                        backgroundColor: isCancelled ? '#FFE3C2' : cancelled ? '#F1F3F8' : a.isUrgent ? '#FDE3E1' : tint(colColor, 0.16),
-                        opacity: cancelled ? 0.6 : 1,
+                        backgroundColor: sc.bg,
                         padding: lines >= 2 ? '2px 8px' : '0 8px',
                         cursor: 'pointer',
                         overflow: 'hidden',
@@ -832,7 +892,7 @@ export function AgendaGrid({
                           fontWeight: 700,
                           color: '#141B33',
                           overflow: 'hidden',
-                          textDecoration: cancelled ? 'line-through' : 'none',
+                          textDecoration: a.status === 'no-show' ? 'line-through' : 'none',
                           ...(nameLines === 2
                             ? {
                                 display: '-webkit-box',
@@ -871,7 +931,7 @@ export function AgendaGrid({
                         {isCancelled && (
                           <span
                             title={`Cancelada${a.cancelReason ? ` — ${a.cancelReason}` : ''}`}
-                            style={{ ...provisionalPillStyle, backgroundColor: '#B45309' }}
+                            style={{ ...provisionalPillStyle, backgroundColor: '#B3261E' }}
                           >
                             CANCELADA
                           </span>
@@ -950,7 +1010,7 @@ export function AgendaGrid({
                               {labLabel}
                             </span>
                           )}
-                          {a.treatmentName} · {STATUS_LABEL[a.status] ?? a.status}
+                          {a.treatmentName} · {sc.label}
                         </span>
                       ) : null}
                       {/* Barra de tempo: enche enquanto a consulta decorre */}
@@ -1057,6 +1117,21 @@ export function AgendaGrid({
                 <Badge variant={STATUS_VARIANT[selected.status] ?? 'neutral'}>
                   {STATUS_LABEL[selected.status] ?? selected.status}
                 </Badge>
+                {selected.status === 'completed' && (
+                  <span
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: 999,
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      backgroundColor: agendaColor('completed', !!selected.closedAtLabel).bg,
+                      color: agendaColor('completed', !!selected.closedAtLabel).fg,
+                      border: `1px solid ${agendaColor('completed', !!selected.closedAtLabel).border}`,
+                    }}
+                  >
+                    {selected.closedAtLabel ? 'Tudo OK' : 'Por fechar'}
+                  </span>
+                )}
                 {selected.isUrgent && <Badge variant='danger'>Urgência</Badge>}
                 {selected.provisional && (
                   <Link
@@ -1095,6 +1170,13 @@ export function AgendaGrid({
               {selected.referralLabel && (
                 <span>
                   <strong>Como nos conheceu:</strong> {selected.referralLabel}
+                </span>
+              )}
+              {selected.closedAtLabel && (
+                <span style={{ color: AGENDA_COLORS.closed.fg }}>
+                  <strong>Atendimento fechado (Tudo OK)</strong> por{' '}
+                  {selected.closedByName ?? 'utilizador removido'} em{' '}
+                  {selected.closedAtLabel}
                 </span>
               )}
               {selected.labDue.length > 0 && (
@@ -1238,6 +1320,30 @@ export function AgendaGrid({
                     {a.label}
                   </Button>
                 ))}
+                {selected.status === 'completed' && !selected.closedAtLabel && (
+                  <Button
+                    size='sm'
+                    loading={busy}
+                    onClick={() => setClosed(true)}
+                    title='Já cobrou e não há mais nada por tratar com o paciente: a marcação fica azul e regista quem fechou'
+                    style={{
+                      backgroundColor: AGENDA_COLORS.closed.border,
+                      border: `1px solid ${AGENDA_COLORS.closed.border}`,
+                    }}
+                  >
+                    Tudo OK — fechar atendimento
+                  </Button>
+                )}
+                {selected.status === 'completed' && selected.closedAtLabel && (
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    disabled={busy}
+                    onClick={() => setClosed(false)}
+                  >
+                    Reabrir atendimento
+                  </Button>
+                )}
                 {selected.status === 'checked-in' && (
                   <Button
                     size='sm'

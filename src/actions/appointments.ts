@@ -763,6 +763,63 @@ export async function transitionAppointmentAction(
 }
 
 // -----------------------------------------------------------------------------
+// "TUDO OK" — FECHAR O ATENDIMENTO (7.ª ronda/A3 — Victor, 12/11/2026)
+// "Depois de a receção cobrar e não haver mais nada por tratar com o
+// paciente, a rececionista clica 'Tudo OK' e a marcação fica fechada. A
+// linha fica azul na agenda, para todos saberem que o ciclo está concluído.
+// Fica registado qual o colaborador que fechou."
+// Só se fecha uma consulta concluída. Reabrir desfaz (engano); as duas
+// ações ficam no registo de auditoria.
+// -----------------------------------------------------------------------------
+export async function setAttendanceClosedAction(
+  appointmentId: string,
+  closed: boolean,
+): Promise<{ error?: string }> {
+  if (!isObjectId(appointmentId)) return { error: 'Marcação inválida.' };
+
+  await dbConnect();
+  const appt = await Appointment.findById(appointmentId).select(
+    'status clinicId patientId closedAt',
+  );
+  if (!appt) return { error: 'Marcação não encontrada.' };
+
+  let staff;
+  try {
+    staff = await requireStaffForClinic(String(appt.clinicId));
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  if (appt.status !== 'completed') {
+    return { error: 'Só se fecha o atendimento de uma consulta concluída.' };
+  }
+  if (closed === Boolean(appt.closedAt)) return {};
+
+  await Appointment.updateOne(
+    { _id: appointmentId, status: 'completed' },
+    {
+      $set: closed
+        ? { closedAt: new Date(), closedByUserId: staff.id }
+        : { closedAt: null, closedByUserId: null },
+    },
+  );
+  await logAudit({
+    userId: staff.id,
+    action: 'update',
+    entityType: 'Appointment',
+    entityId: appointmentId,
+    patientId: String(appt.patientId),
+    clinicId: String(appt.clinicId),
+    summary: closed
+      ? 'Atendimento fechado ("Tudo OK")'
+      : 'Atendimento reaberto',
+    changedFields: ['closedAt', 'closedByUserId'],
+  });
+
+  revalidatePath('/admin/agenda');
+  return {};
+}
+
+// -----------------------------------------------------------------------------
 // ANULAR A CHEGADA (7.ª ronda/A5 — Victor, 12/11/2026)
 // "Poder cancelar o envio para a sala de espera: o médico está atrasado, o
 // paciente não pode esperar e prefere remarcar." Chegou → volta a confirmada

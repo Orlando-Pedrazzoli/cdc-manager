@@ -23,7 +23,14 @@
 'use client';
 
 import { useId, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { UPPER_TEETH, LOWER_TEETH, TOOTH_STATUS_LABEL } from '@/lib/domain';
+import {
+  UPPER_TEETH,
+  LOWER_TEETH,
+  UPPER_PRIMARY_TEETH,
+  LOWER_PRIMARY_TEETH,
+  TOOTH_STATUS_LABEL,
+  type Dentition,
+} from '@/lib/domain';
 import type {
   ChartLayer,
   ToothChartState,
@@ -151,13 +158,21 @@ function Shapes({ shapes, paint }: { shapes: ArtShape[]; paint?: Paint }) {
 }
 
 // --- Orientação por quadrante ---------------------------------------------------
+// 7.ª ronda/B6: dentição decídua (quadrantes 5–8). A arte de origem só tem
+// dentes definitivos; os de leite usam a silhueta do definitivo equivalente:
+// incisivos e canino iguais, e os dois molares de leite (posições 4 e 5)
+// desenham-se como 1.º e 2.º molar.
+const PRIMARY_POSITION: Record<string, string> = { '1': '1', '2': '2', '3': '3', '4': '6', '5': '7' };
+
 function orient(n: string): { upper: boolean; mirror: boolean; template: string } {
   const q = n[0];
-  const upper = q === '1' || q === '2';
+  const primary = q >= '5';
+  const upper = q === '1' || q === '2' || q === '5' || q === '6';
   return {
     upper,
-    mirror: q === '2' || q === '3', // espelho em x (mesial para a linha média)
-    template: `${upper ? '1' : '3'}${n[1]}`,
+    // espelho em x (mesial para a linha média)
+    mirror: q === '2' || q === '3' || q === '6' || q === '7',
+    template: `${upper ? '1' : '3'}${primary ? (PRIMARY_POSITION[n[1]] ?? n[1]) : n[1]}`,
   };
 }
 
@@ -484,12 +499,21 @@ export function OdontogramaAnatomico({
   notes,
   selected,
   onSelect,
+  dentition = 'permanent',
 }: {
   states: Map<string, ToothChartState>;
   notes: Map<string, string | null>;
   selected: string | null;
   onSelect: (toothNumber: string) => void;
+  /** 7.ª ronda/B6: definitiva (32 dentes) ou decídua (20 dentes de leite) */
+  dentition?: Dentition;
 }) {
+  const primary = dentition === 'primary';
+  const upperTeeth: readonly string[] = primary ? UPPER_PRIMARY_TEETH : UPPER_TEETH;
+  const lowerTeeth: readonly string[] = primary ? LOWER_PRIMARY_TEETH : LOWER_TEETH;
+  // 10 dentes por arcada em vez de 16: 3 colunas livres de cada lado, com a
+  // linha média no mesmo sítio
+  const colShift = primary ? 3 : 0;
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const [hovered, setHovered] = useState<string | null>(null);
 
@@ -497,7 +521,7 @@ export function OdontogramaAnatomico({
     const state = states.get(n) ?? EMPTY_STATE(n);
     const note = notes.get(n) ?? null;
     const { upper, mirror, template } = orient(n);
-    const x0 = columnX(index);
+    const x0 = columnX(index + colShift);
     const cx = x0 + COL / 2;
     const sx = mirror ? -1 : 1;
     const isSelected = selected === n;
@@ -621,7 +645,7 @@ export function OdontogramaAnatomico({
     <svg
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       role='group'
-      aria-label='Odontograma anatómico'
+      aria-label={primary ? 'Odontograma anatómico — dentição decídua' : 'Odontograma anatómico'}
       style={{ width: '100%', minWidth: 720, maxWidth: 1120, display: 'block', margin: '0 auto' }}
     >
       <defs>
@@ -670,8 +694,13 @@ export function OdontogramaAnatomico({
         ESQUERDA DO PACIENTE
       </text>
 
-      {UPPER_TEETH.map((n, i) => renderTooth(n, i))}
-      {LOWER_TEETH.map((n, i) => renderTooth(n, i))}
+      {primary && (
+        <text x={PAD_L + 2} y={12} fontSize={7} fontWeight={700} fill='#9AA1B4' style={{ userSelect: 'none' }}>
+          DENTIÇÃO DECÍDUA (DENTES DE LEITE)
+        </text>
+      )}
+      {upperTeeth.map((n, i) => renderTooth(n, i))}
+      {lowerTeeth.map((n, i) => renderTooth(n, i))}
     </svg>
   );
 }

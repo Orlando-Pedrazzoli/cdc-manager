@@ -453,3 +453,37 @@ export async function sendAppointmentReminderEmail(params: {
     html: baseLayout(content, org),
   });
 }
+
+// -----------------------------------------------------------------------------
+// MENSAGEM AO PACIENTE ESCRITA PELA CLÍNICA (7.ª ronda/A1)
+// Parabéns de aniversário e seguimento de falta, enviados à mão a partir do
+// dashboard. O texto já vem pronto (lib/patient-messages); aqui só se escapa
+// o HTML e se põe na moldura da clínica.
+// -----------------------------------------------------------------------------
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+export async function sendPatientMessageEmail(params: {
+  to: string;
+  subject: string;
+  text: string;
+}): Promise<SendResult> {
+  const org = await getOrganization();
+  const paragraphs = params.text
+    .split(/\n{2,}/)
+    .map(
+      p =>
+        `<p style="margin:0 0 12px 0;color:#3A3F4A;font-size:15px;line-height:1.7;">${escapeHtml(p).replace(/\n/g, '<br />')}</p>`,
+    )
+    .join('');
+  return send({
+    to: params.to,
+    subject: params.subject,
+    html: baseLayout(paragraphs, org),
+  });
+}

@@ -14,33 +14,16 @@ import { ConsultProgress } from '@/components/agenda/ConsultProgress';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
-import Appointment, { type AppointmentStatus } from '@/models/Appointment';
+import Appointment from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import TreatmentType from '@/models/TreatmentType';
 import { getActiveClinics } from '@/models/Clinic';
 import { clinicBadgeMap } from '@/lib/branding';
+import { agendaColor } from '@/lib/agenda-colors';
 import { lisbonToUtc, todayLisbon, minToHhmm } from '@/lib/availability';
 
 export const dynamic = 'force-dynamic';
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: 'Pendente',
-  confirmed: 'Confirmada',
-  'checked-in': 'Em espera',
-  'in-progress': 'Em curso',
-  completed: 'Concluída',
-  cancelled: 'Cancelada',
-  'no-show': 'Falta',
-};
-const STATUS_STYLE: Record<string, { bg: string; fg: string }> = {
-  pending: { bg: '#FFF4DE', fg: '#8A5A00' },
-  confirmed: { bg: '#E4EBFF', fg: '#2743A6' },
-  'checked-in': { bg: '#E0F5EA', fg: '#0F7B4D' },
-  'in-progress': { bg: '#1B2A6B', fg: '#FFFFFF' },
-  completed: { bg: '#EAECF3', fg: '#3D4257' },
-  cancelled: { bg: '#FFE3C2', fg: '#8A4B00' },
-  'no-show': { bg: '#F6E4E3', fg: '#B3261E' },
-};
 
 function utcToLisbonMin(d: Date): number {
   const dtf = new Intl.DateTimeFormat('en-CA', {
@@ -211,13 +194,13 @@ export default async function DoctorAgendaPage({
           </p>
         ) : (
           appointments.map(a => {
-            // Canceladas (Victor, 12/11/2026): a laranja e com o motivo, para
+            // Canceladas (Victor, 12/11/2026): em destaque e com o motivo, para
             // o médico ver de relance quem cancelou e porquê
             const isCancelled = a.status === 'cancelled';
             const muted = a.status === 'no-show';
-            const st =
-              STATUS_STYLE[a.status as AppointmentStatus] ??
-              STATUS_STYLE.completed;
+            // 7.ª ronda/A2: mesmas cores por estado da agenda da receção
+            const sc = agendaColor(a.status, !!a.closedAt);
+            const st = { bg: sc.bg, fg: sc.fg };
             const clinic = clinicById.get(String(a.clinicId));
             const cl = badgeBySlug[clinic?.slug ?? ''] ?? {
               bg: '#EAECF3',
@@ -229,8 +212,8 @@ export default async function DoctorAgendaPage({
               padding: '12px 20px',
               borderBottom: '1px solid #F4F6FB',
               opacity: muted ? 0.55 : 1,
-              backgroundColor: isCancelled ? '#FFF1DF' : undefined,
-              borderLeft: isCancelled ? '4px solid #D96B00' : undefined,
+              backgroundColor: isCancelled ? '#FDECEA' : undefined,
+              borderLeft: `4px solid ${sc.border}`,
               textDecoration: 'none',
             };
             const content = (
@@ -328,7 +311,8 @@ export default async function DoctorAgendaPage({
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {STATUS_LABEL[a.status as AppointmentStatus] ?? a.status}
+                    {/* "Por fechar" é assunto da receção; para o médico está concluída */}
+                    {a.status === 'completed' ? 'Concluída' : sc.label}
                   </span>
                 </div>
               </>

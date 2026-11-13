@@ -38,6 +38,9 @@ export const NOTIFICATION_TYPES = [
   'invoice-issued',
   'doctor-new-appointment', // notificação interna ao médico
   'stock-alert', // interna ao admin
+  // 7.ª ronda/A1: enviadas à mão pela receção, a partir do dashboard
+  'birthday-greeting',
+  'no-show-followup',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -89,6 +92,8 @@ const NotificationSchema = new Schema(
       default: 'queued',
       index: true,
     },
+    // 7.ª ronda/A1: quem enviou, nas mensagens manuais do dashboard
+    sentByUserId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     // ID externo (WhatsApp message id / Resend id) para reconciliar webhooks
     externalId: { type: String, default: null, index: true },
     sentAt: { type: Date, default: null },

@@ -57,8 +57,10 @@ export function visualFaceMap(
   toothNumber: string,
 ): Record<'top' | 'bottom' | 'left' | 'right' | 'center', ToothFace> {
   const quadrant = toothNumber[0];
-  const isUpper = quadrant === '1' || quadrant === '2';
-  const mesialRight = quadrant === '1' || quadrant === '4';
+  // decíduos (7.ª ronda/B6): 5 e 6 são superiores; 5 e 8 ficam à direita
+  // do paciente, como 1 e 4
+  const isUpper = quadrant === '1' || quadrant === '2' || quadrant === '5' || quadrant === '6';
+  const mesialRight = quadrant === '1' || quadrant === '4' || quadrant === '5' || quadrant === '8';
   return {
     center: 'O',
     top: isUpper ? 'V' : 'L',

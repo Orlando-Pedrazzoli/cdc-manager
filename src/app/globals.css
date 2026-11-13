@@ -83,6 +83,14 @@ body {
   align-self: flex-start;
   height: 100vh;
 }
+/* 7.ª ronda/B2a: menu lateral recolhível no computador. O botão vive na
+   barra superior; a preferência fica guardada no browser (AppShell). */
+.cdc-shell[data-sidebar='hidden'] .cdc-sidebar-desktop {
+  display: none;
+}
+.cdc-sidebar-toggle {
+  display: inline-flex;
+}
 .cdc-mobile-bar {
   display: none;
 }
@@ -104,6 +112,10 @@ body {
 }
 @media (max-width: 1023px) {
   .cdc-sidebar-desktop {
+    display: none;
+  }
+  /* no telemóvel o menu já é o drawer do hambúrguer */
+  .cdc-sidebar-toggle {
     display: none;
   }
   .cdc-hide-mobile {
