@@ -181,6 +181,21 @@ const PatientSchema = new Schema(
       type: Date,
       default: null,
     },
+    // 7.ª ronda/B4: bloqueio de marcações pela gestão (lib/booking-block).
+    // Com data preenchida, nenhuma action de marcação aceita este paciente;
+    // a receção vê o motivo. Só a gestão bloqueia e desbloqueia.
+    bookingBlockedAt: { type: Date, default: null },
+    bookingBlockReason: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: null,
+    },
+    bookingBlockedByUserId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     // Foto de perfil (Cloudinary public_id — o Dentoral também tinha foto)
     photoPublicId: {
       type: String,

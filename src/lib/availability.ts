@@ -284,11 +284,17 @@ export interface ComputeFreeSlotsParams {
   dateTo: string; // 'YYYY-MM-DD' (inclusive)
   /** true = aplicar políticas de marcação online (antecedência mín/máx) */
   onlineRules?: boolean;
+  /** Ignorar esta marcação (remarcação: o próprio horário fica livre) */
+  excludeAppointmentId?: string;
 }
 
 export async function computeFreeSlots(
   params: ComputeFreeSlotsParams,
 ): Promise<FreeSlot[]> {
+  // 7.ª ronda/A4: na remarcação, o horário da própria marcação não conta
+  const notSelf = params.excludeAppointmentId
+    ? { _id: { $ne: new mongoose.Types.ObjectId(params.excludeAppointmentId) } }
+    : {};
   const [clinic, doctor, treatment] = await Promise.all([
     Clinic.findById(params.clinicId),
     Doctor.findById(params.doctorId),
@@ -312,6 +318,7 @@ export async function computeFreeSlots(
   const [doctorAppts, clinicAppts] = await Promise.all([
     // Conflito de médico — TODAS as clínicas, de propósito
     Appointment.find({
+      ...notSelf,
       doctorId: doctor._id,
       status: { $in: BLOCKING_STATUS },
       startAt: { $lt: windowEnd },
@@ -321,6 +328,7 @@ export async function computeFreeSlots(
       .lean(),
     // Capacidade — SÓ esta clínica, todos os médicos + sem médico
     Appointment.find({
+      ...notSelf,
       clinicId: clinic._id,
       status: { $in: BLOCKING_STATUS },
       startAt: { $lt: windowEnd },

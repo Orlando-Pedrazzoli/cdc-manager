@@ -69,15 +69,25 @@ export type PatientAttendance = {
   lastNoShowLabel: string | null;
   /** Frase pronta ("2 faltas sem aviso · …") ou null se não há nada */
   warning: string | null;
+  /**
+   * 7.ª ronda/B4: motivo do bloqueio de marcações feito pela gestão; null se
+   * o paciente não está bloqueado
+   */
+  blockReason: string | null;
 };
 
 async function loadAttendance(patientId: string): Promise<PatientAttendance> {
-  const appts = await Appointment.find({
-    patientId,
-    status: { $in: ['no-show', 'cancelled', 'completed'] },
-  })
-    .select('status startAt cancelledAt cancelledBy rescheduledToId')
-    .lean();
+  const [appts, blockDoc] = await Promise.all([
+    Appointment.find({
+      patientId,
+      status: { $in: ['no-show', 'cancelled', 'completed'] },
+    })
+      .select('status startAt cancelledAt cancelledBy rescheduledToId')
+      .lean(),
+    Patient.findById(patientId)
+      .select('bookingBlockedAt bookingBlockReason')
+      .lean(),
+  ]);
   const s = summarizeAttendance(
     appts.map(a => ({
       status: a.status as string,
@@ -93,6 +103,9 @@ async function loadAttendance(patientId: string): Promise<PatientAttendance> {
     completed: s.completed,
     lastNoShowLabel: s.lastNoShowAt ? dateFmt.format(s.lastNoShowAt) : null,
     warning: attendanceWarning(s),
+    blockReason: blockDoc?.bookingBlockedAt
+      ? (blockDoc.bookingBlockReason ?? '').trim() || 'Sem motivo indicado'
+      : null,
   };
 }
 

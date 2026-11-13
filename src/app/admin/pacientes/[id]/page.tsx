@@ -41,6 +41,10 @@ import ClinicalDocument from '@/models/Document';
 import { signedPreviewUrl } from '@/lib/cloudinary';
 import { PatientLabCases } from '@/components/proteses/PatientLabCases';
 import { PatientAppointments } from '@/components/pacientes/PatientAppointments';
+import {
+  BookingBlockPanel,
+  type BookingBlockInfo,
+} from '@/components/pacientes/BookingBlockPanel';
 import { IssueDocumentToolbar } from '@/components/documentos/IssueDocumentToolbar';
 import { PatientAccount } from '@/components/faturacao/PatientAccount';
 import ClinicalRecord from '@/models/ClinicalRecord';
@@ -120,6 +124,21 @@ export default async function PatientPage({
     timeZone: 'Europe/Lisbon',
   });
   const bounds = consultBounds[0] ?? null;
+
+  // 7.ª ronda/B4: bloqueio de marcações (só a gestão bloqueia/desbloqueia)
+  let bookingBlock: BookingBlockInfo | null = null;
+  if (patient.bookingBlockedAt) {
+    const by = patient.bookingBlockedByUserId
+      ? await User.findById(patient.bookingBlockedByUserId)
+          .select('name')
+          .lean()
+      : null;
+    bookingBlock = {
+      reason: patient.bookingBlockReason ?? '',
+      atLabel: lisbonShort.format(patient.bookingBlockedAt),
+      byName: by?.name ?? null,
+    };
+  }
 
   const header: PatientHeaderData = {
     id,
@@ -259,6 +278,12 @@ export default async function PatientPage({
       </Link>
 
       <PatientHeader patient={header} />
+
+      <BookingBlockPanel
+        patientId={id}
+        block={bookingBlock}
+        canManage={staffRole === 'admin'}
+      />
 
       {/* 5.ª ronda/13: ficha criada numa pré-marcação, só com nome e telemóvel */}
       {patient.provisional && (

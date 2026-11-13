@@ -61,6 +61,7 @@ import {
 } from '@/lib/resend';
 import { phoneField } from '@/lib/validations/patient';
 import { REFERRAL_SOURCES } from '@/lib/domain';
+import { bookingBlockError } from '@/lib/booking-block';
 import {
   createProvisionalPatient,
   findPatientByPhone,
@@ -379,7 +380,7 @@ export async function createAppointmentAction(
     Clinic.findById(data.clinicId),
     data.patientId
       ? Patient.findById(data.patientId).select(
-          'status name email consents referralSource',
+          'status name email consents referralSource bookingBlockedAt bookingBlockReason',
         )
       : Promise.resolve(null),
     TreatmentType.findById(data.treatmentTypeId).select(
@@ -394,6 +395,9 @@ export async function createAppointmentAction(
   if (!isPreBooking && (!existingPatient || existingPatient.status !== 'active')) {
     return { error: 'Paciente inválido ou inativo.' };
   }
+  // 7.ª ronda/B4: paciente bloqueado pela gestão não pode ser marcado
+  const blockedCreate = bookingBlockError(existingPatient);
+  if (blockedCreate) return { error: blockedCreate };
   if (!treatment) return { error: 'Ato inválido.' };
   if (data.doctorId && (!doctor || !doctor.active)) {
     return { error: 'Médico inválido ou inativo.' };
@@ -759,6 +763,62 @@ export async function transitionAppointmentAction(
 }
 
 // -----------------------------------------------------------------------------
+// ANULAR A CHEGADA (7.ª ronda/A5 — Victor, 12/11/2026)
+// "Poder cancelar o envio para a sala de espera: o médico está atrasado, o
+// paciente não pode esperar e prefere remarcar." Chegou → volta a confirmada
+// (ou a pendente, se nunca tinha sido confirmada) e sai da sala de espera do
+// médico. A hora de chegada é limpa; fica no registo de auditoria quem anulou.
+// -----------------------------------------------------------------------------
+export async function undoCheckInAction(
+  appointmentId: string,
+): Promise<{ error?: string }> {
+  if (!isObjectId(appointmentId)) return { error: 'Marcação inválida.' };
+
+  await dbConnect();
+  const appt = await Appointment.findById(appointmentId).select(
+    'status clinicId patientId confirmedAt',
+  );
+  if (!appt) return { error: 'Marcação não encontrada.' };
+
+  let staff;
+  try {
+    staff = await requireStaffForClinic(String(appt.clinicId));
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  if (appt.status !== 'checked-in') {
+    return {
+      error: 'Só se anula a chegada de quem está na sala de espera.',
+    };
+  }
+
+  const back: AppointmentStatus = appt.confirmedAt ? 'confirmed' : 'pending';
+  // Filtro com o estado: se o médico entretanto chamou o paciente, não mexe
+  const res = await Appointment.updateOne(
+    { _id: appointmentId, status: 'checked-in' },
+    { $set: { status: back, checkedInAt: null } },
+  );
+  if (res.modifiedCount === 0) {
+    return { error: 'O médico já chamou este paciente.' };
+  }
+  await logAudit({
+    userId: staff.id,
+    action: 'update',
+    entityType: 'Appointment',
+    entityId: appointmentId,
+    patientId: String(appt.patientId),
+    clinicId: String(appt.clinicId),
+    summary: `Chegada anulada: checked-in → ${back}`,
+    changedFields: ['status', 'checkedInAt'],
+  });
+
+  revalidatePath('/admin/agenda');
+  revalidatePath('/admin/sala-espera');
+  revalidatePath('/doutor/dashboard');
+  return {};
+}
+
+// -----------------------------------------------------------------------------
 // REMARCAR (cancela a antiga + cria a nova, ligadas, na mesma transação)
 // -----------------------------------------------------------------------------
 const rescheduleSchema = z.object({
@@ -797,9 +857,12 @@ export async function rescheduleAppointmentAction(
   await dbConnect();
   const original = await Appointment.findById(appointmentId);
   if (!original) return { error: 'Marcação não encontrada.' };
-  if (!['pending', 'confirmed'].includes(original.status)) {
+  // 7.ª ronda/A5: quem já está na sala de espera também pode ser remarcado
+  // ("o paciente não pode esperar e prefere remarcar")
+  if (!['pending', 'confirmed', 'checked-in'].includes(original.status)) {
     return {
-      error: 'Só marcações pendentes/confirmadas podem ser remarcadas.',
+      error:
+        'Só marcações pendentes, confirmadas ou na sala de espera podem ser remarcadas.',
     };
   }
 
@@ -820,9 +883,13 @@ export async function rescheduleAppointmentAction(
       'name durationMin bufferMin',
     ),
     data.doctorId ? Doctor.findById(data.doctorId) : Promise.resolve(null),
-    Patient.findById(original.patientId).select('name email consents'),
+    Patient.findById(original.patientId).select(
+      'name email consents bookingBlockedAt bookingBlockReason',
+    ),
   ]);
   if (!clinic || !clinic.isActive) return { error: 'Clínica inválida.' };
+  const blockedResched = bookingBlockError(patient);
+  if (blockedResched) return { error: blockedResched };
   if (!treatment) return { error: 'Ato da marcação original inválido.' };
   if (data.doctorId && (!doctor || !doctor.active)) {
     return { error: 'Médico inválido ou inativo.' };
@@ -1108,7 +1175,9 @@ export async function createWalkInAction(
 
   const [clinic, patient, treatment, doctor] = await Promise.all([
     Clinic.findById(data.clinicId).select('isActive name'),
-    Patient.findById(data.patientId).select('status name'),
+    Patient.findById(data.patientId).select(
+      'status name bookingBlockedAt bookingBlockReason',
+    ),
     TreatmentType.findById(data.treatmentTypeId).select('name durationMin'),
     data.doctorId ? Doctor.findById(data.doctorId) : Promise.resolve(null),
   ]);
@@ -1116,6 +1185,8 @@ export async function createWalkInAction(
   if (!patient || patient.status !== 'active') {
     return { error: 'Paciente inválido ou inativo.' };
   }
+  const blockedWalkIn = bookingBlockError(patient);
+  if (blockedWalkIn) return { error: blockedWalkIn };
   if (!treatment) return { error: 'Ato inválido.' };
   if (data.doctorId && (!doctor || !doctor.active)) {
     return { error: 'Médico inválido ou inativo.' };

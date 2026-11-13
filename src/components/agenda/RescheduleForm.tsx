@@ -7,6 +7,11 @@
 // manter), clínica, e a opção "Encaixar fora do horário" (force). A action
 // já existente cancela a original e cria a nova ligadas (rescheduledFrom/To);
 // o Histórico mostra a ligação.
+//
+// 7.ª ronda/A4: com médico escolhido, a hora deixa de ser livre — a lista
+// mostra só os horários realmente disponíveis desse médico nesse dia. O
+// campo de hora livre fica para "Encaixar fora do horário" e para marcações
+// sem médico.
 // =============================================================================
 
 'use client';
@@ -24,6 +29,7 @@ import {
   rescheduleAppointmentAction,
   type AppointmentFormState,
 } from '@/actions/appointments';
+import { getRescheduleSlotsAction } from '@/actions/agenda';
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Input, Select } from '@/components/ui/Input';
 
@@ -80,6 +86,32 @@ export function RescheduleForm({
   const clinic = clinics.find(c => c.id === clinicId) ?? clinics[0];
   const todayStr = new Date().toISOString().slice(0, 10);
 
+  // Horários livres do médico escolhido (null = a carregar)
+  const useSlots = doctorId !== '' && !force;
+  const slotKey = `${clinicId}|${doctorId}|${date}`;
+  const [slots, setSlots] = useState<{ key: string; list: string[] } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!useSlots || !date) return;
+    let alive = true;
+    getRescheduleSlotsAction({ appointmentId, clinicId, doctorId, date }).then(
+      res => {
+        if (!alive) return;
+        const list = res.map(r => r.start);
+        setSlots({ key: slotKey, list });
+        // a hora escolhida deixa de valer se não estiver livre
+        setStart(prev => (list.includes(prev) ? prev : (list[0] ?? '')));
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [useSlots, appointmentId, clinicId, doctorId, date, slotKey]);
+  const loadingSlots = useSlots && slots?.key !== slotKey;
+  const freeList = useSlots && !loadingSlots ? (slots?.list ?? []) : [];
+  const noSlots = useSlots && !loadingSlots && freeList.length === 0;
+
   return (
     <form
       onSubmit={e => {
@@ -103,14 +135,37 @@ export function RescheduleForm({
           onChange={e => setDate(e.target.value)}
           required
         />
-        <Input
-          type='time'
-          label='Hora *'
-          value={start}
-          step={300}
-          onChange={e => setStart(e.target.value)}
-          required
-        />
+        {useSlots ? (
+          <Select
+            label='Horário livre *'
+            value={start}
+            onChange={e => setStart(e.target.value)}
+            disabled={loadingSlots || noSlots}
+            required
+            help={
+              noSlots
+                ? 'Sem horários livres neste dia para este médico'
+                : undefined
+            }
+          >
+            {loadingSlots && <option value=''>A carregar…</option>}
+            {noSlots && <option value=''>— Sem horários —</option>}
+            {freeList.map(h => (
+              <option key={h} value={h}>
+                {h}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          <Input
+            type='time'
+            label='Hora *'
+            value={start}
+            step={300}
+            onChange={e => setStart(e.target.value)}
+            required
+          />
+        )}
         {clinics.length > 1 && (
           <Select
             label='Clínica'
@@ -146,10 +201,15 @@ export function RescheduleForm({
         label='Encaixar fora do horário do médico'
         checked={force}
         onChange={e => setForce(e.target.checked)}
-        help='Continua a impedir sobreposição com outra marcação'
+        help='Permite escolher qualquer hora. Continua a impedir sobreposição com outra marcação'
       />
       <div style={{ display: 'flex', gap: 8 }}>
-        <Button type='submit' size='sm' loading={pending}>
+        <Button
+          type='submit'
+          size='sm'
+          loading={pending}
+          disabled={loadingSlots || noSlots || start === ''}
+        >
           Confirmar remarcação
         </Button>
         <Button type='button' size='sm' variant='secondary' onClick={onCancel}>

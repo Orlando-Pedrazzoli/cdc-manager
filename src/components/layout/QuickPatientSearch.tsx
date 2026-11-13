@@ -15,6 +15,10 @@
 // · Guarda de corridas: cada pedido leva um nº de sequência — respostas
 //   fora de ordem (rede) são descartadas, nunca pisam resultados mais novos.
 // · Rodapé "Ver todos" → /admin/pacientes?q= para além do top 8.
+// · 7.ª ronda/B3 (Victor, 13/11/2026): atalho "ver próximas consultas do
+//   paciente" — cada resultado tem o botão "Consultas", que abre a ficha
+//   rápida (próximas marcações, faltas, valores por cobrar) sem sair da
+//   página. Teclado: Shift+Enter no resultado destacado.
 // =============================================================================
 
 'use client';
@@ -22,12 +26,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Search } from 'lucide-react';
+import { CalendarClock, Search } from 'lucide-react';
 import {
   quickSearchPatientsAction,
   type QuickSearchResult,
 } from '@/actions/patients';
 import { PatientSearchResult } from '@/components/pacientes/PatientSearchResult';
+import { PatientQuickView } from '@/components/agenda/PatientQuickView';
 
 export function QuickPatientSearch() {
   const router = useRouter();
@@ -36,6 +41,8 @@ export function QuickPatientSearch() {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1); // índice destacado (teclado)
   const [loading, setLoading] = useState(false);
+  // 7.ª ronda/B3: ficha rápida (próximas consultas) aberta a partir da pesquisa
+  const [quick, setQuick] = useState<{ id: string; name: string } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -114,6 +121,12 @@ export function QuickPatientSearch() {
     router.push(`/admin/pacientes/${id}`);
   };
 
+  const openQuick = (hit: QuickSearchResult) => {
+    setOpen(false);
+    setActive(-1);
+    setQuick({ id: hit.id, name: hit.name });
+  };
+
   const onInputKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!open) return;
     if (e.key === 'ArrowDown') {
@@ -125,7 +138,8 @@ export function QuickPatientSearch() {
     } else if (e.key === 'Enter') {
       if (active >= 0 && results[active]) {
         e.preventDefault();
-        goTo(results[active].id);
+        if (e.shiftKey) openQuick(results[active]);
+        else goTo(results[active].id);
       }
     } else if (e.key === 'Escape') {
       setOpen(false);
@@ -137,7 +151,7 @@ export function QuickPatientSearch() {
   return (
     <div
       ref={rootRef}
-      style={{ position: 'relative', flex: 1, maxWidth: '420px' }}
+      style={{ position: 'relative', flex: 1, maxWidth: '480px' }}
     >
       <div
         style={{
@@ -153,6 +167,7 @@ export function QuickPatientSearch() {
         <Search size={15} color='#6A7186' style={{ flexShrink: 0 }} />
         <input
           ref={inputRef}
+          id='quick-patient-search'
           value={q}
           onChange={e => onQueryChange(e.target.value)}
           onKeyDown={onInputKey}
@@ -160,6 +175,7 @@ export function QuickPatientSearch() {
             if (results.length > 0) setOpen(true);
           }}
           placeholder='Paciente — nome, telemóvel, NIF, utente, nascimento ou processo'
+          title='Pesquise o paciente; em cada resultado, "Consultas" mostra as próximas marcações'
           style={{
             flex: 1,
             minWidth: 0,
@@ -215,14 +231,49 @@ export function QuickPatientSearch() {
           ) : (
             <>
               {results.map((r, i) => (
-                <PatientSearchResult
+                <div
                   key={r.id}
-                  hit={r}
-                  active={i === active}
-                  first={i === 0}
-                  onSelect={() => goTo(r.id)}
-                  onHover={() => setActive(i)}
-                />
+                  style={{
+                    display: 'flex',
+                    alignItems: 'stretch',
+                    backgroundColor: i === active ? '#F2F5FC' : '#FFFFFF',
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <PatientSearchResult
+                      hit={r}
+                      active={i === active}
+                      first={i === 0}
+                      onSelect={() => goTo(r.id)}
+                      onHover={() => setActive(i)}
+                    />
+                  </div>
+                  <button
+                    type='button'
+                    onClick={() => openQuick(r)}
+                    onMouseEnter={() => setActive(i)}
+                    title='Ver as próximas consultas deste paciente (Shift+Enter)'
+                    style={{
+                      flexShrink: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      margin: '8px 10px 8px 0',
+                      padding: '0 9px',
+                      border: '1px solid #D8DEEF',
+                      borderRadius: '8px',
+                      backgroundColor: '#FFFFFF',
+                      color: '#2743A6',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      alignSelf: 'center',
+                      height: 30,
+                    }}
+                  >
+                    <CalendarClock size={14} /> Consultas
+                  </button>
+                </div>
               ))}
               <Link
                 href={`/admin/pacientes?q=${encodeURIComponent(q.trim())}`}
@@ -247,6 +298,11 @@ export function QuickPatientSearch() {
           )}
         </div>
       )}
+      <PatientQuickView
+        patientId={quick?.id ?? null}
+        fallbackName={quick?.name}
+        onClose={() => setQuick(null)}
+      />
     </div>
   );
 }

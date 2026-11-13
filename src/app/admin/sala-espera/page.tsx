@@ -24,6 +24,7 @@ import TreatmentType from '@/models/TreatmentType';
 import { lisbonToUtc, todayLisbon } from '@/lib/availability';
 import { Badge } from '@/components/ui/Badge';
 import AutoRefresh from '@/components/ui/AutoRefresh';
+import { UndoCheckInButton } from '@/components/sala-espera/UndoCheckInButton';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Sala de espera' };
@@ -482,6 +483,10 @@ export default async function SalaEsperaPage({
                     <Badge variant={STATUS_VARIANT[r.status] ?? 'neutral'}>
                       {STATUS_LABEL[r.status] ?? r.status}
                     </Badge>
+                    {/* 7.ª ronda/A5: tirar o paciente da sala de espera */}
+                    {r.status === 'checked-in' && (
+                      <UndoCheckInButton appointmentId={r.id} />
+                    )}
                   </td>
                 </tr>
               ))}

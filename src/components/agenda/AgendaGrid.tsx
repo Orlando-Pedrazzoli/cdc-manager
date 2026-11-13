@@ -58,13 +58,17 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { ExternalLink, Plus, StickyNote } from 'lucide-react';
 import { tint } from '@/lib/branding';
-import { NewAppointmentModal } from '@/components/agenda/NewAppointmentModal';
+import {
+  NewAppointmentModal,
+  type NewAppointmentLabTarget,
+} from '@/components/agenda/NewAppointmentModal';
 import { PatientQuickView } from '@/components/agenda/PatientQuickView';
 import {
   transitionAppointmentAction,
   updateAppointmentDurationAction,
   updateAppointmentNoteAction,
   removeCancelledFromGridAction,
+  undoCheckInAction,
 } from '@/actions/appointments';
 import type { AppointmentStatus } from '@/models/Appointment';
 import { Button } from '@/components/ui/Button';
@@ -331,7 +335,9 @@ export function AgendaGrid({
   const [selected, setSelected] = useState<AgendaAppointment | null>(null);
   const [cancelMode, setCancelMode] = useState(false);
   const [rescheduleMode, setRescheduleMode] = useState(false);
-  const [labFor, setLabFor] = useState<AgendaAppointment | null>(null);
+  // Só os campos que o pedido ao laboratório usa — serve tanto para uma
+  // marcação da grelha como para uma acabada de criar (7.ª ronda/B1)
+  const [labFor, setLabFor] = useState<NewAppointmentLabTarget | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelWho, setCancelWho] = useState<'patient' | 'clinic'>('patient');
   const [busy, setBusy] = useState(false);
@@ -419,6 +425,21 @@ export function AgendaGrid({
       setCancelReason('');
       router.refresh();
     }
+  };
+
+  /** 7.ª ronda/A5: tirar o paciente da sala de espera (anular a chegada) */
+  const undoCheckIn = async () => {
+    if (!selected) return;
+    setBusy(true);
+    const res = await undoCheckInAction(selected.id);
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success('Chegada anulada. O paciente saiu da sala de espera.');
+    setSelected(null);
+    router.refresh();
   };
 
   /** Tirar uma cancelada da grelha para libertar o horário */
@@ -959,6 +980,8 @@ export function AgendaGrid({
           treatments={newAppointment.treatments}
           rooms={newAppointment.rooms ?? []}
           promo={newAppointment.promo ?? null}
+          labEnabled={labOptions.length > 0}
+          onCreatedWithLab={setLabFor}
         />
       )}
 
@@ -1215,6 +1238,17 @@ export function AgendaGrid({
                     {a.label}
                   </Button>
                 ))}
+                {selected.status === 'checked-in' && (
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    disabled={busy}
+                    onClick={undoCheckIn}
+                    title='O paciente sai da sala de espera do médico e a marcação volta ao estado anterior'
+                  >
+                    Anular chegada
+                  </Button>
+                )}
                 {CANCELLABLE.includes(selected.status) &&
                   rescheduleClinics.length > 0 && (
                     <Button

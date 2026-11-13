@@ -64,6 +64,18 @@ import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { TreatmentPicker } from '@/components/clinico/TreatmentPicker';
 
+/** 7.ª ronda/B1: o que a agenda precisa para abrir o pedido ao laboratório */
+export interface NewAppointmentLabTarget {
+  id: string;
+  clinicId: string;
+  patientId: string;
+  patientLabel: string;
+  doctorId: string | null;
+  date: string; // 'YYYY-MM-DD'
+  start: string; // 'HH:mm'
+  treatmentName: string;
+}
+
 export function NewAppointmentModal({
   open,
   onClose,
@@ -76,6 +88,8 @@ export function NewAppointmentModal({
   treatments,
   rooms = [],
   promo = null,
+  labEnabled = false,
+  onCreatedWithLab,
 }: {
   open: boolean;
   onClose: () => void;
@@ -93,6 +107,13 @@ export function NewAppointmentModal({
   treatments: { id: string; name: string; category?: string | null }[];
   /** 5.ª ronda/09: promoção do mês em vigor (Configurações) */
   promo?: string | null;
+  /** 7.ª ronda/B1: há laboratórios configurados → mostra a opção */
+  labEnabled?: boolean;
+  /**
+   * 7.ª ronda/B1: marcação criada com "trabalho de laboratório" assinalado —
+   * a agenda abre logo o pedido ao laboratório ligado a esta marcação
+   */
+  onCreatedWithLab?: (target: NewAppointmentLabTarget) => void;
 }) {
   const router = useRouter();
 
@@ -107,6 +128,8 @@ export function NewAppointmentModal({
     null,
   );
   // --- 5.ª ronda/09: como nos conheceu --------------------------------------
+  // --- 7.ª ronda/B1: trabalho de laboratório ligado à marcação ---------------
+  const [withLab, setWithLab] = useState(false);
   const [referral, setReferral] = useState<ReferralSource | ''>('');
   const [referralOther, setReferralOther] = useState('');
 
@@ -268,7 +291,23 @@ export function NewAppointmentModal({
       });
     } else {
       onClose();
+      // 7.ª ronda/B1: abrir já o pedido ao laboratório desta marcação
+      if (withLab && patient && result && 'appointmentId' in result) {
+        const fdDoctor = String(formData.get('doctorId') ?? '');
+        onCreatedWithLab?.({
+          id: result.appointmentId,
+          clinicId,
+          patientId: patient.id,
+          patientLabel: patient.label,
+          doctorId: fdDoctor || null,
+          date: String(formData.get('date') ?? date),
+          start: String(formData.get('start') ?? ''),
+          treatmentName:
+            treatments.find(t => t.id === treatmentId)?.name ?? 'Consulta',
+        });
+      }
     }
+    setWithLab(false);
     // Reset para a próxima abertura
     resetPatient();
     setTreatmentId('');
@@ -295,7 +334,7 @@ export function NewAppointmentModal({
     ? newFirst.trim().length >= 2 &&
       newLast.trim().length >= 2 &&
       newPhone.replace(/\D/g, '').length >= 9
-    : !!patient;
+    : !!patient && !faltas?.blockReason;
 
   if (created) {
     return (
@@ -339,10 +378,10 @@ export function NewAppointmentModal({
   const clinicColor = clinic?.color ?? '#1B2A6B';
 
   return (
-    <Modal open={open} onClose={onClose} title='Nova marcação' maxWidth={560}>
+    <Modal open={open} onClose={onClose} title='Nova marcação' maxWidth={940}>
       <form
         action={formAction}
-        style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+        style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
       >
         <input type='hidden' name='clinicId' value={clinicId} />
         <input type='hidden' name='patientId' value={patient?.id ?? ''} />
@@ -373,6 +412,19 @@ export function NewAppointmentModal({
           </div>
         )}
 
+        {/* 7.ª ronda/B1 (Victor, 13/11/2026): "mais compacto, sem tela de
+            rolagem — ao abrir a caixinha, tudo visível de uma vez". Duas
+            colunas: quem/quando à esquerda, o resto à direita. Em ecrãs
+            estreitos as colunas empilham sozinhas. */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))',
+            gap: '12px 22px',
+            alignItems: 'start',
+          }}
+        >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
         {/* Paciente */}
         {newMode ? (
           <div
@@ -497,6 +549,30 @@ export function NewAppointmentModal({
               {faltas.lastNoShowLabel ? ` (última falta a ${faltas.lastNoShowLabel})` : ''}.
             </p>
           )}
+          {/* 7.ª ronda/B4: paciente bloqueado pela gestão — não se marca */}
+          {faltas?.blockReason && (
+            <div
+              role='alert'
+              style={{
+                margin: '8px 0 0',
+                padding: '10px 12px',
+                borderRadius: '10px',
+                backgroundColor: '#FDECEA',
+                border: '1px solid #D92D20',
+                color: '#7A1C13',
+                fontSize: '13px',
+                lineHeight: 1.45,
+              }}
+            >
+              <strong>Paciente bloqueado para marcações.</strong>
+              <br />
+              Motivo: {faltas.blockReason}
+              <br />
+              <span style={{ fontSize: '12px' }}>
+                Só a gestão pode desbloquear, na ficha do paciente.
+              </span>
+            </div>
+          )}
           {!patient && (
             <button
               type='button'
@@ -524,7 +600,7 @@ export function NewAppointmentModal({
                 color: '#2743A6',
               }}
             >
-              <UserPlus size={14} /> Paciente ainda sem ficha — marcar só com nome e telemóvel
+              <UserPlus size={14} /> Sem ficha — marcar só com nome e telemóvel
             </button>
           )}
           {/* Pedido do Victor (11/11/2026): criar a ficha COMPLETA a partir
@@ -547,7 +623,7 @@ export function NewAppointmentModal({
               }}
               title='Abre a ficha nova noutro separador. Depois de guardar, volte a esta janela e procure o paciente — o horário fica guardado.'
             >
-              <UserPlus size={14} /> Criar ficha completa agora (abre noutro separador; o horário fica guardado aqui)
+              <UserPlus size={14} /> Criar ficha completa agora (noutro separador)
             </a>
           )}
         </div>
@@ -659,6 +735,8 @@ export function NewAppointmentModal({
           )}
         </div>
 
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
         {/* Gabinete (stock por local, set/2026): no Colombo os 5 são
             rotativos e a receção escolhe; na Buraca há um só e a action
             atribui automaticamente (o select nem aparece) */}
@@ -667,7 +745,7 @@ export function NewAppointmentModal({
             id='ap-room'
             name='roomId'
             label='Gabinete'
-            help='Quem trabalhou em cada gabinete alimenta as contagens de stock.'
+            title='Quem trabalhou em cada gabinete alimenta as contagens de stock.'
           >
             <option value=''>— Atribuir depois —</option>
             {rooms.map(r => (
@@ -782,6 +860,42 @@ export function NewAppointmentModal({
           placeholder='Ex.: avisar a Dra. para trazer procaína'
           help='Aparece na linha da marcação, na agenda.'
         />
+
+        {/* 7.ª ronda/B1: "não tem a opção de adicionar trabalhos de
+            laboratório ao fazer marcação". Assinalado, o pedido ao
+            laboratório abre logo a seguir, já ligado a esta marcação. */}
+        {labEnabled && !newMode && (
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 8,
+              padding: '9px 12px',
+              border: withLab ? '1px solid #1B2A6B' : '1px solid #D8DEEF',
+              borderRadius: '10px',
+              backgroundColor: withLab ? '#F2F5FC' : '#FFFFFF',
+              fontSize: '13px',
+              color: '#1C2233',
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type='checkbox'
+              checked={withLab}
+              onChange={e => setWithLab(e.target.checked)}
+              style={{ marginTop: 2 }}
+            />
+            <span>
+              <strong>Tem trabalho de laboratório</strong>
+              <span style={{ display: 'block', fontSize: '12px', color: '#6A7186' }}>
+                Ao criar a marcação abre o pedido ao laboratório, já ligado a
+                ela.
+              </span>
+            </span>
+          </label>
+        )}
+        </div>
+        </div>
 
         {state && 'error' in state && (
           <p

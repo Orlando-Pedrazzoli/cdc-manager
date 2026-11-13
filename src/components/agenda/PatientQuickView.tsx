@@ -148,6 +148,16 @@ export function PatientQuickView({
             {data.nif && ` · NIF ${data.nif}`}
           </p>
 
+          {/* 7.ª ronda/B4: bloqueio de marcações feito pela gestão */}
+          {data.attendance.blockReason && (
+            <div role='alert' style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '9px 12px', borderRadius: '10px', backgroundColor: '#FDECEA', border: '1px solid #D92D20', color: '#7A1C13', fontSize: '13px', whiteSpace: 'pre-wrap' }}>
+              <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span>
+                <strong>Bloqueado para marcações:</strong> {data.attendance.blockReason}
+              </span>
+            </div>
+          )}
+
           {/* Alertas: alergias (clínico) + alerta administrativo */}
           {(data.allergies.length > 0 || data.adminNote || !data.hasAnamnesis) && !editing && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

@@ -62,6 +62,7 @@ import {
   type UpcomingRow,
 } from '@/components/dashboard/UpcomingCard';
 import { ClinicCard } from '@/components/dashboard/ClinicCard';
+import { PatientAppointmentsShortcut } from '@/components/dashboard/PatientAppointmentsShortcut';
 import {
   ActionLink,
   C,
@@ -771,6 +772,15 @@ export default async function AdminDashboardPage() {
           >
             Abrir agenda
           </Link>
+          {/* 7.ª ronda/B3: atalho para as próximas consultas de um paciente */}
+          <PatientAppointmentsShortcut
+            style={{
+              ...btn,
+              backgroundColor: '#FFFFFF',
+              color: C.action,
+              border: '1px solid #C9D4FF',
+            }}
+          />
           <Link
             href='/admin/pacientes/novo'
             style={{
