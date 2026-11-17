@@ -15,6 +15,7 @@ import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import { summarizeAttendance } from '@/lib/attendance';
+import { patientNameWithProcess } from '@/lib/domain';
 import { requireDoctorWithPatient } from '@/lib/rbac';
 import {
   ALERT_ATTENDANCE_MONTHS,
@@ -77,12 +78,24 @@ export async function getPatientAlertsAction(
 
   const [patient, invoices, unbilled, appts] = await Promise.all([
     Patient.findById(patientId)
-      .select('name notes status bookingBlockedAt bookingBlockReason')
+      .select(
+        'name processNumber notes status bookingBlockedAt bookingBlockReason',
+      )
       .lean(),
     Invoice.find({ patientId, status: { $ne: 'voided' } })
       .select('totalCents paidCents')
       .lean(),
-    Procedure.find({ patientId, status: 'completed', invoiceId: null })
+    // 8.ª ronda/22 (Victor, 17/11/2026): os atos por faturar que vieram do
+    // Dentoral "ficam de fora" dos avisos — "são muitos e não conseguimos
+    // rastrear o que aconteceu em cada um". legacyId só existe nos atos
+    // migrados (scripts/migracao/05). A exceção que ele pede (Fatura E em
+    // curso) ainda não se distingue nos dados migrados: fica por decidir.
+    Procedure.find({
+      patientId,
+      status: 'completed',
+      invoiceId: null,
+      legacyId: null,
+    })
       .select('priceCents')
       .lean(),
     Appointment.find({
@@ -109,7 +122,8 @@ export async function getPatientAlertsAction(
   const note = ((patient.notes as string | null) ?? '').trim();
 
   return {
-    patientName: patient.name,
+    // 8.ª ronda/04
+    patientName: patientNameWithProcess(patient.name, patient.processNumber),
     note,
     alerts: buildPatientAlerts({
       blockReason: patient.bookingBlockedAt

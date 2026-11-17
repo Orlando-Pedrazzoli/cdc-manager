@@ -14,7 +14,11 @@
 
 import { dbConnect } from '@/lib/mongodb';
 import { requireActiveSession } from '@/lib/require-active-session';
-import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/domain';
+import {
+  PAYMENT_METHOD_LABEL,
+  patientNameWithProcess,
+  type PaymentMethod,
+} from '@/lib/domain';
 import { clinicLabel } from '@/lib/branding';
 import { getActiveClinics } from '@/models/Clinic';
 import Patient from '@/models/Patient';
@@ -97,11 +101,19 @@ export default async function ProdutosPage() {
   ];
   const [patients, users] = await Promise.all([
     patientIds.length
-      ? Patient.find({ _id: { $in: patientIds } }).select('name').lean()
+      ? Patient.find({ _id: { $in: patientIds } })
+          .select('name processNumber')
+          .lean()
       : [],
     userIds.length ? User.find({ _id: { $in: userIds } }).select('name').lean() : [],
   ]);
-  const patientName = new Map(patients.map(p => [String(p._id), p.name]));
+  // 8.ª ronda/04: nome com o n.º do paciente
+  const patientName = new Map(
+    patients.map(p => [
+      String(p._id),
+      patientNameWithProcess(p.name, p.processNumber),
+    ]),
+  );
   const userName = new Map(users.map(u => [String(u._id), u.name]));
   const clinicName = new Map(clinics.map(c => [String(c._id), clinicLabel(c)]));
 

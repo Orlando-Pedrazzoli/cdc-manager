@@ -27,6 +27,7 @@ import {
   PhoneCall,
   History,
 } from 'lucide-react';
+import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { getActiveClinics } from '@/models/Clinic';
 import { clinicBadge, clinicLabel, defaultClinic } from '@/lib/branding';
@@ -74,7 +75,11 @@ import {
 import { cancelledVisibleIds } from '@/lib/attendance';
 import { doctorColor } from '@/lib/doctor-colors';
 import { getOrganizationSettings } from '@/lib/org-settings';
-import { REFERRAL_SOURCE_LABEL, type ReferralSource } from '@/lib/domain';
+import {
+  REFERRAL_SOURCE_LABEL,
+  patientNameWithProcess,
+  type ReferralSource,
+} from '@/lib/domain';
 
 export const dynamic = 'force-dynamic';
 
@@ -158,6 +163,7 @@ export default async function AgendaPage({
     view?: string;
     estado?: string;
     cal?: string; // YYYY-MM do calendário de ocupação (P4)
+    marcacao?: string; // 8.ª ronda/05: marcação a abrir logo na grelha
   }>;
 }) {
   const sp = await searchParams;
@@ -165,12 +171,18 @@ export default async function AgendaPage({
     ? (sp.date as string)
     : todayLisbon();
   const view = sp.view === 'lista' ? 'lista' : 'dia';
+  // 8.ª ronda/05: atalho das "próximas consultas" do paciente
+  const openAppointmentId = /^[0-9a-fA-F]{24}$/.test(sp.marcacao ?? '')
+    ? (sp.marcacao as string)
+    : null;
   const estado =
     sp.estado && sp.estado in STATUS_META
       ? (sp.estado as AppointmentStatus)
       : null;
 
   await dbConnect();
+  // 8.ª ronda/03: abrir e fechar a agenda é só da gestão
+  const isAdmin = (await auth())?.user?.role === 'admin';
   const clinics = await getActiveClinics();
   const clinic =
     clinics.find(c => c.slug === sp.clinic) ?? defaultClinic(clinics);
@@ -499,6 +511,8 @@ export default async function AgendaPage({
       start: hhmm(s.min),
       end: hhmm(e.date === s.date ? e.min : 24 * 60),
       patientLabel: p ? `${p.name}` : '(paciente removido)',
+      // 8.ª ronda/04: n.º do paciente no cartão e no painel
+      processNumber: p?.processNumber ?? null,
       treatmentName: treatmentById.get(String(a.treatmentTypeId)) ?? '—',
       status: a.status,
       isUrgent: !!a.isUrgent,
@@ -570,7 +584,9 @@ export default async function AgendaPage({
           ? (doctorNameById.get(String(a.doctorId)) ?? 'Médico')
           : 'Sem médico',
         time: `${hhmm(s.min)}–${hhmm(e.date === s.date ? e.min : 24 * 60)}`,
-        patientName: p?.name ?? '(paciente removido)',
+        patientName: p
+          ? patientNameWithProcess(p.name, p.processNumber)
+          : '(paciente removido)',
         treatmentName: treatmentById.get(String(a.treatmentTypeId)) ?? '—',
         kind: a.rescheduledToId
           ? 'Remarcada'
@@ -842,7 +858,7 @@ export default async function AgendaPage({
             {/* Abrir, fechar ou repor dias da agenda de um médico — um ou
                 vários de uma vez (pedidos do Victor de 11/11/2026; substitui
                 o "Estender horário" do P3) */}
-            {view === 'dia' && allDoctors.length > 0 && (
+            {isAdmin && view === 'dia' && allDoctors.length > 0 && (
               <DoctorDaysButton
                 clinicId={clinicId}
                 date={date}
@@ -1173,6 +1189,8 @@ export default async function AgendaPage({
         >
           <div style={{ flex: '1 1 640px', minWidth: 0 }}>
             <AgendaGrid
+              key={openAppointmentId ?? 'grelha'}
+              openAppointmentId={openAppointmentId}
               gridStart={gridStart}
               gridEnd={gridEnd}
               doctors={visibleColumns}

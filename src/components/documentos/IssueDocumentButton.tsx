@@ -28,6 +28,10 @@ import { Button } from '@/components/ui/Button';
 import { Checkbox, Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { SignaturePad } from '@/components/clinico/SignaturePad';
+import {
+  TEMPLATE_FOLDER_LABEL,
+  type TemplateFolder,
+} from '@/lib/data/document-templates';
 import { TabletSignature } from '@/components/documentos/TabletSignature';
 import { createTemplateSignatureRequestAction } from '@/actions/signature-requests';
 
@@ -35,6 +39,8 @@ export interface IssueTemplateOption {
   id: string;
   title: string;
   kind: string;
+  /** 8.ª ronda/06: pasta (especialidade); sem pasta = Geral */
+  folder?: TemplateFolder;
   needs: string[]; // placeholders usados (para mostrar campos extra)
 }
 export interface IssueAppointmentOption {
@@ -65,6 +71,12 @@ export function IssueDocumentButton({
   const [prepared, setPrepared] = useState<PreparedDocument | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  // 8.ª ronda/06 (Victor, 17/11/2026): o modelo abre em "Padrão" — o texto
+  // tal como a clínica o definiu, só para imprimir ou assinar. A aba
+  // "Editável" deixa acrescentar ou tirar informação para este paciente
+  // (um dente, uma orientação específica) sem mexer no modelo.
+  const [mode, setMode] = useState<'padrao' | 'editavel'>('padrao');
+  const [standard, setStandard] = useState({ title: '', body: '' });
   const [signature, setSignature] = useState<string | null>(null);
   const [visible, setVisible] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -98,14 +110,17 @@ export function IssueDocumentButton({
     // texto for esse mesmo título em maiúsculas, retira-se para não repetir
     const lines = r.doc.body.split('\n');
     const first = lines[0]?.trim() ?? '';
-    setBody(
+    const cleanBody =
       first &&
-        first === first.toUpperCase() &&
-        first.length < 80 &&
-        lines[1]?.trim() === ''
+      first === first.toUpperCase() &&
+      first.length < 80 &&
+      lines[1]?.trim() === ''
         ? lines.slice(2).join('\n')
-        : r.doc.body,
-    );
+        : r.doc.body;
+    setBody(cleanBody);
+    setStandard({ title: r.doc.title, body: cleanBody });
+    // Campos em falta na ficha têm de ser completados à mão → Editável
+    setMode(r.doc.missing.length > 0 ? 'editavel' : 'padrao');
     setSignature(null);
   };
 
@@ -135,7 +150,32 @@ export function IssueDocumentButton({
   const reset = () => {
     setPrepared(null);
     setSignature(null);
+    setMode('padrao');
   };
+
+  /** Voltar a "Padrão" repõe o texto do modelo (o que foi escrito perde-se) */
+  const switchMode = (next: 'padrao' | 'editavel') => {
+    if (next === mode) return;
+    if (next === 'padrao') {
+      setTitle(standard.title);
+      setBody(standard.body);
+      // a assinatura foi dada sobre outro texto
+      setSignature(null);
+    }
+    setMode(next);
+  };
+  const edited =
+    mode === 'editavel' &&
+    (title !== standard.title || body !== standard.body);
+
+  // Modelos agrupados por pasta, pela ordem em que chegam
+  const folderGroups: { folder: TemplateFolder; items: IssueTemplateOption[] }[] = [];
+  for (const t of templates) {
+    const f = t.folder ?? 'geral';
+    const g = folderGroups.find(x => x.folder === f);
+    if (g) g.items.push(t);
+    else folderGroups.push({ folder: f, items: [t] });
+  }
 
   // Tablet: envia o texto JÁ REVISTO; o documento é gerado ao assinar lá
   const sendToTablet = useCallback(
@@ -193,10 +233,14 @@ export function IssueDocumentButton({
               value={templateId}
               onChange={e => setTemplateId(e.target.value)}
             >
-              {templates.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                </option>
+              {folderGroups.map(g => (
+                <optgroup key={g.folder} label={TEMPLATE_FOLDER_LABEL[g.folder]}>
+                  {g.items.map(t => (
+                    <option key={t.id} value={t.id}>
+                      ({TEMPLATE_FOLDER_LABEL[g.folder]}) {t.title}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </Select>
             {(needs('consulta.data') ||
@@ -275,19 +319,88 @@ export function IssueDocumentButton({
                 {prepared.missing.join(', ')}. Complete no texto.
               </p>
             )}
-            <Input
-              label='Título'
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              maxLength={120}
-            />
-            <Textarea
-              label='Texto do documento (editável)'
-              rows={16}
-              value={body}
-              onChange={e => setBody(e.target.value)}
-              style={{ fontSize: '13px', lineHeight: 1.5 }}
-            />
+            {/* 8.ª ronda/06: Padrão (texto fixo) ou Editável */}
+            <div
+              role='tablist'
+              aria-label='Modo do documento'
+              style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}
+            >
+              {(
+                [
+                  ['padrao', 'Modelo padrão'],
+                  ['editavel', 'Editável'],
+                ] as const
+              ).map(([value, label]) => {
+                const active = mode === value;
+                return (
+                  <button
+                    key={value}
+                    type='button'
+                    role='tab'
+                    aria-selected={active}
+                    onClick={() => switchMode(value)}
+                    style={{
+                      padding: '7px 14px',
+                      borderRadius: '10px',
+                      border: active ? '1px solid #1B2A6B' : '1px solid #D8DEEF',
+                      backgroundColor: active ? '#1B2A6B' : '#FFFFFF',
+                      color: active ? '#FFFFFF' : '#3A3F4A',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+              <span style={{ fontSize: '12px', color: '#6A7186' }}>
+                {mode === 'padrao'
+                  ? 'Texto do modelo, sem alterações. Para acrescentar ou tirar informação, use "Editável".'
+                  : edited
+                    ? 'Texto alterado só para este documento. O modelo não muda.'
+                    : 'Pode alterar o título e o texto só para este documento.'}
+              </span>
+            </div>
+            {mode === 'padrao' ? (
+              <div>
+                <p style={{ margin: '0 0 6px', fontSize: '14px', fontWeight: 700, color: '#1B2A6B' }}>
+                  {title}
+                </p>
+                <div
+                  style={{
+                    maxHeight: 380,
+                    overflowY: 'auto',
+                    padding: '12px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid #E3E7F2',
+                    backgroundColor: '#F7F8FC',
+                    fontSize: '13px',
+                    lineHeight: 1.5,
+                    color: '#1C2233',
+                    whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  {body}
+                </div>
+              </div>
+            ) : (
+              <>
+                <Input
+                  label='Título'
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  maxLength={120}
+                />
+                <Textarea
+                  label='Texto do documento (editável)'
+                  rows={16}
+                  value={body}
+                  onChange={e => setBody(e.target.value)}
+                  style={{ fontSize: '13px', lineHeight: 1.5 }}
+                />
+              </>
+            )}
             {prepared.requiresSignature && (
               <div>
                 <p

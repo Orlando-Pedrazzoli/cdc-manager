@@ -34,7 +34,7 @@ import {
   CheckoutModal,
   type BillableAct,
 } from '@/components/cobranca/CheckoutModal';
-import { processLabel } from '@/lib/domain';
+import { patientNameWithProcess, processLabel } from '@/lib/domain';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Cobranças' };
@@ -521,7 +521,11 @@ export default async function CobrancaPage({
                 <CheckoutModal
                   clinicId={String(clinic._id)}
                   patientId={patientId}
-                  patientName={patient?.name ?? '—'}
+                  patientName={
+                    patient
+                      ? patientNameWithProcess(patient.name, patient.processNumber)
+                      : '—'
+                  }
                   patientNif={(patient?.nif as string | null) ?? null}
                   acts={acts}
                 />

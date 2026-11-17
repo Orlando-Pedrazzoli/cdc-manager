@@ -284,11 +284,23 @@ export function PatientQuickView({
               <div style={{ border: '1px solid #EEF1F8', borderRadius: '10px', overflow: 'hidden' }}>
                 {data.upcoming.map((a, i) => (
                   <div key={a.id} style={{ padding: '8px 12px', fontSize: '13px', borderTop: i === 0 ? 'none' : '1px solid #F4F6FB', display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                    <span style={{ color: '#1B2A6B', fontWeight: 700 }}>{a.whenLabel}</span>
-                    <span style={{ color: '#3D4257' }}>
-                      {a.treatmentName} · {a.doctorName}
-                      {a.clinicLabel && ` · ${a.clinicLabel}`} · {STATUS_LABEL[a.status] ?? a.status}
-                    </span>
+                    {/* 8.ª ronda/05 (Victor, 17/11/2026): cada consulta leva à
+                        agenda desse dia, já com a marcação aberta */}
+                    <Link
+                      href={a.agendaHref}
+                      onClick={onClose}
+                      title='Abrir esta marcação na agenda (remarcar, cancelar, observações)'
+                      style={{ display: 'flex', flex: '1 1 100%', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', textDecoration: 'none' }}
+                    >
+                      <span style={{ color: '#1B2A6B', fontWeight: 700, textDecoration: 'underline', textDecorationColor: '#C9D2EE', textUnderlineOffset: '3px' }}>{a.whenLabel}</span>
+                      <span style={{ color: '#3D4257' }}>
+                        {a.treatmentName} · {a.doctorName}
+                        {a.clinicLabel && ` · ${a.clinicLabel}`} · {STATUS_LABEL[a.status] ?? a.status}
+                      </span>
+                      <span style={{ flexBasis: '100%', fontSize: '12px', fontWeight: 600, color: '#2743A6' }}>
+                        Abrir na agenda →
+                      </span>
+                    </Link>
                     {/* 6.ª ronda/06: lançar o paciente para o médico */}
                     {a.isToday && (a.status === 'pending' || a.status === 'confirmed') && (
                       <button

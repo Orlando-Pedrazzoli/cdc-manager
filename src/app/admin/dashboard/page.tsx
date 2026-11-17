@@ -48,7 +48,7 @@ import Doctor from '@/models/Doctor';
 import TreatmentType from '@/models/TreatmentType';
 import RxRequest from '@/models/RxRequest';
 import LabCase from '@/models/LabCase';
-import { labWorkLabel } from '@/lib/domain';
+import { labWorkLabel, patientNameWithProcess } from '@/lib/domain';
 import { Cake, FlaskConical } from 'lucide-react';
 import { HojeStrip, type HojeItem } from '@/components/dashboard/HojeStrip';
 import {
@@ -292,6 +292,7 @@ export default async function AdminDashboardPage() {
     Patient.aggregate<{
       _id: mongoose.Types.ObjectId;
       name: string;
+      processNumber?: number | null;
       phone: string | null;
       email: string | null;
       marketingAt: Date | null;
@@ -334,6 +335,7 @@ export default async function AdminDashboardPage() {
       {
         $project: {
           name: 1,
+          processNumber: 1,
           phone: 1,
           email: 1,
           birthDate: 1,
@@ -403,11 +405,14 @@ export default async function AdminDashboardPage() {
   // Entregas de laboratório hoje/amanhã, por laboratório (E3)
   const labDuePatients = labDueRaw.length
     ? await Patient.find({ _id: { $in: labDueRaw.map(c => c.patientId) } })
-        .select('name')
+        .select('name processNumber')
         .lean()
     : [];
   const labDuePatientById = new Map(
-    labDuePatients.map(p => [String(p._id), p.name]),
+    labDuePatients.map(p => [
+      String(p._id),
+      patientNameWithProcess(p.name, p.processNumber),
+    ]),
   );
   const labDueGroups = new Map<
     string,
@@ -516,7 +521,7 @@ export default async function AdminDashboardPage() {
   const [upPatients, upDoctors] = await Promise.all([
     upPatientIds.length
       ? Patient.find({ _id: { $in: upPatientIds } })
-          .select('name phone email')
+          .select('name processNumber phone email')
           .lean()
       : [],
     upDoctorIds.length
@@ -527,6 +532,14 @@ export default async function AdminDashboardPage() {
   ]);
   const patientNameById = new Map(
     upPatients.map(p => [String(p._id), p.name] as const),
+  );
+  // 8.ª ronda/04: nas listas o nome leva o n.º do paciente; nas mensagens
+  // enviadas ao paciente continua a ir só o nome (patientNameById)
+  const patientDisplayById = new Map(
+    upPatients.map(
+      p =>
+        [String(p._id), patientNameWithProcess(p.name, p.processNumber)] as const,
+    ),
   );
   const patientContactById = new Map(
     upPatients.map(
@@ -627,7 +640,7 @@ export default async function AdminDashboardPage() {
       time: timeFmt.format(a.startAt as Date),
       minutes: minutesLisbon(a.startAt as Date),
       patientId: String(a.patientId),
-      patientName: patientNameById.get(String(a.patientId)) ?? '(paciente)',
+      patientName: patientDisplayById.get(String(a.patientId)) ?? '(paciente)',
       doctorName: a.doctorId
         ? (doctorNameById.get(String(a.doctorId)) ?? '(médico)')
         : 'Por atribuir',
@@ -672,7 +685,7 @@ export default async function AdminDashboardPage() {
     id: String(a._id),
     time,
     patientId: String(a.patientId),
-    patientName: patientNameById.get(String(a.patientId)) ?? '(paciente)',
+    patientName: patientDisplayById.get(String(a.patientId)) ?? '(paciente)',
     doctorName: a.doctorId
       ? (doctorNameById.get(String(a.doctorId)) ?? '(médico)')
       : 'Por atribuir',
@@ -704,6 +717,8 @@ export default async function AdminDashboardPage() {
     },
     id: String(p._id),
     name: p.name,
+    // 8.ª ronda/04
+    displayName: patientNameWithProcess(p.name, p.processNumber),
     phone: p.phone ?? null,
     // É hoje o aniversário → idade = ano corrente − ano de nascimento
     age: y - p.birthDate.getUTCFullYear(),
@@ -1141,7 +1156,7 @@ export default async function AdminDashboardPage() {
                 <Row
                   key={b.id}
                   first={i === 0}
-                  title={b.name}
+                  title={b.displayName}
                   titleHref={`/admin/pacientes/${b.id}`}
                   subtitle={`Faz ${b.age} anos`}
                   meta={

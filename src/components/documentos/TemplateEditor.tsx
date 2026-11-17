@@ -21,6 +21,8 @@ import {
   type TemplateFormState,
 } from '@/actions/document-templates';
 import {
+  TEMPLATE_FOLDERS,
+  TEMPLATE_FOLDER_LABEL,
   TEMPLATE_KINDS,
   TEMPLATE_KIND_LABEL,
   PLACEHOLDERS,
@@ -32,6 +34,8 @@ import { Modal } from '@/components/ui/Modal';
 export interface TemplateInitial {
   id: string;
   kind: string;
+  /** 8.ª ronda/06: pasta (especialidade) */
+  folder?: string;
   title: string;
   body: string;
   allowStaff: boolean;
@@ -117,8 +121,24 @@ function TemplateEditor({
       >
         {initial && <input type='hidden' name='id' value={initial.id} />}
         <div
-          style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: 10,
+          }}
         >
+          {/* 8.ª ronda/06: pasta onde o modelo aparece ao emitir */}
+          <Select
+            name='folder'
+            label='Pasta'
+            defaultValue={initial?.folder ?? 'geral'}
+          >
+            {TEMPLATE_FOLDERS.map(f => (
+              <option key={f} value={f}>
+                {TEMPLATE_FOLDER_LABEL[f]}
+              </option>
+            ))}
+          </Select>
           <Select
             name='kind'
             label='Tipo'

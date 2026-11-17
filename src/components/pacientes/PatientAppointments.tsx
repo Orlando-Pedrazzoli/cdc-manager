@@ -110,7 +110,8 @@ export async function PatientAppointments({
     const start = a.startAt as Date;
     const end = a.endAt as Date;
     const agendaHref = clinic
-      ? `/admin/agenda?clinic=${clinic.slug}&date=${isoDay(start)}`
+      ? // 8.ª ronda/05: abre já a marcação, não só o dia
+        `/admin/agenda?clinic=${clinic.slug}&date=${isoDay(start)}&marcacao=${String(a._id)}`
       : '/admin/agenda';
     const dimmed = a.status === 'cancelled' || a.status === 'no-show';
     return (

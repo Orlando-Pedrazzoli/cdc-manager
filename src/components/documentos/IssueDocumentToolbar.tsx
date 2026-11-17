@@ -11,6 +11,7 @@ import TreatmentType from '@/models/TreatmentType';
 import { getActiveClinics } from '@/models/Clinic';
 import { ensureDefaultTemplates } from '@/lib/document-templates-seed';
 import { placeholdersIn } from '@/lib/document-merge';
+import { sortByFolder, templateFolder } from '@/lib/data/document-templates';
 import { IssueDocumentButton } from '@/components/documentos/IssueDocumentButton';
 
 export async function IssueDocumentToolbar({
@@ -64,12 +65,16 @@ export async function IssueDocumentToolbar({
             ? String(clinics[0]._id)
             : null
       }
-      templates={templates.map(t => ({
-        id: String(t._id),
-        title: t.title,
-        kind: t.kind,
-        needs: placeholdersIn(t.body),
-      }))}
+      templates={sortByFolder(
+        templates.map(t => ({
+          id: String(t._id),
+          title: t.title,
+          kind: t.kind,
+          // 8.ª ronda/06: agrupados por pasta (especialidade)
+          folder: templateFolder(t.folder),
+          needs: placeholdersIn(t.body),
+        })),
+      )}
       appointments={appts.map(a => ({
         id: String(a._id),
         label: `${fmt.format(a.startAt).replace(',', '')} — ${nameOf.get(String(a.treatmentTypeId)) ?? 'consulta'}`,

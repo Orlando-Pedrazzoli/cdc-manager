@@ -48,7 +48,8 @@ export async function findPatientByPhone(
 export async function createProvisionalPatient(input: {
   firstName: string;
   lastName: string;
-  phone: string; // já normalizado (E.164)
+  /** Já normalizado (E.164); null = "Não tem telemóvel" (8.ª ronda/01) */
+  phone: string | null;
   referralSource?: string | null;
   referralDetail?: string | null;
 }): Promise<{ id: string; name: string; processNumber: null }> {
@@ -62,6 +63,9 @@ export async function createProvisionalPatient(input: {
         // Sem consentimentos: ninguém assinou nada — os lembretes por
         // email/WhatsApp só arrancam depois de a ficha estar completa
         consents: {},
+        // 8.ª ronda/01: fica já declarado na ficha, para não voltar a ser
+        // pedido quando a receção a completar
+        ...(input.phone ? {} : { declared: { noPhone: true } }),
         referralSource: input.referralSource ?? null,
         referralDetail: input.referralDetail ?? null,
         provisional: true,

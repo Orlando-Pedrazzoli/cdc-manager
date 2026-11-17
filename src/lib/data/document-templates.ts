@@ -36,6 +36,62 @@ export const TEMPLATE_KIND_LABEL: Record<TemplateKind, string> = {
   outro: 'Outro',
 };
 
+// 8.ª ronda/06 (Victor, 17/11/2026): os modelos organizam-se por PASTA, que
+// é a especialidade — "(Cirurgia) Pós-operatório: extração de siso",
+// "(Ortodontia) Consentimento informado: aparelho fixo", "(Geral) Atestado
+// de comparecimento". O tipo (acima) continua a decidir onde o PDF é
+// arquivado; a pasta só serve para a equipa encontrar o modelo.
+export const TEMPLATE_FOLDERS = [
+  'geral',
+  'cirurgia',
+  'implantologia',
+  'ortodontia',
+  'endodontia',
+  'periodontia',
+  'protese',
+  'dentisteria',
+  'estetica',
+  'odontopediatria',
+] as const;
+export type TemplateFolder = (typeof TEMPLATE_FOLDERS)[number];
+
+export const TEMPLATE_FOLDER_LABEL: Record<TemplateFolder, string> = {
+  geral: 'Geral',
+  cirurgia: 'Cirurgia',
+  implantologia: 'Implantologia',
+  ortodontia: 'Ortodontia',
+  endodontia: 'Endodontia',
+  periodontia: 'Periodontia',
+  protese: 'Prótese',
+  dentisteria: 'Dentisteria',
+  estetica: 'Estética',
+  odontopediatria: 'Odontopediatria',
+};
+
+/** Pasta de um modelo (os anteriores à 8.ª ronda não têm → Geral) */
+export function templateFolder(v: unknown): TemplateFolder {
+  return (TEMPLATE_FOLDERS as readonly string[]).includes(v as string)
+    ? (v as TemplateFolder)
+    : 'geral';
+}
+
+/** "(Cirurgia) Pós-operatório: extração de siso" — nome a mostrar na lista */
+export function templateDisplayTitle(folder: unknown, title: string): string {
+  return `(${TEMPLATE_FOLDER_LABEL[templateFolder(folder)]}) ${title}`;
+}
+
+/** Ordena pela ordem das pastas e, dentro de cada uma, pelo título */
+export function sortByFolder<T extends { folder: TemplateFolder; title: string }>(
+  rows: T[],
+): T[] {
+  const order = new Map(TEMPLATE_FOLDERS.map((f, i) => [f, i] as const));
+  return [...rows].sort(
+    (a, b) =>
+      (order.get(a.folder) ?? 0) - (order.get(b.folder) ?? 0) ||
+      a.title.localeCompare(b.title, 'pt'),
+  );
+}
+
 import type { DocumentCategory } from '@/lib/domain';
 
 /** Categoria do Document onde o PDF é arquivado, por tipo */

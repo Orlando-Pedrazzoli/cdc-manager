@@ -26,6 +26,7 @@ import Doctor from '@/models/Doctor';
 import Appointment from '@/models/Appointment';
 import { getActiveClinics } from '@/models/Clinic';
 import {
+  TEMPLATE_FOLDERS,
   TEMPLATE_KINDS,
   type TemplateKind,
 } from '@/lib/data/document-templates';
@@ -136,6 +137,8 @@ export type TemplateFormState =
 const templateSchema = z.object({
   id: z.string().regex(OID).nullable().default(null),
   kind: z.enum(TEMPLATE_KINDS),
+  // 8.ª ronda/06: pasta (especialidade)
+  folder: z.enum(TEMPLATE_FOLDERS).default('geral'),
   title: z.string().trim().min(3).max(120),
   body: z.string().min(10).max(20_000),
   allowStaff: z.preprocess(v => v === 'on' || v === 'true', z.boolean()),
@@ -153,6 +156,7 @@ export async function saveTemplateAction(
     const parsed = templateSchema.safeParse({
       id: formData.get('id') || null,
       kind: formData.get('kind'),
+      folder: formData.get('folder') || undefined,
       title: formData.get('title'),
       body: formData.get('body'),
       allowStaff: formData.get('allowStaff'),
@@ -171,6 +175,7 @@ export async function saveTemplateAction(
         {
           $set: {
             kind: d.kind,
+            folder: d.folder,
             title: d.title,
             body: d.body,
             allowStaff: d.allowStaff,
@@ -184,6 +189,7 @@ export async function saveTemplateAction(
       await DocumentTemplate.create({
         key,
         kind: d.kind,
+        folder: d.folder,
         title: d.title,
         body: d.body,
         allowStaff: d.allowStaff,

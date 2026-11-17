@@ -124,6 +124,8 @@ export function NewAppointmentModal({
   const [newLast, setNewLast] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [samePhoneOk, setSamePhoneOk] = useState(false);
+  // 8.ª ronda/01 (Victor, 17/11/2026): "Não tem telemóvel"
+  const [newNoPhone, setNewNoPhone] = useState(false);
   /** Ficha provisória acabada de criar → convite para a completar (09) */
   const [created, setCreated] = useState<{ id: string; name: string } | null>(
     null,
@@ -320,6 +322,7 @@ export function NewAppointmentModal({
     setNewLast('');
     setNewPhone('');
     setSamePhoneOk(false);
+    setNewNoPhone(false);
     setReferral('');
     setReferralOther('');
     return result;
@@ -334,7 +337,7 @@ export function NewAppointmentModal({
   const canSubmit = newMode
     ? newFirst.trim().length >= 2 &&
       newLast.trim().length >= 2 &&
-      newPhone.replace(/\D/g, '').length >= 9
+      (newNoPhone || newPhone.replace(/\D/g, '').length >= 9)
     : !!patient && !faltas?.blockReason;
 
   if (created) {
@@ -476,14 +479,32 @@ export function NewAppointmentModal({
               id='ap-new-phone'
               name='newPhone'
               type='tel'
-              label='Telemóvel *'
-              value={newPhone}
+              label={newNoPhone ? 'Telemóvel' : 'Telemóvel *'}
+              value={newNoPhone ? '' : newPhone}
               onChange={e => setNewPhone(e.target.value)}
-              placeholder='9 dígitos'
+              disabled={newNoPhone}
+              placeholder={newNoPhone ? 'Não tem telemóvel' : '9 dígitos'}
               autoComplete='off'
               help='A ficha completa cria-se depois, ou quando o paciente chegar — a marcação não se perde.'
             />
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '12px', color: '#3D4257' }}>
+              <input
+                type='checkbox'
+                name='newNoPhone'
+                checked={newNoPhone}
+                onChange={e => setNewNoPhone(e.target.checked)}
+              />
+              Não tem telemóvel
+            </label>
+            <label
+              style={{
+                display: newNoPhone ? 'none' : 'flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: '12px',
+                color: '#3D4257',
+              }}
+            >
               <input
                 type='checkbox'
                 name='samePhoneOk'

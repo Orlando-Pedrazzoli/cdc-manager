@@ -12,7 +12,10 @@ import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import DocumentTemplate from '@/models/DocumentTemplate';
 import { ensureDefaultTemplates } from '@/lib/document-templates-seed';
-import type { TemplateKind } from '@/lib/data/document-templates';
+import {
+  templateFolder,
+  type TemplateKind,
+} from '@/lib/data/document-templates';
 import { placeholdersIn } from '@/lib/document-merge';
 import { TemplateEditorButton } from '@/components/documentos/TemplateEditor';
 import {
@@ -35,6 +38,7 @@ export default async function ModelosPage() {
   const rows: TemplateRow[] = templates.map(t => ({
     id: String(t._id),
     kind: t.kind as TemplateKind,
+    folder: templateFolder(t.folder),
     title: t.title,
     body: t.body,
     bodyLength: t.body.length,

@@ -145,7 +145,7 @@ export type PatientQuickView = {
   lastVisitLabel: string | null;
   /** Faltas e cancelamentos em cima da hora (Victor, 12/11/2026) */
   attendance: PatientAttendance;
-  upcoming: { id: string; whenLabel: string; doctorName: string; treatmentName: string; clinicLabel: string; status: string; isToday: boolean }[];
+  upcoming: { id: string; /** 8.ª ronda/05: abre a agenda nesse dia, já na marcação */ agendaHref: string; whenLabel: string; doctorName: string; treatmentName: string; clinicLabel: string; status: string; isToday: boolean }[];
 };
 
 export async function getPatientQuickViewAction(patientId: string): Promise<PatientQuickView | { error: string }> {
@@ -182,6 +182,7 @@ export async function getPatientQuickViewAction(patientId: string): Promise<Pati
   const doctorName = new Map(doctors.map(d => [String(d._id), d.name]));
   const treatmentName = new Map(treatments.map(t => [String(t._id), t.name]));
   const clinicName = new Map(clinics.map(c => [String(c._id), clinicLabel(c)]));
+  const clinicSlug = new Map(clinics.map(c => [String(c._id), c.slug]));
 
   let age: number | null = null;
   if (patient.birthDate) {
@@ -210,6 +211,7 @@ export async function getPatientQuickViewAction(patientId: string): Promise<Pati
     attendance,
     upcoming: upcoming.map(a => ({
       id: String(a._id),
+      agendaHref: `/admin/agenda?${clinicSlug.get(String(a.clinicId)) ? `clinic=${clinicSlug.get(String(a.clinicId))}&` : ''}date=${dayKeyFmt.format(a.startAt as Date)}&marcacao=${String(a._id)}`,
       whenLabel: dateTimeFmt.format(a.startAt as Date),
       doctorName: doctorName.get(String(a.doctorId)) ?? 'Sem médico',
       treatmentName: treatmentName.get(String(a.treatmentTypeId)) ?? '—',

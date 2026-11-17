@@ -651,6 +651,17 @@ export function processLabel(n: number | null | undefined): string {
   return n != null ? String(n) : 'pré-marcação';
 }
 
+/** 8.ª ronda/04 (Victor, 17/11/2026): "mostrar sempre o número do paciente
+ *  junto com o nome" — um só formato em todo o lado: "NOME · n.º 75099".
+ *  Sem número (pré-marcação ou ficha removida) fica só o nome. Nunca usar em
+ *  textos enviados ao paciente (mensagens, documentos). */
+export function patientNameWithProcess(
+  name: string,
+  processNumber: number | null | undefined,
+): string {
+  return processNumber != null ? `${name} · n.º ${processNumber}` : name;
+}
+
 /** 6.ª ronda/08: em "Outro trabalho" mostra-se o que a clínica escreveu
  *  ("Outro: placa de contenção"); nos restantes, o nome do tipo. */
 export function labWorkLabel(

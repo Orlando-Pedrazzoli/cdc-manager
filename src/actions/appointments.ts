@@ -310,6 +310,9 @@ const createSchema = z.object({
   newPhone: phoneField.default(null),
   /** A receção confirmou que é outra pessoa com o mesmo telemóvel */
   samePhoneOk: z.preprocess(v => v === 'on' || v === 'true', z.boolean()),
+  /** 8.ª ronda/01 (Victor, 17/11/2026): pré-marcação de quem não tem
+   *  telemóvel — deixa de ser preciso escrever 000000000 */
+  newNoPhone: z.preprocess(v => v === 'on' || v === 'true', z.boolean()),
   // 5.ª ronda/09: como nos conheceu
   referralSource: z.preprocess(
     emptyToNullStr,
@@ -368,10 +371,15 @@ export async function createAppointmentAction(
   // 5.ª ronda/13: pré-marcação — sem ficha escolhida, exige nome, apelido
   // e telemóvel
   const isPreBooking = !data.patientId;
-  if (isPreBooking && !(data.newFirstName && data.newLastName && data.newPhone)) {
+  // 8.ª ronda/01: o telemóvel só é dispensado com "Não tem telemóvel"
+  const preNoPhone = isPreBooking && data.newNoPhone;
+  if (
+    isPreBooking &&
+    !(data.newFirstName && data.newLastName && (data.newPhone || preNoPhone))
+  ) {
     return {
       error:
-        'Selecione o paciente ou, para quem ainda não tem ficha, indique nome, apelido e telemóvel.',
+        'Selecione o paciente ou, para quem ainda não tem ficha, indique nome, apelido e telemóvel (ou marque "Não tem telemóvel").',
     };
   }
 
@@ -402,7 +410,7 @@ export async function createAppointmentAction(
   if (data.doctorId && (!doctor || !doctor.active)) {
     return { error: 'Médico inválido ou inativo.' };
   }
-  if (isPreBooking && !data.samePhoneOk) {
+  if (isPreBooking && !preNoPhone && !data.samePhoneOk) {
     const dup = await findPatientByPhone(data.newPhone as string);
     if (dup) {
       return {
@@ -448,7 +456,7 @@ export async function createAppointmentAction(
       const created = await createProvisionalPatient({
         firstName: data.newFirstName as string,
         lastName: data.newLastName as string,
-        phone: data.newPhone as string,
+        phone: preNoPhone ? null : (data.newPhone as string),
         referralSource: data.referralSource,
         referralDetail: data.referralDetail,
       });

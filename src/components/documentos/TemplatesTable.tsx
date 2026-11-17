@@ -17,7 +17,10 @@ import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import {
+  TEMPLATE_FOLDERS,
+  TEMPLATE_FOLDER_LABEL,
   TEMPLATE_KIND_LABEL,
+  type TemplateFolder,
   type TemplateKind,
 } from '@/lib/data/document-templates';
 import {
@@ -28,6 +31,8 @@ import {
 export interface TemplateRow {
   id: string;
   kind: TemplateKind;
+  /** 8.ª ronda/06: pasta (especialidade) */
+  folder: TemplateFolder;
   title: string;
   body: string;
   bodyLength: number;
@@ -45,6 +50,17 @@ function fold(s: string): string {
 export function TemplatesTable({ templates }: { templates: TemplateRow[] }) {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<TemplateKind | ''>('');
+  // 8.ª ronda/06: filtro por pasta (especialidade)
+  const [folder, setFolder] = useState<TemplateFolder | ''>('');
+  const folders = useMemo(() => {
+    const count = new Map<TemplateFolder, number>();
+    for (const t of templates) count.set(t.folder, (count.get(t.folder) ?? 0) + 1);
+    return TEMPLATE_FOLDERS.filter(f => count.has(f)).map(f => ({
+      folder: f,
+      label: TEMPLATE_FOLDER_LABEL[f],
+      n: count.get(f)!,
+    }));
+  }, [templates]);
 
   // Só os tipos que existem na base aparecem como pills (com contagem)
   const kinds = useMemo(() => {
@@ -59,11 +75,12 @@ export function TemplatesTable({ templates }: { templates: TemplateRow[] }) {
     const q = fold(query);
     return templates.filter(t => {
       if (kind && t.kind !== kind) return false;
+      if (folder && t.folder !== folder) return false;
       if (!q) return true;
-      const hay = `${fold(t.title)} ${fold(TEMPLATE_KIND_LABEL[t.kind])}`;
+      const hay = `${fold(t.title)} ${fold(TEMPLATE_KIND_LABEL[t.kind])} ${fold(TEMPLATE_FOLDER_LABEL[t.folder])}`;
       return q.split(/\s+/).every(w => hay.includes(w));
     });
-  }, [templates, query, kind]);
+  }, [templates, query, kind, folder]);
 
   const card: React.CSSProperties = {
     backgroundColor: '#FFFFFF',
@@ -148,6 +165,33 @@ export function TemplatesTable({ templates }: { templates: TemplateRow[] }) {
               {k.label} · {k.n}
             </button>
           ))}
+          {/* 8.ª ronda/06: pastas (só aparecem quando há mais de uma) */}
+          {folders.length > 1 && (
+            <span
+              style={{
+                display: 'inline-flex',
+                gap: 6,
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                flexBasis: '100%',
+              }}
+            >
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#4A5169' }}>
+                Pasta:
+              </span>
+              {folders.map(f => (
+                <button
+                  key={f.folder}
+                  type='button'
+                  onClick={() => setFolder(folder === f.folder ? '' : f.folder)}
+                  aria-pressed={folder === f.folder}
+                  style={pill(folder === f.folder)}
+                >
+                  {f.label} · {f.n}
+                </button>
+              ))}
+            </span>
+          )}
           <span
             style={{
               marginLeft: 'auto',
@@ -195,7 +239,12 @@ export function TemplatesTable({ templates }: { templates: TemplateRow[] }) {
               {filtered.map(t => (
                 <tr key={t.id} style={{ opacity: t.active ? 1 : 0.55 }}>
                   <td style={td}>
-                    <div style={{ fontWeight: 700 }}>{t.title}</div>
+                    <div style={{ fontWeight: 700 }}>
+                      <span style={{ fontWeight: 600, color: '#4A5169' }}>
+                        ({TEMPLATE_FOLDER_LABEL[t.folder]})
+                      </span>{' '}
+                      {t.title}
+                    </div>
                     <div style={{ fontSize: '11px', color: '#9AA1B4' }}>
                       {t.bodyLength.toLocaleString('pt-PT')} caracteres
                       {t.requiresSignature ? ' · exige assinatura' : ''}
@@ -219,6 +268,7 @@ export function TemplatesTable({ templates }: { templates: TemplateRow[] }) {
                         initial={{
                           id: t.id,
                           kind: t.kind,
+                          folder: t.folder,
                           title: t.title,
                           body: t.body,
                           allowStaff: t.allowStaff,

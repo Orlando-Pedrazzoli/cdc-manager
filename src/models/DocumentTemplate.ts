@@ -7,12 +7,17 @@
 // =============================================================================
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
-import { TEMPLATE_KINDS } from '@/lib/data/document-templates';
+import {
+  TEMPLATE_FOLDERS,
+  TEMPLATE_KINDS,
+} from '@/lib/data/document-templates';
 
 const DocumentTemplateSchema = new Schema(
   {
     key: { type: String, required: true, unique: true, trim: true },
     kind: { type: String, enum: TEMPLATE_KINDS, required: true, index: true },
+    // 8.ª ronda/06: pasta (especialidade) onde o modelo aparece
+    folder: { type: String, enum: TEMPLATE_FOLDERS, default: 'geral' },
     title: { type: String, required: true, trim: true, maxlength: 120 },
     body: { type: String, required: true, maxlength: 20_000 },
     // Quem pode emitir: médico sempre; receção só se allowStaff

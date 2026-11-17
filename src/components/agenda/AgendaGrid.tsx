@@ -52,7 +52,14 @@
 
 'use client';
 
-import { useState, type KeyboardEvent, type MouseEvent } from 'react';
+import {
+  useCallback,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+} from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
@@ -63,6 +70,7 @@ import {
   type NewAppointmentLabTarget,
 } from '@/components/agenda/NewAppointmentModal';
 import { PatientQuickView } from '@/components/agenda/PatientQuickView';
+import { AGENDA_PX_PER_MIN, compactPxPerMin } from '@/lib/agenda-bulk';
 import {
   transitionAppointmentAction,
   updateAppointmentDurationAction,
@@ -88,8 +96,47 @@ import {
 } from '@/components/proteses/NewLabCaseModal';
 
 // 4.ª ronda/01: 2,4 px/min → 15 min = 2 linhas, 20 min = 3, 30 min = 5
-const PX_PER_MIN = 2.4;
+const PX_PER_MIN = AGENDA_PX_PER_MIN;
 const LINE_PX = 14;
+
+// 8.ª ronda/02 (Victor, 17/11/2026): "agenda mais compacta, para não ser
+// preciso fazer rolagem e conseguirmos ver a agenda por completo". A vista
+// compacta encolhe o dia até caber na altura do ecrã e estreita as colunas
+// para caberem todos os médicos. A escolha fica guardada no browser de cada
+// posto (como o menu recolhível da 7.ª ronda).
+const COMPACT_KEY = 'cdc-agenda-compact';
+const COMPACT_EVENT = 'cdc:agenda-compact-change';
+const COMPACT_LINE_PX = 12;
+const COMPACT_COL_MIN = '96px';
+
+function subscribeCompact(onChange: () => void) {
+  window.addEventListener('storage', onChange);
+  window.addEventListener(COMPACT_EVENT, onChange);
+  return () => {
+    window.removeEventListener('storage', onChange);
+    window.removeEventListener(COMPACT_EVENT, onChange);
+  };
+}
+function readCompact(): boolean {
+  try {
+    return window.localStorage.getItem(COMPACT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+function writeCompact(on: boolean) {
+  try {
+    if (on) window.localStorage.setItem(COMPACT_KEY, '1');
+    else window.localStorage.removeItem(COMPACT_KEY);
+  } catch {
+    /* sem armazenamento: vale só até recarregar */
+  }
+  window.dispatchEvent(new Event(COMPACT_EVENT));
+}
+function subscribeResize(onChange: () => void) {
+  window.addEventListener('resize', onChange);
+  return () => window.removeEventListener('resize', onChange);
+}
 /** 4.ª ronda/03: o clique num horário livre arredonda a 5 min */
 const CLICK_STEP_MIN = 5;
 const HOVER_BAND_MIN = 15;
@@ -260,6 +307,8 @@ export interface AgendaAppointment {
   endMs?: number;
   /** 5.ª ronda/09: como nos conheceu (rótulo pronto a mostrar) */
   referralLabel?: string | null;
+  /** 8.ª ronda/04: n.º do paciente (null = pré-marcação) */
+  processNumber?: number | null;
 }
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -310,6 +359,7 @@ export function AgendaGrid({
   labOptions = [],
   historyHref,
   newAppointment,
+  openAppointmentId,
 }: {
   gridStart: number; // minutos (abertura da clínica)
   gridEnd: number; // minutos (fecho)
@@ -322,6 +372,10 @@ export function AgendaGrid({
   labOptions?: LabOption[];
   /** 3.ª reunião/01: atalho para o Histórico quando há canceladas no dia */
   historyHref?: string;
+  /** 8.ª ronda/05: marcação a abrir logo (atalho das "próximas consultas"
+   *  do paciente: /admin/agenda?...&marcacao=ID). A página dá uma `key`
+   *  diferente à grelha por marcação, para o painel abrir a cada atalho. */
+  openAppointmentId?: string | null;
   /** 4.ª ronda/03: dados para abrir "Nova marcação" ao clicar num horário
    *  livre. Sem isto (ou em dias passados) a grelha não é clicável. */
   newAppointment?: {
@@ -337,7 +391,23 @@ export function AgendaGrid({
   };
 }) {
   const router = useRouter();
-  const [selected, setSelected] = useState<AgendaAppointment | null>(null);
+  const [selected, setSelected] = useState<AgendaAppointment | null>(() =>
+    openAppointmentId
+      ? (appointments.find(a => a.id === openAppointmentId) ?? null)
+      : null,
+  );
+  // 8.ª ronda/02: vista compacta (preferência por browser)
+  const compact = useSyncExternalStore(subscribeCompact, readCompact, () => false);
+  const viewportH = useSyncExternalStore(
+    subscribeResize,
+    () => window.innerHeight,
+    () => 900,
+  );
+  // Distância do topo da página ao início das horas (medida ao montar)
+  const [bodyTop, setBodyTop] = useState(260);
+  const measureBody = useCallback((el: HTMLDivElement | null) => {
+    if (el) setBodyTop(Math.round(el.getBoundingClientRect().top + window.scrollY));
+  }, []);
   const [cancelMode, setCancelMode] = useState(false);
   const [rescheduleMode, setRescheduleMode] = useState(false);
   // Só os campos que o pedido ao laboratório usa — serve tanto para uma
@@ -380,7 +450,12 @@ export function AgendaGrid({
     ('ranges' in col && col.ranges.some(r => min >= r.start && min < r.end));
 
   const totalMin = gridEnd - gridStart;
-  const height = totalMin * PX_PER_MIN;
+  // 8.ª ronda/02: na vista compacta o dia inteiro cabe no ecrã
+  const pxPerMin = compact
+    ? compactPxPerMin(viewportH - bodyTop - 12, totalMin)
+    : PX_PER_MIN;
+  const linePx = compact ? COMPACT_LINE_PX : LINE_PX;
+  const height = totalMin * pxPerMin;
 
   // Canceladas: ficam na grelha enquanto ocuparem o lugar (cancelledOnGrid);
   // as retiradas, remarcadas ou com o horário já reaproveitado só aparecem
@@ -407,7 +482,7 @@ export function AgendaGrid({
   /** Minuto (arredondado) do ponto onde o rato está numa coluna */
   const minuteAt = (e: MouseEvent<HTMLDivElement>) => {
     const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
-    const raw = gridStart + y / PX_PER_MIN;
+    const raw = gridStart + y / pxPerMin;
     const m = Math.floor(raw / CLICK_STEP_MIN) * CLICK_STEP_MIN;
     return Math.min(Math.max(m, gridStart), gridEnd - CLICK_STEP_MIN);
   };
@@ -561,6 +636,31 @@ export function AgendaGrid({
           <span style={{ color: '#9AA1B4' }}>
             · barra à esquerda = cor do médico
           </span>
+          {/* 8.ª ronda/02: o dia inteiro e todos os médicos sem rolagem */}
+          <button
+            type='button'
+            onClick={() => writeCompact(!compact)}
+            aria-pressed={compact}
+            title={
+              compact
+                ? 'Voltar à vista normal (cartões maiores, com rolagem)'
+                : 'Encolher a agenda para ver o dia inteiro e todos os médicos sem rolagem'
+            }
+            style={{
+              marginLeft: 'auto',
+              padding: '3px 10px',
+              borderRadius: '999px',
+              border: compact ? '1px solid #1B2A6B' : '1px solid #C9D2EA',
+              backgroundColor: compact ? '#1B2A6B' : '#FFFFFF',
+              color: compact ? '#FFFFFF' : '#1B2A6B',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {compact ? 'Vista normal' : 'Vista compacta'}
+          </button>
         </div>
         {/* 3.ª reunião/01: as canceladas não se desenham; fica só o rasto */}
         {cancelledCount > 0 && (
@@ -602,6 +702,9 @@ export function AgendaGrid({
             // --cdc-col-min vem do globals.css: 180px desktop, 150px mobile
             gridTemplateColumns: `56px repeat(${columns.length}, minmax(var(--cdc-col-min, 180px), 1fr))`,
             minWidth: `calc(56px + ${columns.length} * var(--cdc-col-min, 180px))`,
+            ...(compact
+              ? ({ '--cdc-col-min': COMPACT_COL_MIN } as CSSProperties)
+              : {}),
           }}
         >
           {/* Cabeçalhos — canto e coluna das horas fixos à esquerda para o
@@ -621,8 +724,8 @@ export function AgendaGrid({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                padding: '10px 12px',
+                gap: compact ? '4px' : '8px',
+                padding: compact ? '6px 6px' : '10px 12px',
                 borderBottom: '1px solid #EEF1F8',
                 borderLeft: '1px solid #F0F2F7',
               }}
@@ -639,8 +742,9 @@ export function AgendaGrid({
                 />
               )}
               <span
+                title={col.name}
                 style={{
-                  fontSize: '13px',
+                  fontSize: compact ? '11px' : '13px',
                   fontWeight: 700,
                   color: '#1B2A6B',
                   whiteSpace: 'nowrap',
@@ -671,6 +775,7 @@ export function AgendaGrid({
 
           {/* Coluna das horas (sticky) */}
           <div
+            ref={measureBody}
             style={{
               position: 'sticky',
               left: 0,
@@ -685,7 +790,7 @@ export function AgendaGrid({
                 key={m}
                 style={{
                   position: 'absolute',
-                  top: (m - gridStart) * PX_PER_MIN - 7,
+                  top: (m - gridStart) * pxPerMin - 7,
                   right: 8,
                   fontSize: '11px',
                   color: '#9AA1B4',
@@ -766,8 +871,8 @@ export function AgendaGrid({
                     key={i}
                     style={{
                       position: 'absolute',
-                      top: (r.start - gridStart) * PX_PER_MIN,
-                      height: (r.end - r.start) * PX_PER_MIN,
+                      top: (r.start - gridStart) * pxPerMin,
+                      height: (r.end - r.start) * pxPerMin,
                       left: 0,
                       right: 0,
                       backgroundColor: '#FFFFFF',
@@ -781,7 +886,7 @@ export function AgendaGrid({
                     key={m}
                     style={{
                       position: 'absolute',
-                      top: (m - gridStart) * PX_PER_MIN,
+                      top: (m - gridStart) * pxPerMin,
                       left: 0,
                       right: 0,
                       borderTop: '1px solid #E9ECF4',
@@ -794,8 +899,8 @@ export function AgendaGrid({
                   <div
                     style={{
                       position: 'absolute',
-                      top: (hover.min - gridStart) * PX_PER_MIN,
-                      height: HOVER_BAND_MIN * PX_PER_MIN,
+                      top: (hover.min - gridStart) * pxPerMin,
+                      height: HOVER_BAND_MIN * pxPerMin,
                       left: 3,
                       right: 3,
                       borderRadius: '8px',
@@ -828,11 +933,11 @@ export function AgendaGrid({
                   const lp = laneMap.get(a.id) ?? { lane: 0, lanes: 1 };
                   const laneW = 100 / lp.lanes;
                   // Altura real do intervalo; nunca menos de uma linha
-                  const slotPx = (a.endMin - a.startMin) * PX_PER_MIN - 2;
-                  const cardPx = Math.max(slotPx, 22);
+                  const slotPx = (a.endMin - a.startMin) * pxPerMin - 2;
+                  const cardPx = Math.max(slotPx, compact ? 12 : 22);
                   // 4.ª ronda/01: quantas linhas cabem → hora+nome, depois a
                   // OBSERVAÇÃO (prioridade), depois ato · estado
-                  const lines = Math.max(1, Math.floor((cardPx - 4) / LINE_PX));
+                  const lines = Math.max(1, Math.floor((cardPx - 4) / linePx));
                   // com 3+ linhas o nome pode ocupar duas (nomes compridos em
                   // colunas estreitas deixam de ficar cortados)
                   const nameLines = lines >= 3 ? 2 : 1;
@@ -861,12 +966,12 @@ export function AgendaGrid({
                       tabIndex={0}
                       onClick={open}
                       onKeyDown={onKey}
-                      title={[`${a.start}–${a.end} · ${a.patientLabel}`, `${a.treatmentName} · ${sc.label}`, cardNote ? (isCancelled ? cardNote : `Obs.: ${cardNote}`) : null]
+                      title={[`${a.start}–${a.end} · ${a.patientLabel}${a.processNumber != null ? ` · n.º ${a.processNumber}` : ''}`, `${a.treatmentName} · ${sc.label}`, cardNote ? (isCancelled ? cardNote : `Obs.: ${cardNote}`) : null]
                         .filter(Boolean)
                         .join('\n')}
                       style={{
                         position: 'absolute',
-                        top: (a.startMin - gridStart) * PX_PER_MIN,
+                        top: (a.startMin - gridStart) * pxPerMin,
                         height: cardPx,
                         left: `calc(${lp.lane * laneW}% + 4px)`,
                         width: `calc(${laneW}% - ${lp.lanes > 1 ? 6 : 8}px)`,
@@ -879,16 +984,16 @@ export function AgendaGrid({
                         borderLeft: `5px solid ${a.isUrgent ? '#B3261E' : colColor}`,
                         borderRadius: '8px',
                         backgroundColor: sc.bg,
-                        padding: lines >= 2 ? '2px 8px' : '0 8px',
+                        padding: compact ? '0 5px' : lines >= 2 ? '2px 8px' : '0 8px',
                         cursor: 'pointer',
                         overflow: 'hidden',
-                        lineHeight: `${LINE_PX}px`,
+                        lineHeight: `${linePx}px`,
                         boxSizing: 'border-box',
                       }}
                     >
                       <span
                         style={{
-                          fontSize: '12px',
+                          fontSize: compact ? '11px' : '12px',
                           fontWeight: 700,
                           color: '#141B33',
                           overflow: 'hidden',
@@ -899,13 +1004,13 @@ export function AgendaGrid({
                                 WebkitLineClamp: 2,
                                 WebkitBoxOrient: 'vertical' as const,
                                 whiteSpace: 'normal' as const,
-                                lineHeight: `${LINE_PX + 1}px`,
+                                lineHeight: `${linePx + 1}px`,
                               }
                             : {
                                 display: 'block',
                                 whiteSpace: 'nowrap' as const,
                                 textOverflow: 'ellipsis',
-                                lineHeight: lines >= 2 ? `${LINE_PX + 2}px` : `${cardPx - 2}px`,
+                                lineHeight: lines >= 2 ? `${linePx + 2}px` : `${cardPx - 2}px`,
                               }),
                         }}
                       >
@@ -938,10 +1043,17 @@ export function AgendaGrid({
                         )}
                         {a.provisional && (
                           <span title='Pré-marcação: ficha por completar' style={provisionalPillStyle}>
-                            S/ FICHA
+                            {compact ? 'S/F' : 'S/ FICHA'}
                           </span>
                         )}
                         {a.start} ·{' '}
+                        {/* 8.ª ronda/04: n.º do paciente antes do nome, para
+                            não ser o primeiro a ficar cortado. Na vista
+                            compacta as colunas são estreitas: o nome fica
+                            primeiro e o número desce para a linha do ato */}
+                        {!compact && a.processNumber != null && (
+                          <>{a.processNumber} · </>
+                        )}
                         {/* 4.ª ronda/05: o nome abre a ficha rápida */}
                         {/* <span> e não <button>: um botão é um bloco atómico e
                             o "…" do cartão cortava o nome inteiro */}
@@ -1009,6 +1121,9 @@ export function AgendaGrid({
                             <span title={labTitle} style={{ ...labPillStyle, marginLeft: 0 }}>
                               {labLabel}
                             </span>
+                          )}
+                          {compact && a.processNumber != null && (
+                            <strong>n.º {a.processNumber} · </strong>
                           )}
                           {a.treatmentName} · {sc.label}
                         </span>
@@ -1086,6 +1201,12 @@ export function AgendaGrid({
                 >
                   {selected.patientLabel}
                 </button>
+                {/* 8.ª ronda/04 */}
+                {selected.processNumber != null && (
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#4A5169' }}>
+                    · n.º {selected.processNumber}
+                  </span>
+                )}
                 <Link
                   href={`/admin/pacientes/${selected.patientId}?tab=consultas`}
                   target='_blank'

@@ -12,6 +12,12 @@
 //     fechado, estende ou REDUZ um dia aberto)
 //   · Fechar — o médico não atende nesses dias nesta clínica
 //   · Repor a escala normal — desfaz o que foi aberto ou fechado à mão
+//
+// 8.ª ronda/03 (Victor, 17/11/2026): além dos dias um a um, abrir "por dia da
+// semana" num período — "todas as quintas de janeiro", "todos os sábados ou
+// domingos de 2027". Escolhem-se os dias da semana e o período (De / Até) e
+// os dias entram na seleção; continua a poder-se acrescentar ou tirar dias
+// pontuais no calendário. Só a gestão vê o botão (e a action recusa o resto).
 // Convenção do projeto: visual crítico em inline style.
 // =============================================================================
 
@@ -28,6 +34,7 @@ import {
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
+import { weekdayDatesInRange } from '@/lib/agenda-bulk';
 
 export interface DoctorDayOption {
   id: string;
@@ -63,6 +70,15 @@ function monthCells(year: number, month: number): (string | null)[] {
   return cells;
 }
 
+/** Máximo de dias por operação — igual ao MAX_DAYS da action */
+const MAX_DAYS = 400;
+
+/** Último dia do mês de uma data ISO */
+function endOfMonthIso(isoDay: string): string {
+  const [y, m] = isoDay.split('-').map(Number);
+  return iso(y, m - 1, new Date(Date.UTC(y, m, 0)).getUTCDate());
+}
+
 export function DoctorDaysButton({
   clinicId,
   date,
@@ -90,6 +106,28 @@ export function DoctorDaysButton({
     const [y, m] = date.split('-').map(Number);
     return { year: y, month: m - 1 };
   });
+
+  // 8.ª ronda/03: seleção por dia da semana num período
+  const [bulkDays, setBulkDays] = useState<Set<number>>(() => new Set());
+  const [bulkFrom, setBulkFrom] = useState(date >= today ? date : today);
+  const [bulkUntil, setBulkUntil] = useState(() =>
+    endOfMonthIso(date >= today ? date : today),
+  );
+  const bulkMatches = useMemo(
+    () => weekdayDatesInRange(bulkFrom, bulkUntil, bulkDays, today),
+    [bulkFrom, bulkUntil, bulkDays, today],
+  );
+  const addBulk = () => {
+    if (bulkMatches.length === 0) return;
+    setSelected(prev => new Set([...prev, ...bulkMatches]));
+    // Mostra o primeiro mês do período, para se ver o que ficou marcado
+    const [y, m] = bulkMatches[0].split('-').map(Number);
+    setView({ year: y, month: m - 1 });
+  };
+  const setBulkPeriod = (fromIso: string, untilIso: string) => {
+    setBulkFrom(fromIso < today ? today : fromIso);
+    setBulkUntil(untilIso);
+  };
 
   const cells = useMemo(() => monthCells(view.year, view.month), [view]);
   const doctor = doctors.find(d => d.id === doctorId);
@@ -131,6 +169,9 @@ export function DoctorDaysButton({
     const [y, m] = date.split('-').map(Number);
     setView({ year: y, month: m - 1 });
     setSelected(new Set(date >= today ? [date] : []));
+    setBulkDays(new Set());
+    setBulkFrom(date >= today ? date : today);
+    setBulkUntil(endOfMonthIso(date >= today ? date : today));
     setOpen(true);
   };
 
@@ -315,6 +356,141 @@ export function DoctorDaysButton({
             </div>
           </div>
 
+          {/* 8.ª ronda/03: por dia da semana, num período */}
+          <div
+            style={{
+              border: '1px solid #EEF1F8',
+              borderRadius: '12px',
+              padding: '12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            <strong style={{ fontSize: '13px', color: '#1B2A6B' }}>
+              Por dia da semana, num período
+            </strong>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {WEEKDAYS.map((w, i) => {
+                const on = bulkDays.has(i);
+                return (
+                  <button
+                    key={w}
+                    type='button'
+                    aria-pressed={on}
+                    onClick={() =>
+                      setBulkDays(prev => {
+                        const next = new Set(prev);
+                        if (next.has(i)) next.delete(i);
+                        else next.add(i);
+                        return next;
+                      })
+                    }
+                    style={{
+                      minWidth: 44,
+                      padding: '6px 10px',
+                      borderRadius: '999px',
+                      border: on ? '1px solid #1B2A6B' : '1px solid #C9D2EA',
+                      backgroundColor: on ? '#1B2A6B' : '#FFFFFF',
+                      color: on ? '#FFFFFF' : '#1B2A6B',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {w}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Input
+                id='dd-bulk-from'
+                type='date'
+                label='De'
+                min={today}
+                value={bulkFrom}
+                onChange={e => setBulkFrom(e.target.value)}
+              />
+              <Input
+                id='dd-bulk-until'
+                type='date'
+                label='Até'
+                min={bulkFrom || today}
+                value={bulkUntil}
+                onChange={e => setBulkUntil(e.target.value)}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {(
+                [
+                  [
+                    `${MONTHS[view.month]} ${view.year}`,
+                    iso(view.year, view.month, 1),
+                    endOfMonthIso(iso(view.year, view.month, 1)),
+                  ],
+                  [
+                    `Resto de ${today.slice(0, 4)}`,
+                    today,
+                    `${today.slice(0, 4)}-12-31`,
+                  ],
+                  [
+                    `Ano de ${Number(today.slice(0, 4)) + 1}`,
+                    `${Number(today.slice(0, 4)) + 1}-01-01`,
+                    `${Number(today.slice(0, 4)) + 1}-12-31`,
+                  ],
+                ] as [string, string, string][]
+              ).map(([label, f, u]) => (
+                <button
+                  key={label}
+                  type='button'
+                  onClick={() => setBulkPeriod(f, u)}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '999px',
+                    border: '1px solid #C9D2EA',
+                    backgroundColor: '#F4F6FC',
+                    color: '#1B2A6B',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+                flexWrap: 'wrap',
+              }}
+            >
+              <span style={{ fontSize: '12px', color: '#6A7186' }}>
+                {bulkDays.size === 0
+                  ? 'Escolha os dias da semana e o período.'
+                  : `${bulkMatches.length} dia${bulkMatches.length === 1 ? '' : 's'} neste período.`}
+              </span>
+              <Button
+                variant='outline'
+                onClick={addBulk}
+                disabled={bulkMatches.length === 0}
+              >
+                Acrescentar à seleção
+              </Button>
+            </div>
+          </div>
+
+          {count > MAX_DAYS && (
+            <p style={{ margin: 0, fontSize: '12px', color: '#B3261E', fontWeight: 600 }}>
+              {count} dias selecionados: o máximo é {MAX_DAYS} de cada vez. Reduza o
+              período ou faça em duas vezes.
+            </p>
+          )}
+
           {/* Ação */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {(
@@ -395,7 +571,7 @@ export function DoctorDaysButton({
             <Button variant='secondary' disabled={busy} onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button loading={busy} disabled={!doctorId || count === 0} onClick={submit}>
+            <Button loading={busy} disabled={!doctorId || count === 0 || count > MAX_DAYS} onClick={submit}>
               {mode === 'open' ? 'Abrir' : mode === 'close' ? 'Fechar' : 'Repor'} {count} dia
               {count === 1 ? '' : 's'}
             </Button>

@@ -63,8 +63,10 @@ export async function setDoctorDaysAction(input: {
 }): Promise<DoctorDaysResult> {
   const session = await auth();
   const role = session?.user?.role;
-  if (!session?.user?.id || (role !== 'admin' && role !== 'receptionist')) {
-    return { error: 'Sem permissões.' };
+  // 8.ª ronda/03 (Victor, 17/11/2026): "abrir e fechar agenda só para quem
+  // tem acesso de administrador" — a receção deixou de poder
+  if (!session?.user?.id || role !== 'admin') {
+    return { error: 'Só a gestão pode abrir ou fechar a agenda.' };
   }
   if (!OID_RE.test(input.doctorId) || !OID_RE.test(input.clinicId)) {
     return { error: 'Dados inválidos.' };
