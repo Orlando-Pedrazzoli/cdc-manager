@@ -308,6 +308,7 @@ export async function createDoctorAction(
   const doctor = await Doctor.create({
     name: data.name,
     licenseNumber: data.licenseNumber,
+    birthDate: data.birthDate ? new Date(`${data.birthDate}T12:00:00Z`) : null,
     specialties: data.specialties,
     clinicSchedules: data.clinicSchedules,
     commissionRate: data.commissionRate,
@@ -396,6 +397,13 @@ export async function updateDoctorAction(
   const map: Record<string, unknown> = {
     name: data.name,
     licenseNumber: data.licenseNumber,
+    // undefined = o formulário não trouxe o campo → não mexe
+    birthDate:
+      data.birthDate === undefined
+        ? undefined
+        : data.birthDate
+          ? new Date(`${data.birthDate}T12:00:00Z`)
+          : null,
     specialties: data.specialties,
     clinicSchedules: data.clinicSchedules,
     commissionRate: data.commissionRate,

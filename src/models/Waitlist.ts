@@ -28,6 +28,12 @@ export const WAITLIST_STATUS = [
 ] as const;
 export type WaitlistStatus = (typeof WAITLIST_STATUS)[number];
 
+// 8.ª ronda/10 (Victor, 17/11/2026): "Paciente quer outro horário" — o
+// pedido nasce numa marcação que já existe: o paciente quer uma vaga mais
+// cedo ou mais tarde com aquele médico.
+export const WAITLIST_PREFERENCES = ['earlier', 'later', 'any'] as const;
+export type WaitlistPreference = (typeof WAITLIST_PREFERENCES)[number];
+
 export const DAY_PERIODS = ['morning', 'afternoon', 'any'] as const;
 export type DayPeriod = (typeof DAY_PERIODS)[number];
 
@@ -57,6 +63,20 @@ const WaitlistSchema = new Schema(
       default: null,
     },
     // Janela de interesse
+    // 8.ª ronda/10: marcação de origem e o que o paciente quer
+    appointmentId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Appointment',
+      default: null,
+      index: true,
+    },
+    preference: {
+      type: String,
+      enum: WAITLIST_PREFERENCES,
+      default: 'any',
+    },
+    closedByUserId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    closedAt: { type: Date, default: null },
     fromDate: { type: Date, required: true },
     untilDate: { type: Date, required: true },
     period: { type: String, enum: DAY_PERIODS, default: 'any' },

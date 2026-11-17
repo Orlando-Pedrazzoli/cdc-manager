@@ -55,6 +55,11 @@ export const employeeSchema = z.object({
   contractType: z.enum(EMPLOYEE_CONTRACT_TYPES).default('sem-termo'),
   startDate: dateStr,
   endDate: dateStr,
+  // 8.ª ronda/09 e 18
+  birthDate: dateStr,
+  contractEnd1: dateStr,
+  contractEnd2: dateStr,
+  contractEnd3: dateStr,
   nif: z.preprocess(
     emptyToNull,
     z

@@ -28,6 +28,7 @@ import {
   Smile,
   ScanLine,
   BarChart3,
+  CalendarClock,
   CalendarDays,
   ClipboardList,
   FileText,
@@ -109,6 +110,8 @@ const NAV: { section: string; items: NavItem[] }[] = [
         label: 'Colaboradores',
         icon: UsersRound,
       },
+      // 8.ª ronda/09, 16, 17, 18: avisos da gestão; a página bloqueia não-admin
+      { href: '/admin/prazos', label: 'Prazos e avisos', icon: CalendarClock },
       { href: '/admin/relatorios', label: 'Relatórios', icon: BarChart3 },
       { href: '/admin/listagens', label: 'Listagens', icon: ListChecks },
       {

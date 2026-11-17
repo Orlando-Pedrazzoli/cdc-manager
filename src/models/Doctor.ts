@@ -171,6 +171,8 @@ const DoctorSchema = new Schema(
       maxlength: 120,
     },
     // Cédula profissional (Ordem dos Médicos Dentistas) — aparece em documentos
+    // 8.ª ronda/09 (Victor, 17/11/2026): aviso à gestão na semana do aniversário
+    birthDate: { type: Date, default: null },
     licenseNumber: {
       type: String,
       trim: true,

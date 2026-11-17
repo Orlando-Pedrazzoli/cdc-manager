@@ -197,6 +197,15 @@ export const createDoctorSchema = z.object({
       .regex(/^\d{1,10}$/, 'Cédula inválida — apenas dígitos (máx. 10)')
       .nullable(),
   ),
+  // 8.ª ronda/09: data de nascimento (aviso de aniversário, só para a gestão)
+  birthDate: z.preprocess(
+    emptyToNull,
+    z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data de nascimento inválida')
+      .nullable()
+      .optional(),
+  ),
   specialties: specialtiesField,
   clinicSchedules: clinicSchedulesField,
   commissionRate: commissionField.default(null),

@@ -21,6 +21,9 @@ export interface EmployeeInitial {
   contractType: string;
   startDate: string;
   endDate: string;
+  /** 8.ª ronda/09 e 18 */
+  birthDate?: string;
+  contractEnds?: string[];
   nif: string;
   niss: string;
   phone: string;
@@ -138,6 +141,24 @@ export function EmployeeForm({
             label='Data de saída'
             defaultValue={initial?.endDate ?? ''}
           />
+          {/* 8.ª ronda/09: aviso à gestão na semana do aniversário */}
+          <Input
+            name='birthDate'
+            type='date'
+            label='Data de nascimento'
+            defaultValue={initial?.birthDate ?? ''}
+          />
+          {/* 8.ª ronda/18: as três datas de fim de contrato (aviso 40 dias
+              antes de cada uma, para a carta de não renovação) */}
+          {[0, 1, 2].map(i => (
+            <Input
+              key={i}
+              name={`contractEnd${i + 1}`}
+              type='date'
+              label={`Fim de contrato — ${i + 1}.ª data`}
+              defaultValue={initial?.contractEnds?.[i] ?? ''}
+            />
+          ))}
           <Input
             name='nif'
             label='NIF'

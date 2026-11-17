@@ -71,6 +71,11 @@ import {
 } from '@/components/agenda/NewAppointmentModal';
 import { PatientQuickView } from '@/components/agenda/PatientQuickView';
 import { AGENDA_PX_PER_MIN, compactPxPerMin } from '@/lib/agenda-bulk';
+import { addToWaitlistAction, closeWaitlistAction } from '@/actions/waitlist';
+import {
+  WAITLIST_PREFERENCE_LABEL,
+  type WaitlistPreference,
+} from '@/lib/waitlist';
 import {
   transitionAppointmentAction,
   updateAppointmentDurationAction,
@@ -309,6 +314,12 @@ export interface AgendaAppointment {
   referralLabel?: string | null;
   /** 8.ª ronda/04: n.º do paciente (null = pré-marcação) */
   processNumber?: number | null;
+  /** 8.ª ronda/10: pedido ativo de outro horário (lista de espera) */
+  waitlist?: {
+    id: string;
+    preference: WaitlistPreference;
+    note: string | null;
+  } | null;
 }
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -409,6 +420,10 @@ export function AgendaGrid({
     if (el) setBodyTop(Math.round(el.getBoundingClientRect().top + window.scrollY));
   }, []);
   const [cancelMode, setCancelMode] = useState(false);
+  // 8.ª ronda/10: "Paciente quer outro horário"
+  const [waitMode, setWaitMode] = useState(false);
+  const [waitPref, setWaitPref] = useState<WaitlistPreference>('earlier');
+  const [waitNote, setWaitNote] = useState('');
   const [rescheduleMode, setRescheduleMode] = useState(false);
   // Só os campos que o pedido ao laboratório usa — serve tanto para uma
   // marcação da grelha como para uma acabada de criar (7.ª ronda/B1)
@@ -535,6 +550,36 @@ export function AgendaGrid({
       return;
     }
     toast.success('Chegada anulada. O paciente saiu da sala de espera.');
+    setSelected(null);
+    router.refresh();
+  };
+
+  /** 8.ª ronda/10: pôr (ou atualizar) o paciente na lista de espera */
+  const saveWaitlist = async () => {
+    if (!selected) return;
+    setBusy(true);
+    const res = await addToWaitlistAction(selected.id, waitPref, waitNote);
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success('Paciente na lista de espera. Aparece na caixa "Lista de espera" quando houver vaga.');
+    setWaitMode(false);
+    setSelected(null);
+    router.refresh();
+  };
+  const removeWaitlist = async () => {
+    if (!selected?.waitlist) return;
+    setBusy(true);
+    const res = await closeWaitlistAction(selected.waitlist.id, 'cancelled');
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success('Paciente retirado da lista de espera.');
+    setWaitMode(false);
     setSelected(null);
     router.refresh();
   };
@@ -1169,6 +1214,7 @@ export function AgendaGrid({
         onClose={() => {
           setSelected(null);
           setCancelMode(false);
+          setWaitMode(false);
           setRescheduleMode(false);
           setCancelReason('');
           setNoteDraft(null);
@@ -1428,6 +1474,64 @@ export function AgendaGrid({
                 }}
                 onCancel={() => setRescheduleMode(false)}
               />
+            ) : waitMode ? (
+              /* 8.ª ronda/10: "Paciente quer outro horário" */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <strong style={{ fontSize: '13px', color: '#1B2A6B' }}>
+                  Paciente quer outro horário
+                </strong>
+                <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
+                  A marcação fica como está. Quando abrir uma vaga com este
+                  médico (cancelamento, falta ou horário livre), o paciente
+                  aparece na caixa &quot;Lista de espera&quot; da agenda.
+                </p>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {(['earlier', 'later', 'any'] as const).map(value => {
+                    const active = waitPref === value;
+                    return (
+                      <button
+                        key={value}
+                        type='button'
+                        aria-pressed={active}
+                        onClick={() => setWaitPref(value)}
+                        style={{
+                          padding: '7px 12px',
+                          borderRadius: '10px',
+                          border: active ? '1px solid #1B2A6B' : '1px solid #D8DEEF',
+                          backgroundColor: active ? '#1B2A6B' : '#FFFFFF',
+                          color: active ? '#FFFFFF' : '#3A3F4A',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {WAITLIST_PREFERENCE_LABEL[value]}
+                      </button>
+                    );
+                  })}
+                </div>
+                <Textarea
+                  label='Observação (opcional)'
+                  rows={2}
+                  maxLength={300}
+                  value={waitNote}
+                  onChange={e => setWaitNote(e.target.value)}
+                  placeholder='Ex.: só de manhã; pode vir a qualquer dia da semana'
+                />
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <Button size='sm' loading={busy} onClick={saveWaitlist}>
+                    {selected.waitlist ? 'Atualizar pedido' : 'Pôr na lista de espera'}
+                  </Button>
+                  {selected.waitlist && (
+                    <Button size='sm' variant='danger' disabled={busy} onClick={removeWaitlist}>
+                      Tirar da lista
+                    </Button>
+                  )}
+                  <Button size='sm' variant='outline' disabled={busy} onClick={() => setWaitMode(false)}>
+                    Voltar
+                  </Button>
+                </div>
+              </div>
             ) : !cancelMode ? (
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {(ACTIONS_BY_STATUS[selected.status] ?? []).map(a => (
@@ -1487,6 +1591,25 @@ export function AgendaGrid({
                       Remarcar
                     </Button>
                   )}
+                {/* 8.ª ronda/10 (Victor, 17/11/2026): lista de espera */}
+                {(selected.status === 'pending' ||
+                  selected.status === 'confirmed') && (
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    disabled={busy}
+                    onClick={() => {
+                      setWaitPref(selected.waitlist?.preference ?? 'earlier');
+                      setWaitNote(selected.waitlist?.note ?? '');
+                      setWaitMode(true);
+                    }}
+                    title='Põe o paciente na lista de espera: quando abrir uma vaga com este médico, ele aparece na caixa "Lista de espera" da agenda'
+                  >
+                    {selected.waitlist
+                      ? `Na lista de espera (${WAITLIST_PREFERENCE_LABEL[selected.waitlist.preference].toLowerCase()})`
+                      : 'Paciente quer outro horário'}
+                  </Button>
+                )}
                 {LAB_LINKABLE.includes(selected.status) &&
                   labOptions.length > 0 && (
                     <Button

@@ -61,6 +61,7 @@ import {
 } from '@/lib/resend';
 import { phoneField } from '@/lib/validations/patient';
 import { REFERRAL_SOURCES } from '@/lib/domain';
+import Waitlist from '@/models/Waitlist';
 import { bookingBlockError } from '@/lib/booking-block';
 import {
   createProvisionalPatient,
@@ -1064,6 +1065,12 @@ export async function rescheduleAppointmentAction(
       });
     }
 
+    // 8.ª ronda/10: se o paciente estava na lista de espera por causa desta
+    // marcação, o pedido fica resolvido com a remarcação
+    await Waitlist.updateMany(
+      { appointmentId: original._id, status: 'active' },
+      { $set: { status: 'fulfilled', closedAt: new Date() } },
+    ).catch(() => undefined);
     revalidatePath('/admin/agenda');
     return { success: true, appointmentId: newId };
   } catch (e) {

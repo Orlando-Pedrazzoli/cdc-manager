@@ -73,6 +73,8 @@ import {
   type CancelledEntry,
 } from '@/components/agenda/CancelledBox';
 import { cancelledVisibleIds } from '@/lib/attendance';
+import { WaitlistBox } from '@/components/agenda/WaitlistBox';
+import { loadActiveWaitlist, waitlistForDay } from '@/lib/waitlist-data';
 import { doctorColor } from '@/lib/doctor-colors';
 import { getOrganizationSettings } from '@/lib/org-settings';
 import {
@@ -485,6 +487,19 @@ export default async function AgendaPage({
   const patientById = new Map(patients.map(p => [String(p._id), p]));
   const treatmentById = new Map(treatments.map(t => [String(t._id), t.name]));
 
+  // 8.ª ronda/10: pedidos ativos de outro horário nesta clínica
+  // (leitura protegida: um erro aqui nunca pode deitar abaixo a agenda)
+  const waitlistAll = await loadActiveWaitlist(clinicId).catch(err => {
+    console.error('[agenda] lista de espera indisponível', err);
+    return [];
+  });
+  const waitlistByAppointment = new Map(
+    waitlistAll.map(w => [
+      w.appointmentId,
+      { id: w.id, preference: w.preference, note: w.note },
+    ]),
+  );
+
   // Canceladas que ainda ocupam o lugar na grelha (Victor, 12/11/2026) —
   // regra em lib/attendance.ts
   const cancelledOnGrid = cancelledVisibleIds(
@@ -513,6 +528,8 @@ export default async function AgendaPage({
       patientLabel: p ? `${p.name}` : '(paciente removido)',
       // 8.ª ronda/04: n.º do paciente no cartão e no painel
       processNumber: p?.processNumber ?? null,
+      // 8.ª ronda/10: já está na lista de espera?
+      waitlist: waitlistByAppointment.get(String(a._id)) ?? null,
       treatmentName: treatmentById.get(String(a.treatmentTypeId)) ?? '—',
       status: a.status,
       isUrgent: !!a.isUrgent,
@@ -639,6 +656,26 @@ export default async function AgendaPage({
   const visibleColumns = medicoFilterDia
     ? gridColumns.filter(d => d.id === medicoFilterDia)
     : gridColumns;
+
+  // 8.ª ronda/10: lista de espera — pedidos que encaixam no dia aberto, para
+  // os médicos visíveis, e as vagas que se abriram neste dia (canceladas e
+  // faltas) por médico
+  const waitlistDay = waitlistForDay(waitlistAll, {
+    dayIso: date,
+    todayIso: todayLisbon(),
+    doctorIds: new Set(visibleColumns.map(d => d.id)),
+  }).filter(w => !(w.appointmentDay === date && w.preference === 'any'));
+  const freedByDoctor: Record<string, string[]> = {};
+  for (const a of appts) {
+    if (a.status !== 'cancelled' && a.status !== 'no-show') continue;
+    if (a.status === 'cancelled' && a.rescheduledToId) continue;
+    const name = a.doctorId
+      ? (doctorNameById.get(String(a.doctorId)) ?? 'Médico')
+      : 'Sem médico';
+    (freedByDoctor[name] ??= []).push(
+      `${hhmm(utcToLisbonMin(a.startAt).min)} (${a.status === 'no-show' ? 'falta' : 'cancelada'})`,
+    );
+  }
 
   // P3: clínicas + médicos ativos de cada uma, para remarcar (outro médico,
   // mesmo dia ou outro; outra clínica)
@@ -1235,6 +1272,22 @@ export default async function AgendaPage({
               }
               dateLabel={dateLabel}
               historyHref={`/admin/agenda/historico?clinic=${clinic.slug}`}
+            />
+            {/* 8.ª ronda/10: quem pediu outro horário e encaixa neste dia */}
+            <WaitlistBox
+              dateLabel={dateLabel}
+              totalActive={waitlistAll.length}
+              freedByDoctor={freedByDoctor}
+              entries={waitlistDay.map(w => ({
+                id: w.id,
+                doctorName: w.doctorName,
+                preference: w.preference,
+                note: w.note,
+                patientName: w.patientName,
+                phone: w.phone,
+                appointmentLabel: w.appointmentLabel,
+                appointmentHref: `/admin/agenda?clinic=${clinic.slug}&date=${w.appointmentDay}&marcacao=${w.appointmentId}`,
+              }))}
             />
           </div>
         </div>

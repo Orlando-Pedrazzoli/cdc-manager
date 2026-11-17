@@ -41,6 +41,8 @@ import { dbConnect } from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Appointment, { BLOCKING_STATUS } from '@/models/Appointment';
 import Patient from '@/models/Patient';
+import Invoice from '@/models/Invoice';
+import TreatmentPlan from '@/models/TreatmentPlan';
 import Procedure from '@/models/Procedure';
 import Recall from '@/models/Recall';
 import Product from '@/models/Product';
@@ -49,6 +51,8 @@ import TreatmentType from '@/models/TreatmentType';
 import RxRequest from '@/models/RxRequest';
 import LabCase from '@/models/LabCase';
 import { labWorkLabel, patientNameWithProcess } from '@/lib/domain';
+import { getManagementAlerts } from '@/lib/management-alerts-data';
+import { ManagementAlertsBox } from '@/components/prazos/ManagementAlertsBox';
 import { Cake, FlaskConical } from 'lucide-react';
 import { HojeStrip, type HojeItem } from '@/components/dashboard/HojeStrip';
 import {
@@ -107,6 +111,9 @@ function slugLabel(slug: string): string {
 export default async function AdminDashboardPage() {
   const session = await auth();
   const firstName = (session?.user?.name ?? '').split(' ')[0];
+  // 8.ª ronda/09, 16, 17, 18: avisos da gestão (aniversários da equipa, fins
+  // de contrato, documentos dos médicos, renovações) — só o perfil de gestão
+  const isAdminUser = session?.user?.role === 'admin';
 
   await dbConnect();
 
@@ -890,10 +897,132 @@ export default async function AdminDashboardPage() {
     whiteSpace: 'nowrap',
   };
 
+  // (leituras protegidas: um erro aqui nunca pode deitar abaixo o painel)
+  const managementAlerts = isAdminUser
+    ? await getManagementAlerts().catch(err => {
+        console.error('[dashboard] avisos da gestão indisponíveis', err);
+        return [];
+      })
+    : [];
+
+  // 8.ª ronda/19 (Victor, 17/11/2026): painel diário da gestão — o que ainda
+  // faltava: orçamentos aceites e valores em dívida. A faturação do dia e do
+  // mês (com a comparação com o mês anterior), as faltas e os cancelamentos
+  // já estão nos blocos de cima.
+  const [plansAccepted, plansProposed, debtAgg] = isAdminUser
+    ? await Promise.all([
+        TreatmentPlan.aggregate<{ _id: null; n: number; cents: number }>([
+          { $match: { approvedAt: { $gte: monthStart, $lt: dayEnd } } },
+          {
+            $group: {
+              _id: null,
+              n: { $sum: 1 },
+              cents: {
+                $sum: {
+                  $subtract: [
+                    { $ifNull: ['$totalCents', 0] },
+                    { $ifNull: ['$discountCents', 0] },
+                  ],
+                },
+              },
+            },
+          },
+        ]),
+        TreatmentPlan.countDocuments({
+          proposedAt: { $gte: monthStart, $lt: dayEnd },
+        }),
+        Invoice.aggregate<{ _id: null; n: number; cents: number }>([
+          { $match: { status: 'pending' } },
+          {
+            $group: {
+              _id: null,
+              n: { $sum: 1 },
+              cents: {
+                $sum: {
+                  $subtract: [
+                    '$totalCents',
+                    { $ifNull: ['$paidCents', '$totalCents'] },
+                  ],
+                },
+              },
+            },
+          },
+        ]),
+      ]).catch(err => {
+        console.error('[dashboard] painel comercial indisponível', err);
+        return [[], 0, []] as [
+          { _id: null; n: number; cents: number }[],
+          number,
+          { _id: null; n: number; cents: number }[],
+        ];
+      })
+    : [[], 0, []];
+  const acceptedN = plansAccepted[0]?.n ?? 0;
+  const acceptedCents = plansAccepted[0]?.cents ?? 0;
+  const debtCents = Math.max(0, debtAgg[0]?.cents ?? 0);
+  const debtN = debtAgg[0]?.n ?? 0;
+  const managementTiles = [
+    {
+      label: 'Orçamentos aceites este mês',
+      value: String(acceptedN),
+      sub: acceptedN > 0 ? formatCents(acceptedCents) : 'Nenhum até agora',
+    },
+    {
+      label: 'Orçamentos apresentados este mês',
+      value: String(plansProposed),
+      sub:
+        plansProposed > 0
+          ? `${Math.round((acceptedN / plansProposed) * 100)}% de aceitação`
+          : 'Nenhum até agora',
+    },
+    {
+      label: 'Valores em dívida',
+      value: formatCents(debtCents),
+      sub:
+        debtN > 0
+          ? `${debtN} fatura${debtN === 1 ? '' : 's'} por regularizar`
+          : 'Nenhuma fatura por regularizar',
+    },
+  ];
+
   return (
     <div className='cdc-dash'>
       {/* Dados frescos sem F5: a página vive aberta na receção o dia todo */}
       <AutoRefresh intervalMs={90_000} />
+
+      {/* 8.ª ronda: avisos da gestão — só aparece quando há algum */}
+      {isAdminUser && (
+        <ManagementAlertsBox alerts={managementAlerts} emptyText={null} />
+      )}
+      {/* 8.ª ronda/19: comercial — orçamentos aceites e valores em dívida */}
+      {isAdminUser && (
+        <section
+          aria-label='Painel da gestão: comercial'
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '12px',
+          }}
+        >
+          {managementTiles.map(t => (
+            <div
+              key={t.label}
+              style={{
+                backgroundColor: '#FFFFFF',
+                border: '1px solid #E6EAF3',
+                borderRadius: '12px',
+                padding: '12px 16px',
+              }}
+            >
+              <div style={{ fontSize: '12px', color: C.faint }}>{t.label}</div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: C.navy }}>
+                {t.value}
+              </div>
+              <div style={{ fontSize: '12px', color: C.faint }}>{t.sub}</div>
+            </div>
+          ))}
+        </section>
+      )}
 
       {/* Cabeçalho: saudação + data discreta; ações primárias sempre à mão */}
       <div

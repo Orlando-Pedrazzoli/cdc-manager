@@ -68,6 +68,11 @@ const EmployeeSchema = new Schema(
     },
     startDate: { type: Date, default: null },
     endDate: { type: Date, default: null },
+    // 8.ª ronda/09 (Victor, 17/11/2026): aviso na semana do aniversário
+    birthDate: { type: Date, default: null },
+    // 8.ª ronda/18: "3 campos para as datas de fim de contrato" — os
+    // contratos renovam de 6 em 6 meses; aviso 40 dias antes de cada data
+    contractEndDates: { type: [{ type: Date }], default: [] },
     nif: {
       type: String,
       trim: true,

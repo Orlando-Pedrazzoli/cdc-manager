@@ -43,6 +43,10 @@ function parse(fd: FormData) {
     contractType: fd.get('contractType') || 'sem-termo',
     startDate: fd.get('startDate'),
     endDate: fd.get('endDate'),
+    birthDate: fd.get('birthDate'),
+    contractEnd1: fd.get('contractEnd1'),
+    contractEnd2: fd.get('contractEnd2'),
+    contractEnd3: fd.get('contractEnd3'),
     nif: fd.get('nif'),
     niss: fd.get('niss'),
     phone: fd.get('phone'),
@@ -57,6 +61,21 @@ function parse(fd: FormData) {
   });
 }
 const toDate = (s: string | null) => (s ? new Date(`${s}T12:00:00Z`) : null);
+/** 8.ª ronda/09 e 18: campos de data que não vão diretos para o modelo */
+function extraDates(d: {
+  birthDate: string | null;
+  contractEnd1: string | null;
+  contractEnd2: string | null;
+  contractEnd3: string | null;
+}) {
+  return {
+    birthDate: toDate(d.birthDate),
+    contractEndDates: [d.contractEnd1, d.contractEnd2, d.contractEnd3]
+      .filter((x): x is string => !!x)
+      .sort()
+      .map(x => new Date(`${x}T12:00:00Z`)),
+  };
+}
 
 export async function createEmployeeAction(
   _p: EmployeeFormState,
@@ -72,6 +91,7 @@ export async function createEmployeeAction(
       ...d,
       startDate: toDate(d.startDate),
       endDate: toDate(d.endDate),
+      ...extraDates(d),
       currentSalaryCents: d.initialSalaryCents,
       createdByUserId: user.id,
     });
@@ -107,6 +127,7 @@ export async function updateEmployeeAction(
       ...d,
       startDate: toDate(d.startDate),
       endDate: toDate(d.endDate),
+      ...extraDates(d),
     });
     if (emp.currentSalaryCents == null)
       emp.set('currentSalaryCents', d.initialSalaryCents);

@@ -24,6 +24,7 @@ export { default as LegacyInvoice } from './LegacyInvoice';
 export { default as Product } from './Product';
 export { default as SaleProduct } from './SaleProduct';
 export { default as ProductSale } from './ProductSale';
+export { default as ExpiryItem } from './ExpiryItem';
 export { default as Warehouse } from './Warehouse';
 export { default as StockMovement } from './StockMovement';
 export { default as StockLevel } from './StockLevel';

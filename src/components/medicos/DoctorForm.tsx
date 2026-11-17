@@ -49,6 +49,8 @@ interface ClinicState {
 export interface DoctorFormInitial {
   name: string;
   licenseNumber: string;
+  /** 8.ª ronda/09 */
+  birthDate?: string;
   specialties: string[];
   commissionPercent: string; // '' = default da clínica
   monthlyGoalEuros: string; // '' = sem objetivo (E18)
@@ -240,6 +242,14 @@ export function DoctorForm({
               pattern='\d{1,10}'
               defaultValue={initial?.licenseNumber ?? ''}
               help='Apenas dígitos. Necessária para receitas e consentimentos — profissionais sem cédula ficam sinalizados na listagem.'
+            />
+            {/* 8.ª ronda/09: aviso à gestão na semana do aniversário */}
+            <Input
+              id='birthDate'
+              name='birthDate'
+              type='date'
+              label='Data de nascimento'
+              defaultValue={initial?.birthDate ?? ''}
             />
             {showFinancials && (
               <>

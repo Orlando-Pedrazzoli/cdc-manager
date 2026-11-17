@@ -79,6 +79,8 @@ export default async function ColaboradorPage({
     contractType: emp.contractType ?? 'sem-termo',
     startDate: iso(emp.startDate),
     endDate: iso(emp.endDate),
+    birthDate: iso(emp.birthDate),
+    contractEnds: (emp.contractEndDates ?? []).map(d => iso(d)),
     nif: emp.nif ?? '',
     niss: emp.niss ?? '',
     phone: emp.phone ?? '',

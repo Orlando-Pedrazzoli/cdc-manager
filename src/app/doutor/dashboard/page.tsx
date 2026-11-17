@@ -32,6 +32,8 @@
 //      o médico consulta isto no telemóvel entre consultas.
 // =============================================================================
 
+import { getDoctorDocumentAlerts } from '@/lib/management-alerts-data';
+import { ManagementAlertsBox } from '@/components/prazos/ManagementAlertsBox';
 import Link from 'next/link';
 import mongoose from 'mongoose';
 import AutoRefresh from '@/components/ui/AutoRefresh';
@@ -452,11 +454,32 @@ export default async function DoctorDashboardPage() {
     };
   });
 
+  // 8.ª ronda/16: "alerta 30 dias antes de expirar, visível para o médico e
+  // para a gestão" — o médico não tem acesso à página de prazos, por isso
+  // os avisos vão sem ligação
+  const documentAlerts = (
+    await getDoctorDocumentAlerts(doctorId).catch(err => {
+      console.error('[doutor] avisos de documentos indisponíveis', err);
+      return [];
+    })
+  ).map(a => ({
+    ...a,
+    href: null,
+    text: `${a.text} Fale com a gestão para atualizar.`,
+  }));
+
   return (
     <div className='cdc-dash'>
       {/* A página vive aberta entre consultas — dados frescos sem F5 */}
       {/* 6.ª ronda/06: 20 s — o paciente lançado pela receção aparece logo */}
       <AutoRefresh intervalMs={20_000} />
+      {/* 8.ª ronda/16: documentos do próprio médico a expirar ou vencidos */}
+      <ManagementAlertsBox
+        alerts={documentAlerts}
+        title='Os seus documentos'
+        emptyText={null}
+        footerHref={null}
+      />
       {/* Cabeçalho */}
       <div>
         <h1

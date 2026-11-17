@@ -160,6 +160,9 @@ export default async function DoctorPage({
   const initial: DoctorFormInitial = {
     name: doctor.name,
     licenseNumber: doctor.licenseNumber ?? '',
+    birthDate: doctor.birthDate
+      ? new Date(doctor.birthDate).toISOString().slice(0, 10)
+      : '',
     specialties: doctor.specialties,
     commissionPercent:
       doctor.commissionRate != null
