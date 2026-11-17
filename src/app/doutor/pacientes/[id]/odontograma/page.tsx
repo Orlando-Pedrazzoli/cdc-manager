@@ -25,6 +25,7 @@ import type {
 } from '@/components/clinico/ToothDetail';
 import type { ToothStatus, FaceCondition, ToothFace } from '@/lib/domain';
 import { PatientAlertsPopup } from '@/components/pacientes/PatientAlertsPopup';
+import { PendingBudgetNote } from '@/components/orcamentos/PendingBudgetNote';
 import { ageInYears } from '@/lib/age';
 import { defaultDentition, isChildAge } from '@/lib/domain';
 
@@ -183,6 +184,9 @@ export default async function OdontogramPage({
         </Link>
         <PatientAlertsPopup patientId={id} showButton />
       </div>
+
+      {/* 8.ª ronda/12: "Orçamento entregue no dia X, pendente" */}
+      <PendingBudgetNote patientId={id} />
 
       <div
         style={{

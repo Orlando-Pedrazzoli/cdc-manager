@@ -28,6 +28,15 @@ import {
 } from '../../src/lib/management-alerts';
 import { fitsDay, waitlistCandidates } from '../../src/lib/waitlist';
 
+import { canReadAudience, searchKnowledge } from '../../src/lib/knowledge';
+import { TRAINING_STARTER } from '../../src/lib/data/training-starter';
+import {
+  budgetStatsByDoctor,
+  isBudgetPending,
+  isInProgressWithoutReturn,
+} from '../../src/lib/budgets';
+import { doctorOccupancy, formatHours, overlapMin } from '../../src/lib/occupancy';
+
 let n = 0;
 const test = (name: string, fn: () => void) => {
   fn();
@@ -244,6 +253,128 @@ test('10: lista de espera — só os médicos do dia, quem ganha mais primeiro',
     { dayIso: '2026-11-20', todayIso: TODAY, doctorIds: new Set(['d1']) },
   );
   assert.deepEqual(r.map(x => x.id), ['b', 'a', 'e']);
+});
+
+// ---------------------------------------------------------------------------
+// 3.ª parte: protocolos e treinamento (07, 08), orçamentos (12, 13), ocupação (15)
+// ---------------------------------------------------------------------------
+test('07: pesquisa de protocolos sem acentos, título primeiro', () => {
+  const arts = [
+    { title: 'Parcelamento', body: 'Como propor o pagamento em prestações.', keywords: 'prestações' },
+    { title: 'Livro de reclamações', body: 'Entregar o livro e avisar a gestão.', keywords: 'queixa reclamação' },
+    { title: 'Acidente de trabalho', body: 'Ligar ao seguro. Não é uma reclamação.', keywords: null },
+  ];
+  assert.deepEqual(searchKnowledge(arts, 'reclamacoes').map(a => a.title), ['Livro de reclamações']);
+  assert.deepEqual(searchKnowledge(arts, 'RECLAMAÇÃO').map(a => a.title), ['Livro de reclamações', 'Acidente de trabalho']);
+  assert.deepEqual(searchKnowledge(arts, 'prestacoes').map(a => a.title), ['Parcelamento']);
+  assert.equal(searchKnowledge(arts, '  ').length, 3);
+  assert.equal(searchKnowledge(arts, 'seguro livro').length, 0);
+});
+
+test('08: quem lê cada versão do treinamento', () => {
+  assert.equal(canReadAudience('admin', 'doctor'), true);
+  assert.equal(canReadAudience('receptionist', 'reception'), true);
+  assert.equal(canReadAudience('receptionist', 'portal'), true);
+  assert.equal(canReadAudience('receptionist', 'doctor'), false);
+  assert.equal(canReadAudience('doctor', 'doctor'), true);
+  assert.equal(canReadAudience('doctor', 'reception'), false);
+  assert.equal(canReadAudience(null, 'reception'), false);
+});
+
+test('08: conteúdo inicial do treinamento sem repetições e com as três versões', () => {
+  const slugs = TRAINING_STARTER.map(t => t.slug);
+  assert.equal(new Set(slugs).size, slugs.length);
+  for (const a of ['reception', 'doctor', 'portal'] as const) {
+    assert.ok(TRAINING_STARTER.some(t => t.audience === a), a);
+  }
+  for (const t of TRAINING_STARTER) assert.ok(t.body.length > 200 && t.body.length < 20000, t.slug);
+});
+
+const DAY = 86_400_000;
+const NOW = Date.UTC(2026, 10, 17, 12);
+
+test('12: taxa de aceitação por médico, em número e em valor', () => {
+  const from = Date.UTC(2026, 10, 1);
+  const to = Date.UTC(2026, 11, 1);
+  const r = budgetStatsByDoctor(
+    [
+      { doctorId: 'a', valueCents: 100_000, proposedMs: from + DAY, approvedMs: from + 3 * DAY },
+      { doctorId: 'a', valueCents: 300_000, proposedMs: from + 2 * DAY, approvedMs: null },
+      { doctorId: 'a', valueCents: 50_000, proposedMs: from - DAY, approvedMs: from + DAY }, // apresentado no mês anterior
+      { doctorId: 'c', valueCents: 80_000, proposedMs: null, approvedMs: null }, // rascunho
+    ],
+    ['a', 'b'],
+    from,
+    to,
+  );
+  const a = r.find(x => x.doctorId === 'a')!;
+  assert.equal(a.presentedN, 2);
+  assert.equal(a.acceptedN, 1);
+  assert.equal(a.rateN, 50);
+  assert.equal(a.rateCents, 25);
+  // quem não entregou nenhum aparece com zero
+  const b = r.find(x => x.doctorId === 'b')!;
+  assert.equal(b.presentedN, 0);
+  assert.equal(b.rateN, null);
+  assert.equal(r.find(x => x.doctorId === 'c'), undefined);
+});
+
+test('12: orçamento pendente há 30 dias ou mais', () => {
+  assert.equal(isBudgetPending({ status: 'proposed', proposedMs: NOW - 30 * DAY }, NOW), true);
+  assert.equal(isBudgetPending({ status: 'proposed', proposedMs: NOW - 29 * DAY }, NOW), false);
+  assert.equal(isBudgetPending({ status: 'proposed', proposedMs: NOW - 20 * DAY }, NOW, 15), true);
+  assert.equal(isBudgetPending({ status: 'in-progress', proposedMs: NOW - 90 * DAY }, NOW), false);
+  assert.equal(isBudgetPending({ status: 'proposed', proposedMs: null }, NOW), false);
+});
+
+test('13: tratamento em curso sem retorno', () => {
+  const base = { status: 'in-progress', hasFutureAppointment: false, lastVisitMs: NOW - 40 * DAY, approvedMs: NOW - 90 * DAY };
+  assert.equal(isInProgressWithoutReturn(base, NOW), true);
+  assert.equal(isInProgressWithoutReturn({ ...base, hasFutureAppointment: true }, NOW), false);
+  assert.equal(isInProgressWithoutReturn({ ...base, lastVisitMs: NOW - 10 * DAY }, NOW), false);
+  assert.equal(isInProgressWithoutReturn({ ...base, status: 'proposed' }, NOW), false);
+  // aceitou há pouco e ainda não veio: ainda não conta
+  assert.equal(isInProgressWithoutReturn({ status: 'approved', hasFutureAppointment: false, lastVisitMs: null, approvedMs: NOW - 5 * DAY }, NOW), false);
+  assert.equal(isInProgressWithoutReturn({ status: 'approved', hasFutureAppointment: false, lastVisitMs: null, approvedMs: NOW - 45 * DAY }, NOW), true);
+});
+
+test('15: ocupação por turno, tempo de cadeira e marcações perdidas', () => {
+  const ap = (day: string, startMin: number, endMin: number, status: string, extra: Partial<{ rescheduled: boolean; chairMin: number | null }> = {}) => ({
+    day, startMin, endMin, status, rescheduled: false, chairMin: null, ...extra,
+  });
+  const occ = doctorOccupancy(
+    {
+      '2026-11-16': [{ start: 540, end: 960 }], // 09:00–16:00 = 420 min
+      '2026-11-17': [{ start: 960, end: 1380 }], // 16:00–23:00 = 420 min
+    },
+    [
+      ap('2026-11-16', 540, 750, 'completed', { chairMin: 180 }), // 210 min marcados, 180 reais
+      ap('2026-11-16', 780, 840, 'no-show'),
+      ap('2026-11-16', 840, 900, 'cancelled'),
+      ap('2026-11-16', 900, 960, 'cancelled', { rescheduled: true }), // não conta
+      ap('2026-11-17', 930, 1020, 'confirmed'), // só 60 min dentro do turno
+      ap('2026-11-17', 1020, 1080, 'completed'), // sem registo real: 60 min
+    ],
+  );
+  assert.equal(occ.availableMin, 840);
+  assert.equal(occ.bookedMin, 210 + 60 + 60);
+  assert.equal(occ.pct, 39);
+  assert.deepEqual(occ.shifts.map(s => [s.label, s.pct, s.days]), [
+    ['09:00–16:00', 50, 1],
+    ['16:00–23:00', 29, 1],
+  ]);
+  assert.equal(occ.chairMin, 240);
+  assert.equal(occ.appointments, 5);
+  assert.equal(occ.noShows, 1);
+  assert.equal(occ.cancellations, 1);
+  assert.equal(occ.lostPct, 40);
+  assert.equal(overlapMin({ start: 0, end: 10 }, { start: 20, end: 30 }), 0);
+  assert.equal(formatHours(2250), '37 h 30');
+  assert.equal(formatHours(420), '7 h');
+  // sem turnos: sem percentagem, mas as marcações contam
+  const off = doctorOccupancy({}, [ap('2026-11-18', 600, 660, 'completed')]);
+  assert.equal(off.pct, null);
+  assert.equal(off.appointments, 1);
 });
 
 console.log(`\n${n} testes OK`);

@@ -19,6 +19,7 @@ import { BrandMark, type BrandMarkProps } from './BrandMark';
 import {
   Smile,
   BookOpenText,
+  GraduationCap,
   CalendarDays,
   LayoutDashboard,
   ScanSearch,
@@ -51,6 +52,8 @@ const NAV: { section: string; items: NavItem[] }[] = [
         label: 'Novidades científicas',
         icon: BookOpenText,
       },
+      // 8.ª ronda/08: como usar o sistema (versão Médicos)
+      { href: '/doutor/treinamento', label: 'Treinamento', icon: GraduationCap },
     ],
   },
 ];

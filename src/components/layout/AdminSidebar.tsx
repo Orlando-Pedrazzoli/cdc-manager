@@ -28,9 +28,12 @@ import {
   Smile,
   ScanLine,
   BarChart3,
+  BookOpenText,
   CalendarClock,
+  GraduationCap,
   CalendarDays,
   ClipboardList,
+  FileClock,
   FileText,
   LayoutDashboard,
   Mail,
@@ -89,7 +92,12 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: '/admin/rx', label: 'Raio-X', icon: ScanLine },
       { href: '/admin/proteses', label: 'Próteses', icon: FlaskConical },
       { href: '/admin/recalls', label: 'Recalls', icon: RefreshCcw },
+      // 8.ª ronda/12 e 13: orçamentos pendentes e tratamentos sem retorno
+      { href: '/admin/orcamentos', label: 'Orçamentos', icon: FileClock },
       { href: '/admin/medicos', label: 'Corpo clínico', icon: Stethoscope },
+      // 8.ª ronda/07 e 08: protocolos administrativos e treinamento do sistema
+      { href: '/admin/protocolos', label: 'Protocolos internos', icon: BookOpenText },
+      { href: '/admin/treinamento', label: 'Treinamento', icon: GraduationCap },
     ],
   },
   {

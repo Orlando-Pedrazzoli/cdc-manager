@@ -356,6 +356,17 @@ export default async function RelatoriosPage({
           >
             Produção e comissões por profissional
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {/* 8.ª ronda/15: ocupação da agenda por médico */}
+              <Link
+                href={`/admin/relatorios/ocupacao?mes=${mes}`}
+                style={{
+                  ...navBtn,
+                  padding: '7px 12px',
+                  fontSize: '12px',
+                }}
+              >
+                Ocupação por médico
+              </Link>
               <Link
                 href={`/admin/relatorios/comissoes?mes=${mes}`}
                 style={{
