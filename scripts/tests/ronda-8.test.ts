@@ -426,3 +426,31 @@ test('aviso no balcão: só pacientes com faltas ou cancelamentos em cima da hor
   );
   assert.equal(m.get('a')?.lastNoShowLabel, '03/11/2026');
 });
+
+// -----------------------------------------------------------------------------
+// 8.ª ronda/14 — ajustes manuais ao pagamento dos médicos
+// -----------------------------------------------------------------------------
+import {
+  payTotals,
+  signedAdjustmentCents,
+  signedEuros,
+} from '../../src/lib/pay-statement';
+
+test('14: valor do ajuste manual com sinal', () => {
+  assert.equal(signedAdjustmentCents('45,50', 'add'), 4550);
+  assert.equal(signedAdjustmentCents('120', 'deduct'), -12000);
+  assert.equal(signedAdjustmentCents(' 1 250,00 € ', 'add'), 125000);
+  assert.equal(signedAdjustmentCents('0', 'add'), null);
+  assert.equal(signedAdjustmentCents('-5', 'add'), null);
+  assert.equal(signedAdjustmentCents('abc', 'add'), null);
+  assert.equal(signedAdjustmentCents('20000', 'add'), null);
+});
+
+test('14: a pagar = remuneração (com estornos) + ajustes', () => {
+  const t = payTotals([10000, 5000, -2000], [3000, -1500]);
+  assert.equal(t.commissionCents, 13000);
+  assert.equal(t.adjustmentsCents, 1500);
+  assert.equal(t.payableCents, 14500);
+  assert.equal(signedEuros(-1500), '− 15,00 €');
+  assert.equal(signedEuros(3000), '+ 30,00 €');
+});

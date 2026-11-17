@@ -81,7 +81,7 @@ const value = (p: { totalCents?: number | null; discountCents?: number | null })
 export default async function OrcamentosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ m?: string; dias?: string }>;
+  searchParams: Promise<{ m?: string; dias?: string; semvalor?: string }>;
 }) {
   const session = await requireActiveSession(['admin', 'receptionist'] as const);
   if (!session?.user?.id) return null;
@@ -102,8 +102,13 @@ export default async function OrcamentosPage({
     : BUDGET_PENDING_DAYS;
   const now = new Date();
   const nowMs = now.getTime();
-  const href = (o: { m?: string; dias?: number }) =>
-    `/admin/orcamentos?m=${o.m ?? month}&dias=${o.dias ?? pendingDays}`;
+  // Muitos "Orçamento livre (Dentoral)" vieram a 0,00 €: a lista de chamadas
+  // pode escondê-los. Por omissão mostram-se todos (falta decidir com o Victor).
+  const hideZero = sp.semvalor === '0';
+  const href = (o: { m?: string; dias?: number; hideZero?: boolean }) =>
+    `/admin/orcamentos?m=${o.m ?? month}&dias=${o.dias ?? pendingDays}${
+      (o.hideZero ?? hideZero) ? '&semvalor=0' : ''
+    }`;
 
   // Só orçamentos entregues nos últimos 12 meses entram nas listas de chamadas
   const recentFrom = new Date(nowMs - RECENT_DAYS * 86_400_000);
@@ -122,6 +127,21 @@ export default async function OrcamentosPage({
         $gte: recentFrom,
         $lte: new Date(nowMs - pendingDays * 86_400_000),
       },
+      ...(hideZero
+        ? {
+            $expr: {
+              $gt: [
+                {
+                  $subtract: [
+                    { $ifNull: ['$totalCents', 0] },
+                    { $ifNull: ['$discountCents', 0] },
+                  ],
+                },
+                0,
+              ],
+            },
+          }
+        : {}),
     })
       .select('patientId doctorId title totalCents discountCents proposedAt')
       // os mais recentes primeiro: são os que ainda vale a pena ligar
@@ -255,6 +275,22 @@ export default async function OrcamentosPage({
                 {d} dias
               </Link>
             ))}
+            <Link
+              href={href({ hideZero: !hideZero })}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '999px',
+                border: hideZero ? '1px solid #1B2A6B' : '1px solid #D8DEEF',
+                backgroundColor: hideZero ? '#1B2A6B' : '#FFFFFF',
+                color: hideZero ? '#FFFFFF' : '#1B2A6B',
+                fontSize: '12px',
+                fontWeight: 700,
+                textDecoration: 'none',
+                marginLeft: 8,
+              }}
+            >
+              {hideZero ? 'A esconder os de 0,00 €' : 'Esconder os de 0,00 €'}
+            </Link>
           </div>
         </div>
         <p style={lead}>

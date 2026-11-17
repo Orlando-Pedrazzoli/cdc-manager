@@ -16,11 +16,12 @@
 
 import Link from 'next/link';
 import mongoose from 'mongoose';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileDown } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import Procedure from '@/models/Procedure';
 import CommissionAdjustment from '@/models/CommissionAdjustment';
+import DoctorPayAdjustment from '@/models/DoctorPayAdjustment';
 import Doctor from '@/models/Doctor';
 import Patient from '@/models/Patient';
 import { getActiveClinics } from '@/models/Clinic';
@@ -34,6 +35,11 @@ import {
 } from '@/lib/commission-accounting';
 import { ExportCsvButton } from '@/components/relatorios/ExportCsvButton';
 import { processLabel } from '@/lib/domain';
+import { payTotals, signedEuros } from '@/lib/pay-statement';
+import {
+  PayAdjustmentForm,
+  RemovePayAdjustmentButton,
+} from '@/components/relatorios/PayAdjustments';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Remuneração detalhada' };
@@ -116,6 +122,33 @@ export default async function ComissoesDetalhePage({
   const extra: Record<string, unknown> = {};
   if (doctorFilter) extra.doctorId = new mongoose.Types.ObjectId(doctorFilter);
   if (clinicFilter) extra.clinicId = new mongoose.Types.ObjectId(clinicFilter);
+
+  // 8.ª ronda/14: ajustes manuais ao pagamento. Valem para o médico e o mês,
+  // sem clínica: só entram com o filtro em "Ambas". Nunca derrubam a página.
+  const manualDocs = clinicFilter
+    ? []
+    : await DoctorPayAdjustment.find({
+        month: mes,
+        removedAt: null,
+        ...(doctorFilter ? { doctorId: doctorFilter } : {}),
+      })
+        .sort({ createdAt: 1 })
+        .lean()
+        .catch(() => []);
+  const manualByDoctor = new Map<
+    string,
+    { id: string; description: string; amountCents: number }[]
+  >();
+  for (const a of manualDocs) {
+    const k = String(a.doctorId);
+    const arr = manualByDoctor.get(k) ?? [];
+    arr.push({
+      id: String(a._id),
+      description: a.description,
+      amountCents: a.amountCents,
+    });
+    manualByDoctor.set(k, arr);
+  }
 
   const [clinics, doctors, procedures, adjustments] = await Promise.all([
     getActiveClinics(),
@@ -202,6 +235,10 @@ export default async function ComissoesDetalhePage({
     });
   }
 
+  // Quem só tem ajustes manuais também aparece
+  for (const k of manualByDoctor.keys()) {
+    if (!byDoctor.has(k)) byDoctor.set(k, []);
+  }
   const doctorIds = Array.from(byDoctor.keys()).sort((a, b) =>
     (doctorById.get(a)?.name ?? '').localeCompare(
       doctorById.get(b)?.name ?? '',
@@ -436,6 +473,20 @@ export default async function ComissoesDetalhePage({
         ))}
       </div>
 
+      {clinicFilter ? (
+        <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
+          Os ajustes manuais e o total a pagar só aparecem com o filtro em
+          &quot;Ambas&quot;: o ajuste é do profissional, não de uma clínica.
+        </p>
+      ) : (
+        <PayAdjustmentForm
+          month={mes}
+          monthLabel={mesLabel}
+          doctors={doctors.map(d => ({ id: String(d._id), name: d.name }))}
+          defaultDoctorId={doctorFilter}
+        />
+      )}
+
       {doctorIds.length === 0 && (
         <div
           style={{
@@ -455,6 +506,13 @@ export default async function ComissoesDetalhePage({
         const sum = (f: (r: Row) => number) =>
           rows.reduce((s, r) => s + f(r), 0);
         const totalCommission = sum(r => r.commissionCents);
+        const manual = manualByDoctor.get(docId) ?? [];
+        const totals = payTotals(
+          rows.map(r => r.commissionCents),
+          manual.map(a => a.amountCents),
+        );
+        const pdfParams = new URLSearchParams({ mes, medico: docId });
+        if (clinicFilter) pdfParams.set('clinica', clinicFilter);
         return (
           <div key={docId} style={card}>
             <div
@@ -505,12 +563,37 @@ export default async function ComissoesDetalhePage({
                     color: '#1B2A6B',
                   }}
                 >
-                  A pagar: {formatCents(totalCommission)}
+                  A pagar: {formatCents(totals.payableCents)}
                 </span>
+                <a
+                  href={`/admin/relatorios/comissoes/pdf?${pdfParams.toString()}`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    border: '1px solid #D8DEEF',
+                    borderRadius: '8px',
+                    padding: '6px 12px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#1B2A6B',
+                    backgroundColor: '#FFFFFF',
+                    textDecoration: 'none',
+                  }}
+                >
+                  <FileDown size={14} /> Extrato PDF
+                </a>
                 <ExportCsvButton
                   filename={`remuneracao-${(d?.name ?? 'profissional').replace(/\s+/g, '-').toLowerCase()}-${mes}.csv`}
                   headers={csvHeaders}
-                  rows={rows.map(csvRow)}
+                  rows={[
+                    ...rows.map(csvRow),
+                    ...manual.map(a => [
+                      '', '', '', 'Ajuste manual', a.description,
+                      '', '', '', '', '', 'Ajuste manual',
+                      eur(a.amountCents), '',
+                    ]),
+                  ]}
                 />
               </div>
             </div>
@@ -634,6 +717,69 @@ export default async function ComissoesDetalhePage({
                 </tbody>
               </table>
             </div>
+            {manual.length > 0 && (
+              <div
+                style={{
+                  padding: '12px 16px',
+                  borderTop: '1px solid #EEF1F8',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    color: '#6A7186',
+                  }}
+                >
+                  Ajustes manuais
+                </span>
+                {manual.map(a => (
+                  <div
+                    key={a.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      fontSize: '13px',
+                      color: '#1B2A6B',
+                    }}
+                  >
+                    <span style={{ flex: 1 }}>{a.description}</span>
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        fontVariantNumeric: 'tabular-nums',
+                        color: a.amountCents < 0 ? '#B3261E' : '#0F7B4D',
+                      }}
+                    >
+                      {signedEuros(a.amountCents)}
+                    </span>
+                    <RemovePayAdjustmentButton id={a.id} />
+                  </div>
+                ))}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    gap: 18,
+                    marginTop: 4,
+                    fontSize: '13px',
+                    color: '#4A5169',
+                  }}
+                >
+                  <span>Remuneração dos atos: {formatCents(totals.commissionCents)}</span>
+                  <span>Ajustes: {signedEuros(totals.adjustmentsCents)}</span>
+                  <strong style={{ color: '#1B2A6B' }}>
+                    A pagar: {formatCents(totals.payableCents)}
+                  </strong>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
@@ -641,7 +787,9 @@ export default async function ComissoesDetalhePage({
       <p style={{ margin: 0, fontSize: '12px', color: '#9AA1B4' }}>
         Valor real = valor cobrado − custo direto (base da percentagem). Regras
         fixas pagam o valor acordado independentemente da base. Estornos são
-        anulações, feitas neste mês, de atos de meses já fechados.
+        anulações, feitas neste mês, de atos de meses já fechados. Os ajustes
+        manuais somam ou descontam ao total a pagar e não alteram a
+        remuneração dos atos; não aparecem no painel do médico.
       </p>
     </div>
   );

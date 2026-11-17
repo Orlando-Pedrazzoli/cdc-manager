@@ -55,17 +55,21 @@ const card: React.CSSProperties = {
 };
 const th: React.CSSProperties = {
   textAlign: 'right',
-  padding: '8px 10px',
+  // Cabeçalhos em duas linhas e colunas mais juntas: a tabela cabe sem
+  // rolagem num ecrã de 1536 px (teste em produção, 17/11/2026)
+  padding: '8px 6px',
   fontSize: '11px',
   fontWeight: 700,
-  letterSpacing: '0.04em',
+  letterSpacing: '0.03em',
   textTransform: 'uppercase',
   color: '#6A7186',
   borderBottom: '1px solid #EEF1F8',
-  whiteSpace: 'nowrap',
+  whiteSpace: 'normal',
+  lineHeight: 1.25,
+  verticalAlign: 'bottom',
 };
 const td: React.CSSProperties = {
-  padding: '9px 10px',
+  padding: '9px 6px',
   fontSize: '13px',
   color: '#1C2233',
   borderBottom: '1px solid #F3F5FA',
@@ -222,10 +226,10 @@ export default async function OcupacaoPage({
                     <th style={{ ...th, textAlign: 'left' }}>Médico</th>
                     <th style={{ ...th, textAlign: 'left' }}>Ocupação</th>
                     <th style={{ ...th, textAlign: 'left' }}>Por turno</th>
-                    <th style={th}>Horas de turno</th>
-                    <th style={th}>Horas marcadas</th>
-                    <th style={th}>Tempo de cadeira</th>
-                    <th style={th}>Marcações</th>
+                    <th style={th}>Horas de<br />turno</th>
+                    <th style={th}>Horas<br />marcadas</th>
+                    <th style={th}>Tempo de<br />cadeira</th>
+                    <th style={th}>Marc.</th>
                     <th style={th}>Faltas</th>
                     <th style={th}>Cancel.</th>
                     <th style={th}>Perdidas</th>
