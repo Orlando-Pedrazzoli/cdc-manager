@@ -73,6 +73,7 @@ import {
   type CancelledEntry,
 } from '@/components/agenda/CancelledBox';
 import { cancelledVisibleIds } from '@/lib/attendance';
+import { loadCounterNotices } from '@/lib/attendance-data';
 import { WaitlistBox } from '@/components/agenda/WaitlistBox';
 import { loadActiveWaitlist, waitlistForDay } from '@/lib/waitlist-data';
 import { doctorColor } from '@/lib/doctor-colors';
@@ -183,8 +184,20 @@ export default async function AgendaPage({
       : null;
 
   await dbConnect();
-  // 8.ª ronda/03: abrir e fechar a agenda é só da gestão
-  const isAdmin = (await auth())?.user?.role === 'admin';
+  // 8.ª ronda/03: abrir e fechar a agenda é só da gestão e de quem a gestão
+  // autorizar na receção (lido da BD: vale sem voltar a iniciar sessão)
+  const sessionUser = (await auth())?.user;
+  const isAdmin =
+    sessionUser?.role === 'admin' ||
+    (sessionUser?.role === 'receptionist' &&
+      !!sessionUser.id &&
+      (await User.exists({
+        _id: sessionUser.id,
+        status: 'active',
+        canManageAgendaDays: true,
+      })
+        .then(Boolean)
+        .catch(() => false)));
   const clinics = await getActiveClinics();
   const clinic =
     clinics.find(c => c.slug === sp.clinic) ?? defaultClinic(clinics);
@@ -472,6 +485,8 @@ export default async function AgendaPage({
     ...appts.map(a => a.patientId),
     ...unconfirmed.map(a => a.patientId),
   ];
+  // 8.ª ronda/11: faltas de cada paciente do dia, para o aviso no balcão
+  const counterNotices = await loadCounterNotices(appts.map(a => a.patientId));
   const [patients, treatments, rooms] = await Promise.all([
     Patient.find({ _id: { $in: patientIds } })
       .select('name processNumber phone provisional')
@@ -528,6 +543,8 @@ export default async function AgendaPage({
       patientLabel: p ? `${p.name}` : '(paciente removido)',
       // 8.ª ronda/04: n.º do paciente no cartão e no painel
       processNumber: p?.processNumber ?? null,
+      // 8.ª ronda/11: faltas e cancelamentos em cima da hora (aviso no balcão)
+      counterNotice: counterNotices.get(String(a.patientId)) ?? null,
       // 8.ª ronda/10: já está na lista de espera?
       waitlist: waitlistByAppointment.get(String(a._id)) ?? null,
       treatmentName: treatmentById.get(String(a.treatmentTypeId)) ?? '—',

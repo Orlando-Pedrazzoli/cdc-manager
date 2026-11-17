@@ -88,6 +88,14 @@ const UserSchema = new Schema(
       type: [{ type: Schema.Types.ObjectId, ref: 'Clinic' }],
       default: [],
     },
+    // 8.ª ronda/03 (Victor, 17/11/2026): abrir e fechar dias da agenda é só
+    // da gestão, mas "vou dar acesso também à Karla, coordenadora da receção,
+    // para que, quando eu não estiver, ela consiga resolver". Permissão dada
+    // pela gestão a uma conta da receção. Admin ignora (pode sempre).
+    canManageAgendaDays: {
+      type: Boolean,
+      default: false,
+    },
     // Referências ao perfil de domínio (preenchida conforme o role)
     doctorId: {
       type: Schema.Types.ObjectId,
@@ -158,4 +166,15 @@ export function canOperateClinic(
     return user.clinicIds.some(id => id.toString() === clinicId);
   }
   return false;
+}
+
+/**
+ * Pode abrir, fechar e repor dias da agenda dos médicos?
+ *   admin → sempre; receptionist → só com a permissão dada pela gestão.
+ */
+export function canManageAgendaDays(
+  user: { role?: string | null; canManageAgendaDays?: boolean | null },
+): boolean {
+  if (user.role === 'admin') return true;
+  return user.role === 'receptionist' && user.canManageAgendaDays === true;
 }

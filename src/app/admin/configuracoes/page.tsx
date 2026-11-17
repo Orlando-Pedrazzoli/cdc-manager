@@ -121,7 +121,7 @@ export default async function ConfiguracoesPage({
     const docs = await User.find({
       role: { $in: ['admin', 'receptionist'] },
     })
-      .select('name email username role status createdAt')
+      .select('name email username role status createdAt canManageAgendaDays')
       .sort({ status: 1, name: 1 })
       .lean();
     const dateFmt = new Intl.DateTimeFormat('pt-PT', {
@@ -137,6 +137,7 @@ export default async function ConfiguracoesPage({
       username: u.username ?? null,
       role: u.role as TeamUser['role'],
       status: u.status as TeamUser['status'],
+      canManageAgendaDays: u.canManageAgendaDays === true,
       createdAt: dateFmt.format(u.createdAt as Date),
     }));
   } else if (activeTab === 'clinicas') {

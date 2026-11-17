@@ -19,6 +19,7 @@ import {
   inviteUserAction,
   resendInviteAction,
   setUserActiveAction,
+  setAgendaDaysPermissionAction,
   type UsersActionState,
 } from '@/actions/users';
 import { Input, Select } from '@/components/ui/Input';
@@ -33,6 +34,8 @@ export interface TeamUser {
   username?: string | null;
   role: 'admin' | 'receptionist';
   status: 'invited' | 'active' | 'disabled';
+  /** 8.ª ronda/03: receção autorizada a abrir e fechar dias da agenda */
+  canManageAgendaDays?: boolean;
   createdAt: string; // já formatado (pt-PT)
 }
 
@@ -116,6 +119,10 @@ export function UsersPanel({
   );
   const [toggleState, toggleAction, togglePending] = useActionState(
     setUserActiveAction,
+    undefined,
+  );
+  const [daysState, daysAction, daysPending] = useActionState(
+    setAgendaDaysPermissionAction,
     undefined,
   );
   // Saber a que linha pertence o pending/feedback das ações por-linha
@@ -330,6 +337,9 @@ export function UsersPanel({
                 {ROLE_LABEL[u.role]}
               </Badge>
               <StatusBadge status={u.status} />
+              {u.role === 'receptionist' && u.canManageAgendaDays && (
+                <Badge variant='info'>Abre / fecha dias</Badge>
+              )}
               <div style={{ display: 'flex', gap: '8px' }}>
                 {u.status === 'invited' && (
                   <form action={resendAction} onSubmit={() => setRowBusy(u.id)}>
@@ -353,6 +363,27 @@ export function UsersPanel({
                   >
                     Repor senha
                   </Button>
+                )}
+                {u.role === 'receptionist' && u.status === 'active' && (
+                  <form action={daysAction} onSubmit={() => setRowBusy(u.id)}>
+                    <input type='hidden' name='userId' value={u.id} />
+                    <input
+                      type='hidden'
+                      name='allow'
+                      value={u.canManageAgendaDays ? 'false' : 'true'}
+                    />
+                    <Button
+                      type='submit'
+                      variant='secondary'
+                      size='sm'
+                      disabled={daysPending && rowBusy === u.id}
+                      title='Abrir, fechar e repor dias da agenda dos médicos. A gestão pode sempre.'
+                    >
+                      {u.canManageAgendaDays
+                        ? 'Retirar abrir / fechar dias'
+                        : 'Permitir abrir / fechar dias'}
+                    </Button>
+                  </form>
                 )}
                 {u.status !== 'invited' && !isSelf && (
                   <form action={toggleAction} onSubmit={() => setRowBusy(u.id)}>
@@ -414,6 +445,7 @@ export function UsersPanel({
           <Feedback state={pwState} />
           <Feedback state={resendState} />
           <Feedback state={toggleState} />
+          <Feedback state={daysState} />
         </div>
       </div>
     </div>

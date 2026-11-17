@@ -314,6 +314,8 @@ export interface AgendaAppointment {
   referralLabel?: string | null;
   /** 8.ª ronda/04: n.º do paciente (null = pré-marcação) */
   processNumber?: number | null;
+  /** 8.ª ronda/11: faltas sem aviso e cancelamentos com menos de 24 h */
+  counterNotice?: { text: string; lastNoShowLabel: string | null } | null;
   /** 8.ª ronda/10: pedido ativo de outro horário (lista de espera) */
   waitlist?: {
     id: string;
@@ -1273,6 +1275,30 @@ export function AgendaGrid({
               >
                 {selected.treatmentName} · {selected.start}–{selected.end}
               </p>
+              {/* 8.ª ronda/11: aviso para a receção falar com o paciente no
+                  balcão. Nada é enviado ao paciente. */}
+              {selected.counterNotice && (
+                <p
+                  role='note'
+                  style={{
+                    margin: '8px 0 0',
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    backgroundColor: '#FEF3C7',
+                    border: '1px solid #F5C96B',
+                    fontSize: '12.5px',
+                    lineHeight: 1.45,
+                    color: '#7A4A06',
+                  }}
+                >
+                  <strong>Falar no balcão:</strong> {selected.counterNotice.text}
+                  {selected.counterNotice.lastNoShowLabel
+                    ? ` (última falta a ${selected.counterNotice.lastNoShowLabel})`
+                    : ''}
+                  , nos últimos 12 meses. Lembrar o paciente de avisar com
+                  24 horas de antecedência.
+                </p>
+              )}
               <div
                 style={{
                   marginTop: 8,

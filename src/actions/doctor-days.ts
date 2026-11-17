@@ -27,7 +27,7 @@ import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import Doctor from '@/models/Doctor';
 import Clinic from '@/models/Clinic';
-import User, { canOperateClinic } from '@/models/User';
+import User, { canManageAgendaDays, canOperateClinic } from '@/models/User';
 import Appointment, { BLOCKING_STATUS } from '@/models/Appointment';
 import {
   hhmmToMin,
@@ -64,8 +64,9 @@ export async function setDoctorDaysAction(input: {
   const session = await auth();
   const role = session?.user?.role;
   // 8.ª ronda/03 (Victor, 17/11/2026): "abrir e fechar agenda só para quem
-  // tem acesso de administrador" — a receção deixou de poder
-  if (!session?.user?.id || role !== 'admin') {
+  // tem acesso de administrador" — a receção deixou de poder, salvo quem a
+  // gestão autorizar (Karla, coordenadora). A permissão lê-se da BD, abaixo.
+  if (!session?.user?.id || (role !== 'admin' && role !== 'receptionist')) {
     return { error: 'Só a gestão pode abrir ou fechar a agenda.' };
   }
   if (!OID_RE.test(input.doctorId) || !OID_RE.test(input.clinicId)) {
@@ -97,14 +98,15 @@ export async function setDoctorDaysAction(input: {
 
   await dbConnect();
   const actor = await User.findById(session.user.id)
-    .select('role status clinicIds')
+    .select('role status clinicIds canManageAgendaDays')
     .lean();
-  if (
-    !actor ||
-    actor.status !== 'active' ||
-    actor.role !== role ||
-    !canOperateClinic(actor, input.clinicId)
-  ) {
+  if (!actor || actor.status !== 'active' || actor.role !== role) {
+    return { error: 'Sem permissões para esta clínica.' };
+  }
+  if (!canManageAgendaDays(actor)) {
+    return { error: 'Só a gestão pode abrir ou fechar a agenda.' };
+  }
+  if (!canOperateClinic(actor, input.clinicId)) {
     return { error: 'Sem permissões para esta clínica.' };
   }
 

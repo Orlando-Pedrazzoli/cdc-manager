@@ -281,6 +281,51 @@ export async function setUserActiveAction(
 }
 
 // -----------------------------------------------------------------------------
+// ABRIR / FECHAR DIAS DA AGENDA — permissão para uma conta da receção
+// -----------------------------------------------------------------------------
+// 8.ª ronda/03 (Victor, 17/11/2026): só a gestão abre e fecha a agenda, mas
+// "vou dar acesso também à Karla, coordenadora da receção". A gestão liga e
+// desliga a permissão conta a conta; vale logo, sem novo início de sessão.
+export async function setAgendaDaysPermissionAction(
+  _prev: UsersActionState,
+  formData: FormData,
+): Promise<UsersActionState> {
+  const guard = await requireAdmin();
+  if ('error' in guard) return guard;
+
+  const parsed = idSchema.safeParse({ userId: formData.get('userId') });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const allow = formData.get('allow') === 'true';
+
+  const user = await User.findById(parsed.data.userId).select(
+    'name role canManageAgendaDays',
+  );
+  if (!user || user.role !== 'receptionist') {
+    return { error: 'Só as contas da receção recebem esta permissão.' };
+  }
+  user.set('canManageAgendaDays', allow);
+  await user.save();
+
+  await logAudit({
+    userId: guard.adminId,
+    action: 'update',
+    entityType: 'User',
+    entityId: parsed.data.userId,
+    summary: `Abrir / fechar dias da agenda: ${allow ? 'permitido a' : 'retirado a'} ${user.name}`,
+    changedFields: ['canManageAgendaDays'],
+  });
+
+  revalidatePath('/admin/configuracoes');
+  revalidatePath('/admin/agenda');
+  return {
+    success: true,
+    message: allow
+      ? `${user.name} já pode abrir e fechar dias da agenda.`
+      : `${user.name} deixou de poder abrir e fechar dias da agenda.`,
+  };
+}
+
+// -----------------------------------------------------------------------------
 // CONTA SÓ COM NOME DE UTILIZADOR E SENHA (Victor, 11/11/2026)
 // -----------------------------------------------------------------------------
 // "Prefiro sem e-mail, só com nome e senha, que é mais prático. Se a

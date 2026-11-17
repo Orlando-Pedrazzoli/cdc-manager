@@ -378,3 +378,51 @@ test('15: ocupação por turno, tempo de cadeira e marcações perdidas', () => 
 });
 
 console.log(`\n${n} testes OK`);
+
+// -----------------------------------------------------------------------------
+// 8.ª ronda/03 e 11 — respostas do Victor de 17/11/2026 (noite)
+// -----------------------------------------------------------------------------
+import { canManageAgendaDays } from '../../src/models/User';
+import { counterNoticesFrom } from '../../src/lib/attendance-data';
+
+test('abrir/fechar dias: gestão sempre, receção só com permissão', () => {
+  assert.equal(canManageAgendaDays({ role: 'admin' }), true);
+  assert.equal(canManageAgendaDays({ role: 'receptionist' }), false);
+  assert.equal(
+    canManageAgendaDays({ role: 'receptionist', canManageAgendaDays: true }),
+    true,
+  );
+  assert.equal(
+    canManageAgendaDays({ role: 'doctor', canManageAgendaDays: true }),
+    false,
+  );
+});
+
+test('aviso no balcão: só pacientes com faltas ou cancelamentos em cima da hora', () => {
+  const d = (s: string) => new Date(s);
+  const m = counterNoticesFrom([
+    { patientId: 'a', status: 'no-show', startAt: d('2026-10-01T10:00:00Z') },
+    { patientId: 'a', status: 'no-show', startAt: d('2026-11-03T10:00:00Z') },
+    {
+      patientId: 'a',
+      status: 'cancelled',
+      cancelledBy: 'patient',
+      startAt: d('2026-11-10T10:00:00Z'),
+      cancelledAt: d('2026-11-10T08:00:00Z'),
+    },
+    // clínica cancelou: não conta
+    {
+      patientId: 'b',
+      status: 'cancelled',
+      cancelledBy: 'clinic',
+      startAt: d('2026-11-10T10:00:00Z'),
+      cancelledAt: d('2026-11-10T09:00:00Z'),
+    },
+  ]);
+  assert.equal(m.size, 1);
+  assert.equal(
+    m.get('a')?.text,
+    '2 faltas sem aviso · 1 cancelamento com menos de 24 h',
+  );
+  assert.equal(m.get('a')?.lastNoShowLabel, '03/11/2026');
+});
