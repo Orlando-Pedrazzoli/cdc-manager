@@ -6,8 +6,9 @@
 // · Quem entrega orçamentos e a taxa de aceitação por médico (só a gestão)
 // · Pendentes há X dias, para a receção ligar
 // · Planos em curso sem retorno há mais de 30 dias, para a receção ligar
-// Os planos migrados do Dentoral ficam de fora das duas listas de chamadas:
-// são milhares e não têm data de entrega fiável.
+// Os planos que vieram do Dentoral contam (a clínica trabalhou lá até agora e
+// trazem a data de entrega), mas as duas listas de chamadas só olham para os
+// orçamentos dos últimos 12 meses: ninguém liga por um orçamento de há anos.
 // =============================================================================
 
 import Link from 'next/link';
@@ -72,6 +73,7 @@ const td: React.CSSProperties = {
 };
 const num: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
 const LIST_LIMIT = 300;
+const RECENT_DAYS = 365;
 
 const value = (p: { totalCents?: number | null; discountCents?: number | null }) =>
   Math.max(0, (p.totalCents ?? 0) - (p.discountCents ?? 0));
@@ -103,24 +105,32 @@ export default async function OrcamentosPage({
   const href = (o: { m?: string; dias?: number }) =>
     `/admin/orcamentos?m=${o.m ?? month}&dias=${o.dias ?? pendingDays}`;
 
+  // Só orçamentos entregues nos últimos 12 meses entram nas listas de chamadas
+  const recentFrom = new Date(nowMs - RECENT_DAYS * 86_400_000);
+
   await dbConnect();
   const [doctors, monthPlans, pendingPlans, ongoingPlans] = await Promise.all([
     Doctor.find({ active: true }).select('name').sort({ name: 1 }).lean(),
     isAdmin
-      ? TreatmentPlan.find({ proposedAt: { $gte: from, $lt: to }, legacyId: null })
+      ? TreatmentPlan.find({ proposedAt: { $gte: from, $lt: to } })
           .select('doctorId totalCents discountCents proposedAt approvedAt')
           .lean()
       : Promise.resolve([]),
     TreatmentPlan.find({
       status: 'proposed',
-      legacyId: null,
-      proposedAt: { $lte: new Date(nowMs - pendingDays * 86_400_000) },
+      proposedAt: {
+        $gte: recentFrom,
+        $lte: new Date(nowMs - pendingDays * 86_400_000),
+      },
     })
       .select('patientId doctorId title totalCents discountCents proposedAt')
       .sort({ proposedAt: 1 })
       .limit(LIST_LIMIT)
       .lean(),
-    TreatmentPlan.find({ status: { $in: ['approved', 'in-progress'] }, legacyId: null })
+    TreatmentPlan.find({
+      status: { $in: ['approved', 'in-progress'] },
+      proposedAt: { $gte: recentFrom },
+    })
       .select('patientId doctorId title status totalCents discountCents approvedAt')
       .sort({ approvedAt: 1 })
       .limit(1000)
@@ -247,8 +257,9 @@ export default async function OrcamentosPage({
           </div>
         </div>
         <p style={lead}>
-          Orçamentos entregues e ainda sem resposta do paciente. Para a receção ligar.
-          Saem da lista quando o paciente aceita, recusa ou começa o tratamento.
+          Orçamentos entregues nos últimos 12 meses e ainda sem resposta do paciente.
+          Para a receção ligar. Saem da lista quando o paciente aceita, recusa ou
+          começa o tratamento.{pendingPlans.length >= LIST_LIMIT ? ` A mostrar os ${LIST_LIMIT} mais antigos.` : ''}
         </p>
         {pendingPlans.length === 0 ? (
           <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>Nenhum orçamento pendente há tanto tempo.</p>
@@ -288,8 +299,9 @@ export default async function OrcamentosPage({
       <section style={card}>
         <h2 style={h2}>Em curso sem retorno ({noReturn.length})</h2>
         <p style={lead}>
-          Pacientes com plano de tratamento aceite ou em curso, sem nenhuma marcação
-          futura e sem vir à clínica há mais de {NO_RETURN_DAYS} dias. Para a receção ligar.
+          Pacientes com plano de tratamento aceite ou em curso (entregue nos últimos
+          12 meses), sem nenhuma marcação futura e sem vir à clínica há mais de{' '}
+          {NO_RETURN_DAYS} dias. Para a receção ligar.{noReturn.length >= LIST_LIMIT ? ` A mostrar os primeiros ${LIST_LIMIT}.` : ''}
         </p>
         {noReturn.length === 0 ? (
           <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>Nenhum tratamento em curso sem retorno.</p>

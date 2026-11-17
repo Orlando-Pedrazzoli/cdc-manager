@@ -18,11 +18,12 @@ const dayFmt = new Intl.DateTimeFormat('pt-PT', {
 
 /** Orçamentos entregues e por responder deste paciente, já com os dias */
 async function loadPendingBudgets(patientId: string) {
+  const since = new Date(Date.now() - 365 * 86_400_000);
   const plans = await TreatmentPlan.find({
     patientId,
     status: 'proposed',
-    legacyId: null,
-    proposedAt: { $ne: null },
+    // só orçamentos do último ano (os do Dentoral contam, os antigos não)
+    proposedAt: { $gte: since },
   })
     .select('title totalCents discountCents proposedAt')
     .sort({ proposedAt: -1 })
