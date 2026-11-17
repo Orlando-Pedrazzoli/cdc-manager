@@ -16,6 +16,11 @@
 // A cor do médico continua na barra lateral esquerda do cartão e no
 // cabeçalho da coluna.
 //
+// Victor (13/11/2026, depois de ver no computador da clínica e no de casa):
+// "as cores podem ser mais fortes, para se destacarem bem" — os fundos
+// passaram de tons pastel para tons médios (8.ª ronda); o texto continua
+// escuro por cima.
+//
 // Funções puras, sem BD nem React, para serem testadas.
 // =============================================================================
 
@@ -42,14 +47,14 @@ export interface AgendaColor {
 }
 
 export const AGENDA_COLORS: Record<AgendaColorKey, AgendaColor> = {
-  pending: { key: 'pending', label: 'Por confirmar', bg: '#FFF1B8', border: '#D4A300', fg: '#6B5200' },
-  confirmed: { key: 'confirmed', label: 'Confirmada', bg: '#D9F2E1', border: '#1F9D55', fg: '#125C32' },
-  'checked-in': { key: 'checked-in', label: 'Chegou', bg: '#E9DDFB', border: '#7A3FD0', fg: '#47217F' },
-  'in-progress': { key: 'in-progress', label: 'Em consulta', bg: '#D3F1F1', border: '#0E8C8C', fg: '#075353' },
-  'awaiting-close': { key: 'awaiting-close', label: 'Por fechar', bg: '#E6EAF2', border: '#7B859C', fg: '#3A4257' },
-  closed: { key: 'closed', label: 'Concluído', bg: '#D6E4FF', border: '#2F5BD3', fg: '#1B3A8F' },
-  cancelled: { key: 'cancelled', label: 'Cancelada', bg: '#FBD9D5', border: '#D92D20', fg: '#8A1C13' },
-  'no-show': { key: 'no-show', label: 'Falta', bg: '#FFE0BF', border: '#E0720B', fg: '#8A4300' },
+  pending: { key: 'pending', label: 'Por confirmar', bg: '#FFE066', border: '#D4A300', fg: '#6B5200' },
+  confirmed: { key: 'confirmed', label: 'Confirmada', bg: '#9FE0B5', border: '#1F9D55', fg: '#125C32' },
+  'checked-in': { key: 'checked-in', label: 'Chegou', bg: '#CDB4F5', border: '#7A3FD0', fg: '#47217F' },
+  'in-progress': { key: 'in-progress', label: 'Em consulta', bg: '#94DEDE', border: '#0E8C8C', fg: '#075353' },
+  'awaiting-close': { key: 'awaiting-close', label: 'Por fechar', bg: '#C9D0DE', border: '#7B859C', fg: '#3A4257' },
+  closed: { key: 'closed', label: 'Concluído', bg: '#A9C4FF', border: '#2F5BD3', fg: '#1B3A8F' },
+  cancelled: { key: 'cancelled', label: 'Cancelada', bg: '#F7A9A1', border: '#D92D20', fg: '#8A1C13' },
+  'no-show': { key: 'no-show', label: 'Falta', bg: '#FFC078', border: '#E0720B', fg: '#8A4300' },
 };
 
 /** Ordem da legenda: o percurso normal da marcação, depois as exceções */
