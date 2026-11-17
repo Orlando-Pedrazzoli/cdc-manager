@@ -124,7 +124,8 @@ export default async function OrcamentosPage({
       },
     })
       .select('patientId doctorId title totalCents discountCents proposedAt')
-      .sort({ proposedAt: 1 })
+      // os mais recentes primeiro: são os que ainda vale a pena ligar
+      .sort({ proposedAt: -1 })
       .limit(LIST_LIMIT)
       .lean(),
     TreatmentPlan.find({
@@ -259,7 +260,7 @@ export default async function OrcamentosPage({
         <p style={lead}>
           Orçamentos entregues nos últimos 12 meses e ainda sem resposta do paciente.
           Para a receção ligar. Saem da lista quando o paciente aceita, recusa ou
-          começa o tratamento.{pendingPlans.length >= LIST_LIMIT ? ` A mostrar os ${LIST_LIMIT} mais antigos.` : ''}
+          começa o tratamento.{pendingPlans.length >= LIST_LIMIT ? ` A mostrar os ${LIST_LIMIT} mais recentes.` : ''}
         </p>
         {pendingPlans.length === 0 ? (
           <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>Nenhum orçamento pendente há tanto tempo.</p>
