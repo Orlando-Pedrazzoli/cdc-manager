@@ -346,7 +346,7 @@ export function NewAppointmentModal({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <p style={{ margin: 0, fontSize: '14px', color: '#3A3F4A', lineHeight: 1.5 }}>
             A marcação de <strong>{created.name}</strong> ficou registada. A
-            ficha foi criada só com o nome e o telemóvel e fica assinalada como{' '}
+            ficha foi criada só com os dados mínimos e fica assinalada como{' '}
             <strong>por completar</strong>.
           </p>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
