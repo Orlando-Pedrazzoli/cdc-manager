@@ -21,6 +21,7 @@ import {
   type RxActionState,
 } from '@/actions/rx';
 import { SignaturePad } from '@/components/clinico/SignaturePad';
+import { RxLaunchButton } from '@/components/rx/RxLaunchButton';
 import {
   RX_MODALITIES,
   RX_MODALITY_LABEL,
@@ -52,10 +53,13 @@ export function RxRequestPanel({
   appointmentId,
   items,
   canEdit,
+  patient,
 }: {
   appointmentId: string;
   items: RxItem[];
   canEdit: boolean;
+  /** Para o botão "Abrir no iRYS" (omitido = sem botão) */
+  patient?: { processNumber: number | null; name: string };
 }) {
   const [modality, setModality] = useState<RxModality>('periapical');
   // B.6: o pedido só sai com consentimento assinado — passo intermédio
@@ -109,19 +113,33 @@ export function RxRequestPanel({
           fontSize: '14px',
           fontWeight: 700,
           color: '#1B2A6B',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          flexWrap: 'wrap',
         }}
       >
-        Raio-X
-        <span
-          style={{
-            marginLeft: '8px',
-            fontSize: '12px',
-            fontWeight: 500,
-            color: '#6A7186',
-          }}
-        >
-          — o pedido entra na fila da sala de RX ao enviar
+        <span>
+          Raio-X
+          <span
+            style={{
+              marginLeft: '8px',
+              fontSize: '12px',
+              fontWeight: 500,
+              color: '#6A7186',
+            }}
+          >
+            — o pedido entra na fila da sala de RX ao enviar
+          </span>
         </span>
+        {patient && (
+          <RxLaunchButton
+            processNumber={patient.processNumber}
+            name={patient.name}
+            size='sm'
+          />
+        )}
       </div>
 
       {/* Pedidos desta consulta */}

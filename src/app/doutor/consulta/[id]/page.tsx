@@ -589,6 +589,14 @@ export default async function ConsultationPage({
               appointmentId={id}
               items={rxItems}
               canEdit={canEdit}
+              patient={
+                patient
+                  ? {
+                      processNumber: patient.processNumber ?? null,
+                      name: patient.name,
+                    }
+                  : undefined
+              }
             />
           )}
           {(canEdit || noteItems.length > 0) && (

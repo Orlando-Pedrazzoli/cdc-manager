@@ -38,6 +38,7 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { PatientStatusBadge } from '@/components/ui/Badge';
 import { GdprConsentButton } from '@/components/pacientes/GdprConsentButton';
+import { RxLaunchButton } from '@/components/rx/RxLaunchButton';
 
 export interface PatientHeaderData {
   id: string;
@@ -418,6 +419,13 @@ export function PatientHeader({ patient }: { patient: PatientHeaderData }) {
 
       {/* Ações — no telemóvel em grelha de 2 colunas (.cdc-actions) */}
       <div className='cdc-actions' style={{ gap: '10px' }}>
+        {/* Raio-X: abre o paciente no iRYS do posto (paridade Dentoral) */}
+        {patient.status === 'active' && (
+          <RxLaunchButton
+            processNumber={patient.processNumber}
+            name={patient.name}
+          />
+        )}
         {patient.status === 'active' && (
           <GdprConsentButton
             patientId={patient.id}
