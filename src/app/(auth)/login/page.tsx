@@ -27,6 +27,34 @@ function OutsideClinicNotice() {
   );
 }
 
+/**
+ * Cabeçalho do formulário. Quem chega pelo botão "Área do Paciente" do site
+ * público (centrodentariocolombo.com → /login?origem=paciente) vê um texto
+ * pensado para o paciente, sem a marca interna "CDC Manager". É só texto:
+ * o login, as permissões e o redirect por perfil não mudam.
+ */
+function LoginHeading({ patient }: { patient: boolean }) {
+  return (
+    <>
+      <h2 className='text-2xl font-bold' style={{ color: '#1B2A6B' }}>
+        {patient ? 'Área do Paciente' : 'Iniciar sessão'}
+      </h2>
+      <p className='mt-1 text-sm' style={{ color: '#6A7186' }}>
+        {patient
+          ? 'Entre com o email e a password que definiu ao ativar a sua conta.'
+          : 'Aceda à sua área no CDC Manager'}
+      </p>
+    </>
+  );
+}
+
+/** useSearchParams exige Suspense — o fallback é o cabeçalho normal */
+function LoginHeadingFromUrl() {
+  return (
+    <LoginHeading patient={useSearchParams().get('origem') === 'paciente'} />
+  );
+}
+
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState<AuthFormState, FormData>(
     loginAction,
@@ -37,12 +65,9 @@ export default function LoginPage() {
 
   return (
     <div>
-      <h2 className='text-2xl font-bold' style={{ color: '#1B2A6B' }}>
-        Iniciar sessão
-      </h2>
-      <p className='mt-1 text-sm' style={{ color: '#6A7186' }}>
-        Aceda à sua área no CDC Manager
-      </p>
+      <Suspense fallback={<LoginHeading patient={false} />}>
+        <LoginHeadingFromUrl />
+      </Suspense>
 
       <form action={formAction} className='mt-8 space-y-5'>
         <div>
