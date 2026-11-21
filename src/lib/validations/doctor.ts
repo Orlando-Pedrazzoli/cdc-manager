@@ -16,7 +16,9 @@
 // =============================================================================
 
 import { z } from 'zod';
-import { SPECIALTIES } from '@/models/Doctor';
+// De lib/domain (e não de models/Doctor): este ficheiro também corre no
+// browser, para o formulário validar antes de enviar — sem arrastar o Mongoose.
+import { SPECIALTIES } from '@/lib/domain';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -25,8 +27,12 @@ const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 // -----------------------------------------------------------------------------
 const timeRangeSchema = z
   .object({
-    start: z.string().regex(HHMM, 'Hora inválida (HH:mm)'),
-    end: z.string().regex(HHMM, 'Hora inválida (HH:mm)'),
+    start: z
+      .string({ error: 'Falta a hora de início' })
+      .regex(HHMM, 'Hora de início inválida'),
+    end: z
+      .string({ error: 'Falta a hora de fim' })
+      .regex(HHMM, 'Hora de fim inválida'),
   })
   .refine(r => r.start < r.end, {
     message: 'A hora de fim deve ser posterior à de início',
@@ -64,7 +70,7 @@ const weeklyScheduleSchema = z
       }
       return true;
     },
-    { message: 'Intervalos sobrepostos no mesmo dia' },
+    { message: 'Há períodos sobrepostos neste dia' },
   );
 
 const clinicScheduleSchema = z.object({
@@ -139,8 +145,10 @@ const clinicSchedulesField = z.preprocess(
     }
   },
   z
-    .array(clinicScheduleSchema)
-    .min(1, 'O médico deve ter horário em pelo menos uma clínica')
+    .array(clinicScheduleSchema, {
+      error: 'Não foi possível ler os horários — recarregue a página',
+    })
+    .min(1, 'Ative pelo menos uma clínica ("Trabalha em…") e defina o horário')
     .refine(
       arr => new Set(arr.map(s => s.clinicId)).size === arr.length,
       'Clínica duplicada nos horários',
@@ -164,17 +172,22 @@ const emptyToNull = (v: unknown) =>
 const commissionField = z.preprocess(
   emptyToNull,
   z.coerce
-    .number()
-    .min(0, 'Comissão inválida')
-    .max(100, 'Comissão inválida')
+    .number({ error: 'Comissão inválida — indique um número entre 0 e 100' })
+    .min(0, 'A comissão não pode ser negativa')
+    .max(100, 'A comissão não pode passar de 100%')
     .transform(v => v / 100)
     .nullable(),
 );
 
 const specialtiesField = z.preprocess(
   // Vários checkboxes com o mesmo name chegam como string ou array
-  v => (typeof v === 'string' ? [v] : v),
-  z.array(z.enum(SPECIALTIES)).min(1, 'Selecione pelo menos uma especialidade'),
+  // (ausente = nenhuma assinalada)
+  v => (v == null ? [] : typeof v === 'string' ? [v] : v),
+  z
+    .array(z.enum(SPECIALTIES, { error: 'Especialidade inválida' }), {
+      error: 'Selecione pelo menos uma especialidade',
+    })
+    .min(1, 'Selecione pelo menos uma especialidade'),
 );
 
 // -----------------------------------------------------------------------------
@@ -182,19 +195,22 @@ const specialtiesField = z.preprocess(
 // -----------------------------------------------------------------------------
 export const createDoctorSchema = z.object({
   name: z
-    .string()
+    .string({ error: 'Indique o nome do profissional' })
     .trim()
-    .min(3, 'Nome demasiado curto')
-    .max(120, 'Nome demasiado longo'),
+    .min(3, 'Indique o nome do profissional (mínimo 3 letras)')
+    .max(120, 'Nome demasiado longo (máximo 120 caracteres)'),
   // Cédula profissional (OMD) — numérica. Opcional no registo, mas será
   // exigida quando o médico emitir receitas/consentimentos (B.6): a UI
   // sinaliza quem não a tem para o admin regularizar antes disso.
   licenseNumber: z.preprocess(
     emptyToNull,
     z
-      .string()
+      .string({ error: 'Cédula inválida — apenas dígitos (máx. 10)' })
       .trim()
-      .regex(/^\d{1,10}$/, 'Cédula inválida — apenas dígitos (máx. 10)')
+      .regex(
+        /^\d{1,10}$/,
+        'Cédula inválida — apenas dígitos, sem espaços nem letras (máx. 10)',
+      )
       .nullable(),
   ),
   // 8.ª ronda/09: data de nascimento (aviso de aniversário, só para a gestão)
@@ -203,6 +219,9 @@ export const createDoctorSchema = z.object({
     z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data de nascimento inválida')
+      .refine(v => v <= new Date().toISOString().slice(0, 10), {
+        message: 'A data de nascimento não pode ser no futuro',
+      })
       .nullable()
       .optional(),
   ),
@@ -219,9 +238,11 @@ export const createDoctorSchema = z.object({
       return Number.isFinite(n) ? Math.round(n * 100) : NaN;
     },
     z
-      .number({ error: 'Objetivo inválido' })
-      .int()
-      .min(0, 'Objetivo inválido')
+      .number({
+        error: 'Objetivo inválido — indique um valor em euros (ex.: 15000)',
+      })
+      .int('Objetivo inválido — indique um valor em euros (ex.: 15000)')
+      .min(0, 'O objetivo não pode ser negativo')
       .max(100_000_000, 'Objetivo demasiado alto')
       .nullable()
       .default(null),
@@ -233,7 +254,10 @@ export const createDoctorSchema = z.object({
   // Conta de acesso do médico (User role doctor)
   email: z.preprocess(
     emptyToNull,
-    z.email('Email inválido').toLowerCase().nullable(),
+    z
+      .email('Email inválido — confirme o formato (nome@dominio.pt)')
+      .toLowerCase()
+      .nullable(),
   ),
   sendActivationInvite: z.coerce.boolean().default(false),
 });

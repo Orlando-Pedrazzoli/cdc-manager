@@ -31,17 +31,24 @@ import { createActivationCode } from '@/lib/activation';
 import { sendActivationEmail } from '@/lib/resend';
 import { logAudit } from '@/lib/audit';
 import { workingRangesForDate, hhmmToMin, minToHhmm } from '@/lib/availability';
+import { doctorExceptionSchema } from '@/lib/validations/doctor';
 import {
-  createDoctorSchema,
-  updateDoctorSchema,
-  doctorExceptionSchema,
-} from '@/lib/validations/doctor';
+  doctorErrorsSummary,
+  doctorFormRaw,
+  validateCreateDoctor,
+  validateUpdateDoctor,
+  type DoctorFormErrors,
+} from '@/lib/doctor-form-errors';
 
 // -----------------------------------------------------------------------------
 // Tipos de estado
 // -----------------------------------------------------------------------------
 export type DoctorFormState =
-  | { error: string }
+  | {
+      error: string;
+      /** Formulário do médico: o que está errado, por campo e por clínica/dia */
+      formErrors?: DoctorFormErrors;
+    }
   | {
       success: true;
       doctorId: string;
@@ -64,6 +71,42 @@ async function requireAdmin() {
 }
 
 const isObjectId = (v: string) => /^[0-9a-fA-F]{24}$/.test(v);
+
+/** Resposta de erro do formulário do médico, com o detalhe por campo */
+function formError(errors: DoctorFormErrors): {
+  error: string;
+  formErrors: DoctorFormErrors;
+} {
+  return { error: doctorErrorsSummary(errors), formErrors: errors };
+}
+
+/**
+ * Falha ao gravar (validação do Mongoose ou base de dados). Sem isto a
+ * exceção subia e o ecrã mostrava só o erro genérico do servidor.
+ */
+function saveFailure(e: unknown): {
+  error: string;
+  formErrors: DoctorFormErrors;
+} {
+  console.error('[doctors] falha ao gravar o médico:', e);
+  const validation =
+    e instanceof Error && e.name === 'ValidationError'
+      ? Object.values(
+          (e as Error & { errors?: Record<string, { message?: string }> })
+            .errors ?? {},
+        )
+          .map(x => x.message)
+          .filter(Boolean)
+          .join(' · ')
+      : '';
+  return formError({
+    fields: {},
+    schedule: [],
+    form: validation
+      ? `Não foi possível gravar: ${validation}`
+      : 'Não foi possível gravar o profissional. Os dados continuam no ecrã — tente outra vez; se voltar a falhar, avise o suporte.',
+  });
+}
 
 // -----------------------------------------------------------------------------
 // Deteção de conflitos: marcações futuras fora do horário efetivo
@@ -141,6 +184,39 @@ async function countScheduleConflicts(doctorId: string): Promise<number> {
 // -----------------------------------------------------------------------------
 // Convite da conta do médico
 // -----------------------------------------------------------------------------
+/**
+ * O email pode receber o convite deste médico? Devolve a explicação quando
+ * não pode. `doctorId` null = médico ainda por criar (verificação ANTES de
+ * gravar, para o aviso aparecer no campo do email e não depois de o médico
+ * já existir).
+ */
+function inviteEmailProblem(
+  existing: { role: string; status: string; doctorId?: unknown },
+  doctorId: string | null,
+): string | null {
+  if (
+    existing.role !== 'doctor' ||
+    (existing.doctorId && String(existing.doctorId) !== doctorId)
+  ) {
+    // 1 email = 1 conta = 1 perfil (o login identifica a conta pelo
+    // email e a sessão carrega UM perfil). Mensagem informativa: dizer
+    // QUEM detém o email e o caminho prático — a mesma pessoa usa
+    // emails distintos por perfil (ex.: profissional vs pessoal, ou
+    // alias nome+clinica@gmail.com, que entrega na mesma caixa).
+    const roleLabel: Record<string, string> = {
+      patient: 'uma conta de PACIENTE',
+      admin: 'uma conta de ADMINISTRADOR',
+      receptionist: 'uma conta de RECEÇÃO',
+      doctor: 'a conta de outro médico',
+    };
+    return `Este email já pertence a ${roleLabel[existing.role] ?? 'outra conta'}. Cada perfil precisa do seu próprio email — use o email profissional do médico (o pessoal pode ficar para a conta de paciente), ou um alias como nome+cdc@gmail.com.`;
+  }
+  if (existing.status === 'active') {
+    return 'Este médico já tem a conta ativa.';
+  }
+  return null;
+}
+
 async function issueDoctorInvite(params: {
   doctorId: string;
   doctorName: string;
@@ -151,28 +227,8 @@ async function issueDoctorInvite(params: {
 
   const existing = await User.findOne({ email });
   if (existing) {
-    if (
-      existing.role !== 'doctor' ||
-      (existing.doctorId && existing.doctorId.toString() !== params.doctorId)
-    ) {
-      // 1 email = 1 conta = 1 perfil (o login identifica a conta pelo
-      // email e a sessão carrega UM perfil). Mensagem informativa: dizer
-      // QUEM detém o email e o caminho prático — a mesma pessoa usa
-      // emails distintos por perfil (ex.: profissional vs pessoal, ou
-      // alias nome+clinica@gmail.com, que entrega na mesma caixa).
-      const roleLabel: Record<string, string> = {
-        patient: 'uma conta de PACIENTE',
-        admin: 'uma conta de ADMINISTRADOR',
-        receptionist: 'uma conta de RECEÇÃO',
-        doctor: 'a conta de outro médico',
-      };
-      return {
-        error: `Este email já pertence a ${roleLabel[existing.role] ?? 'outra conta'}. Cada perfil precisa do seu próprio email — use o email profissional do médico (o pessoal pode ficar para a conta de paciente), ou um alias como nome+cdc@gmail.com.`,
-      };
-    }
-    if (existing.status === 'active') {
-      return { error: 'Este médico já tem a conta ativa.' };
-    }
+    const problem = inviteEmailProblem(existing, params.doctorId);
+    if (problem) return { error: problem };
     if (!existing.doctorId) {
       await User.updateOne(
         { _id: existing._id },
@@ -268,6 +324,30 @@ export async function inviteDoctorAccountAction(
 }
 
 // -----------------------------------------------------------------------------
+// Clínicas dos horários: têm de existir e estar ativas
+// -----------------------------------------------------------------------------
+async function inactiveClinicError(
+  schedules: { clinicId: string }[],
+): Promise<DoctorFormErrors | null> {
+  const clinicIds = schedules.map(s => s.clinicId);
+  const active = await Clinic.find({ _id: { $in: clinicIds }, isActive: true })
+    .select('_id')
+    .lean();
+  const activeIds = new Set(active.map(c => String(c._id)));
+  const missing = clinicIds.filter(id => !activeIds.has(id));
+  if (missing.length === 0) return null;
+  return {
+    fields: {},
+    schedule: missing.map(clinicId => ({
+      clinicId,
+      weekday: null,
+      message:
+        'Esta clínica já não está ativa — recarregue a página e volte a definir os horários.',
+    })),
+  };
+}
+
+// -----------------------------------------------------------------------------
 // CRIAR MÉDICO
 // -----------------------------------------------------------------------------
 export async function createDoctorAction(
@@ -281,41 +361,47 @@ export async function createDoctorAction(
     return { error: (e as Error).message };
   }
 
-  const parsed = createDoctorSchema.safeParse(
-    Object.fromEntries(formData.entries()),
-  );
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0].message };
-  }
-  const data = parsed.data;
-
-  if (data.sendActivationInvite && !data.email) {
-    return { error: 'Para enviar o convite é necessário indicar o email.' };
-  }
+  const validated = validateCreateDoctor(doctorFormRaw(formData));
+  if (!validated.ok) return formError(validated.errors);
+  const data = validated.data;
 
   await dbConnect();
 
   // As clínicas dos horários têm de existir e estar ativas
-  const clinicIds = data.clinicSchedules.map(s => s.clinicId);
-  const clinicCount = await Clinic.countDocuments({
-    _id: { $in: clinicIds },
-    isActive: true,
-  });
-  if (clinicCount !== clinicIds.length) {
-    return { error: 'Clínica inválida nos horários.' };
+  const clinicProblem = await inactiveClinicError(data.clinicSchedules);
+  if (clinicProblem) return formError(clinicProblem);
+
+  // Email do convite já usado por outra conta: avisar ANTES de criar o
+  // médico. Antes, o médico era criado, o convite falhava e o aviso passava
+  // num toast já na ficha — repetir o formulário criava um duplicado.
+  if (data.sendActivationInvite && data.email) {
+    const existing = await User.findOne({ email: data.email })
+      .select('role status doctorId')
+      .lean();
+    const problem = existing ? inviteEmailProblem(existing, null) : null;
+    if (problem) {
+      return formError({ fields: { email: problem }, schedule: [] });
+    }
   }
 
-  const doctor = await Doctor.create({
-    name: data.name,
-    licenseNumber: data.licenseNumber,
-    birthDate: data.birthDate ? new Date(`${data.birthDate}T12:00:00Z`) : null,
-    specialties: data.specialties,
-    clinicSchedules: data.clinicSchedules,
-    commissionRate: data.commissionRate,
-    monthlyGoalCents: data.monthlyGoalCents,
-    color: data.color,
-    active: true,
-  });
+  let doctor;
+  try {
+    doctor = await Doctor.create({
+      name: data.name,
+      licenseNumber: data.licenseNumber,
+      birthDate: data.birthDate
+        ? new Date(`${data.birthDate}T12:00:00Z`)
+        : null,
+      specialties: data.specialties,
+      clinicSchedules: data.clinicSchedules,
+      commissionRate: data.commissionRate,
+      monthlyGoalCents: data.monthlyGoalCents,
+      color: data.color,
+      active: true,
+    });
+  } catch (e) {
+    return saveFailure(e);
+  }
 
   await logAudit({
     userId: admin.id,
@@ -368,13 +454,9 @@ export async function updateDoctorAction(
   }
   if (!isObjectId(doctorId)) return { error: 'Médico inválido.' };
 
-  const parsed = updateDoctorSchema.safeParse(
-    Object.fromEntries(formData.entries()),
-  );
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0].message };
-  }
-  const data = parsed.data;
+  const validated = validateUpdateDoctor(doctorFormRaw(formData));
+  if (!validated.ok) return formError(validated.errors);
+  const data = validated.data;
 
   await dbConnect();
   const doctor = await Doctor.findById(doctorId);
@@ -382,14 +464,8 @@ export async function updateDoctorAction(
 
   const schedulesChanged = data.clinicSchedules !== undefined;
   if (schedulesChanged) {
-    const clinicIds = data.clinicSchedules!.map(s => s.clinicId);
-    const clinicCount = await Clinic.countDocuments({
-      _id: { $in: clinicIds },
-      isActive: true,
-    });
-    if (clinicCount !== clinicIds.length) {
-      return { error: 'Clínica inválida nos horários.' };
-    }
+    const clinicProblem = await inactiveClinicError(data.clinicSchedules!);
+    if (clinicProblem) return formError(clinicProblem);
   }
 
   const $set: Record<string, unknown> = {};
@@ -417,7 +493,11 @@ export async function updateDoctorAction(
     }
   }
   if (changed.length > 0) {
-    await Doctor.updateOne({ _id: doctor._id }, { $set });
+    try {
+      await Doctor.updateOne({ _id: doctor._id }, { $set });
+    } catch (e) {
+      return saveFailure(e);
+    }
     await logAudit({
       userId: admin.id,
       action: 'update',

@@ -12,19 +12,47 @@
 // em JSON — exatamente o formato que validations/doctor.ts espera, incluindo
 // a verificação de sobreposição entre clínicas, cuja mensagem legível
 // aparece no erro do formulário.
+//
+// AVISOS DE CAMPOS INCORRETOS: o formulário valida no browser antes de enviar
+// (as mesmas regras do servidor — lib/doctor-form-errors.ts) e mostra TODOS os
+// problemas de uma vez: resumo no topo (cada linha leva ao campo), mensagem
+// junto de cada campo e, nos horários, junto da clínica e do dia. O envio é
+// feito por onSubmit + startTransition (e não por <form action>), porque o
+// React limpa os campos de um <form action> quando a action termina — com um
+// erro, o utilizador perdia tudo o que tinha escrito.
 // =============================================================================
 
 'use client';
 
-import { useActionState, useMemo, useState } from 'react';
+import {
+  startTransition,
+  useActionState,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Copy, Plus, Trash2 } from 'lucide-react';
+import { AlertCircle, Copy, Plus, Trash2 } from 'lucide-react';
 import {
   createDoctorAction,
   updateDoctorAction,
   type DoctorFormState,
 } from '@/actions/doctors';
+import {
+  DOCTOR_FIELDS,
+  DOCTOR_FIELD_LABEL,
+  countDoctorFormErrors,
+  doctorErrorsSummary,
+  doctorFormRaw,
+  emptyDoctorFormErrors,
+  validateCreateDoctor,
+  validateUpdateDoctor,
+  type DoctorField,
+  type DoctorFormErrors,
+  type DoctorScheduleError,
+} from '@/lib/doctor-form-errors';
 import { SPECIALTIES, type Specialty } from '@/lib/domain';
 import { SPECIALTY_LABEL, WEEKDAYS_DISPLAY } from '@/lib/labels';
 import { Button } from '@/components/ui/Button';
@@ -82,6 +110,28 @@ function nextDateOfWeekday(weekday: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+const ERROR_COLOR = '#B3261E';
+const errorText = { margin: 0, fontSize: '12px', color: ERROR_COLOR };
+
+/** Onde fica cada campo no ecrã (o resumo dos erros leva lá) */
+const FIELD_TARGET: Record<DoctorField, string> = {
+  name: 'name',
+  licenseNumber: 'licenseNumber',
+  birthDate: 'birthDate',
+  commissionRate: 'commissionRate',
+  monthlyGoalCents: 'monthlyGoalCents',
+  color: 'color',
+  specialties: 'specialties-section',
+  email: 'email',
+};
+
+function goTo(targetId: string) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.focus({ preventScroll: true });
+}
+
 function emptyDays(): Record<number, DayRange[]> {
   return { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
 }
@@ -133,20 +183,65 @@ export function DoctorForm({
     },
   );
 
-  const setClinic = (id: string, patch: Partial<ClinicState>) =>
-    setSchedules(s => ({ ...s, [id]: { ...s[id], ...patch } }));
+  // --- Erros do formulário (validação no browser + resposta do servidor) ----
+  const [errors, setErrors] = useState<DoctorFormErrors | null>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
 
-  const setDay = (id: string, weekday: number, ranges: DayRange[]) =>
+  const showErrors = (found: DoctorFormErrors) => {
+    setErrors(found);
+    // id fixo: um novo aviso substitui o anterior em vez de empilhar
+    toast.error(doctorErrorsSummary(found), { id: 'doctor-form-errors' });
+    // Depois de o resumo estar no ecrã: trazê-lo à vista e dar-lhe o foco
+    requestAnimationFrame(() => {
+      summaryRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+      summaryRef.current?.focus({ preventScroll: true });
+    });
+  };
+
+  /** O aviso de um campo sai assim que o utilizador mexe nele */
+  const clearFieldError = (field: DoctorField) =>
+    setErrors(e => {
+      if (!e?.fields[field]) return e;
+      const fields = { ...e.fields };
+      delete fields[field];
+      return { ...e, fields };
+    });
+
+  /** Mexer no horário de uma clínica limpa os avisos dessa clínica e os gerais */
+  const clearScheduleErrors = (clinicId: string) =>
+    setErrors(e => {
+      if (!e || e.schedule.length === 0) return e;
+      return {
+        ...e,
+        schedule: e.schedule.filter(
+          x => x.clinicId !== null && x.clinicId !== clinicId,
+        ),
+      };
+    });
+
+  const setClinic = (id: string, patch: Partial<ClinicState>) => {
+    clearScheduleErrors(id);
+    setSchedules(s => ({ ...s, [id]: { ...s[id], ...patch } }));
+  };
+
+  const setDay = (id: string, weekday: number, ranges: DayRange[]) => {
+    clearScheduleErrors(id);
     setSchedules(s => ({
       ...s,
       [id]: { ...s[id], days: { ...s[id].days, [weekday]: ranges } },
     }));
+  };
 
-  const setBiweekly = (id: string, weekday: number, anchor: string | null) =>
+  const setBiweekly = (id: string, weekday: number, anchor: string | null) => {
+    clearScheduleErrors(id);
     setSchedules(s => ({
       ...s,
       [id]: { ...s[id], biweekly: { ...s[id].biweekly, [weekday]: anchor } },
     }));
+  };
 
   // Serialização contínua → hidden input (formato do schema Zod)
   const schedulesJson = useMemo(() => {
@@ -178,7 +273,14 @@ export function DoctorForm({
     FormData
   >(async (prev, formData) => {
     const result = await action(prev, formData);
-    if (!result || 'error' in result) return result;
+    if (!result) return result;
+    if ('error' in result) {
+      showErrors(
+        result.formErrors ?? { fields: {}, schedule: [], form: result.error },
+      );
+      return result;
+    }
+    setErrors(null);
 
     if (result.conflictCount && result.conflictCount > 0 && result.warning) {
       toast(result.warning, { icon: '⚠️', duration: 8000 });
@@ -200,6 +302,111 @@ export function DoctorForm({
     return result;
   }, undefined);
 
+  // --- Envio: valida no browser e só depois chama o servidor -----------------
+  /** Períodos com só uma das horas preenchida (o JSON enviado ignora-os) */
+  const incompletePeriods = (): DoctorScheduleError[] => {
+    const found: DoctorScheduleError[] = [];
+    for (const c of clinics) {
+      const cs = schedules[c.id];
+      if (!cs?.enabled) continue;
+      for (const w of WEEKDAYS_DISPLAY) {
+        if (cs.days[w.value].some(r => !r.start || !r.end)) {
+          found.push({
+            clinicId: c.id,
+            weekday: w.value,
+            message:
+              'Período incompleto — preencha a hora de início e a de fim, ou remova-o.',
+          });
+        }
+      }
+    }
+    return found;
+  };
+
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (pending) return;
+    const formData = new FormData(e.currentTarget);
+    const raw = doctorFormRaw(formData);
+    const result =
+      mode === 'edit' ? validateUpdateDoctor(raw) : validateCreateDoctor(raw);
+    const found = result.ok ? emptyDoctorFormErrors() : result.errors;
+
+    const incomplete = incompletePeriods();
+    if (incomplete.length > 0) {
+      // O período incompleto já explica porque a clínica "não tem horário"
+      const withIncomplete = new Set(incomplete.map(x => x.clinicId));
+      found.schedule = [
+        ...incomplete,
+        ...found.schedule.filter(
+          x => !(x.weekday === null && withIncomplete.has(x.clinicId)),
+        ),
+      ];
+    }
+
+    if (countDoctorFormErrors(found) > 0) {
+      showErrors(found);
+      return;
+    }
+    setErrors(null);
+    startTransition(() => formAction(formData));
+  };
+
+  // --- Erros prontos a mostrar ----------------------------------------------
+  const fieldError = (f: DoctorField) => errors?.fields[f];
+  const weekdayLabel = (weekday: number) =>
+    WEEKDAYS_DISPLAY.find(w => w.value === weekday)?.label ?? '';
+  const generalScheduleErrors =
+    errors?.schedule.filter(x => x.clinicId === null) ?? [];
+  const clinicErrors = (clinicId: string) =>
+    errors?.schedule.filter(
+      x => x.clinicId === clinicId && x.weekday === null,
+    ) ?? [];
+  const dayErrors = (clinicId: string, weekday: number) =>
+    errors?.schedule.filter(
+      x => x.clinicId === clinicId && x.weekday === weekday,
+    ) ?? [];
+
+  const summaryItems: {
+    key: string;
+    label: string;
+    message: string;
+    target: string;
+  }[] = [];
+  if (errors) {
+    for (const f of DOCTOR_FIELDS) {
+      const message = errors.fields[f];
+      if (message) {
+        summaryItems.push({
+          key: f,
+          label: DOCTOR_FIELD_LABEL[f],
+          message,
+          target: FIELD_TARGET[f],
+        });
+      }
+    }
+    errors.schedule.forEach((x, i) => {
+      const clinicName = clinics.find(c => c.id === x.clinicId)?.name;
+      const where = [
+        'Horários',
+        clinicName,
+        x.weekday !== null ? weekdayLabel(x.weekday) : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      summaryItems.push({
+        key: `schedule-${i}`,
+        label: where,
+        message: x.message,
+        target:
+          x.clinicId && clinicName
+            ? `clinic-block-${x.clinicId}`
+            : 'schedules-section',
+      });
+    });
+  }
+  const errorCount = errors ? countDoctorFormErrors(errors) : 0;
+
   const closeManualCode = () => {
     const navId = state && 'success' in state ? state.doctorId : null;
     setManualCode(null);
@@ -210,9 +417,92 @@ export function DoctorForm({
   return (
     <>
       <form
-        action={formAction}
+        onSubmit={handleSubmit}
+        // Os avisos são os nossos (em português, junto ao campo) — sem os
+        // balões nativos do browser, que só mostram um campo de cada vez
+        noValidate
+        onChange={e => {
+          // o evento vem do campo alterado (delegação no <form>)
+          const name = (e.target as unknown as { name?: string }).name ?? '';
+          if ((DOCTOR_FIELDS as readonly string[]).includes(name)) {
+            clearFieldError(name as DoctorField);
+          }
+          // marcar/desmarcar o convite muda se o email é obrigatório
+          if (name === 'sendActivationInvite') clearFieldError('email');
+        }}
         style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}
       >
+        {/* --- Resumo do que falta corrigir ----------------------------------- */}
+        {errors && errorCount > 0 && (
+          <div
+            ref={summaryRef}
+            tabIndex={-1}
+            role='alert'
+            style={{
+              borderRadius: '10px',
+              border: `1px solid ${ERROR_COLOR}`,
+              backgroundColor: '#FDEDED',
+              padding: '14px 16px',
+              outline: 'none',
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '14px',
+                fontWeight: 700,
+                color: ERROR_COLOR,
+              }}
+            >
+              <AlertCircle size={16} />
+              {mode === 'create'
+                ? 'O profissional ainda não foi criado.'
+                : 'As alterações ainda não foram guardadas.'}{' '}
+              {errorCount === 1
+                ? 'Falta corrigir 1 ponto:'
+                : `Faltam corrigir ${errorCount} pontos:`}
+            </p>
+            <ul
+              style={{
+                margin: '8px 0 0',
+                paddingLeft: '22px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                fontSize: '13px',
+                color: '#3A3F4A',
+              }}
+            >
+              {summaryItems.map(item => (
+                <li key={item.key}>
+                  <button
+                    type='button'
+                    onClick={() => goTo(item.target)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      padding: 0,
+                      font: 'inherit',
+                      fontWeight: 700,
+                      color: ERROR_COLOR,
+                      textDecoration: 'underline',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                  {' — '}
+                  {item.message}
+                </li>
+              ))}
+              {errors.form && <li>{errors.form}</li>}
+            </ul>
+          </div>
+        )}
+
         {/* --- Dados base ----------------------------------------------------- */}
         <section
           style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
@@ -233,6 +523,8 @@ export function DoctorForm({
               minLength={3}
               defaultValue={initial?.name ?? ''}
               placeholder='Dr(a). Nome Apelido'
+              error={fieldError('name')}
+              aria-invalid={fieldError('name') ? true : undefined}
             />
             <Input
               id='licenseNumber'
@@ -241,6 +533,8 @@ export function DoctorForm({
               inputMode='numeric'
               pattern='\d{1,10}'
               defaultValue={initial?.licenseNumber ?? ''}
+              error={fieldError('licenseNumber')}
+              aria-invalid={fieldError('licenseNumber') ? true : undefined}
               help='Apenas dígitos. Necessária para receitas e consentimentos — profissionais sem cédula ficam sinalizados na listagem.'
             />
             {/* 8.ª ronda/09: aviso à gestão na semana do aniversário */}
@@ -250,6 +544,8 @@ export function DoctorForm({
               type='date'
               label='Data de nascimento'
               defaultValue={initial?.birthDate ?? ''}
+              error={fieldError('birthDate')}
+              aria-invalid={fieldError('birthDate') ? true : undefined}
             />
             {showFinancials && (
               <>
@@ -263,6 +559,8 @@ export function DoctorForm({
                   step={1}
                   defaultValue={initial?.commissionPercent ?? ''}
                   placeholder='vazio = default da clínica (40)'
+                  error={fieldError('commissionRate')}
+                  aria-invalid={fieldError('commissionRate') ? true : undefined}
                   help='Fração que o PROFISSIONAL recebe. Overrides por ato na ficha do profissional.'
                 />
                 <Input
@@ -272,6 +570,10 @@ export function DoctorForm({
                   inputMode='decimal'
                   defaultValue={initial?.monthlyGoalEuros ?? ''}
                   placeholder='ex.: 15000'
+                  error={fieldError('monthlyGoalCents')}
+                  aria-invalid={
+                    fieldError('monthlyGoalCents') ? true : undefined
+                  }
                   help='Aparece no dashboard do médico como barra de progresso (objetivo vs faturado). Vazio = sem objetivo.'
                 />
               </>
@@ -304,20 +606,44 @@ export function DoctorForm({
                   cursor: 'pointer',
                 }}
               />
+              {fieldError('color') && (
+                <p style={{ ...errorText, marginTop: 6 }}>
+                  {fieldError('color')}
+                </p>
+              )}
             </div>
           </div>
         </section>
 
         {/* --- Especialidades -------------------------------------------------- */}
         <section
-          style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
+          id='specialties-section'
+          tabIndex={-1}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+            outline: 'none',
+          }}
         >
           <h3 style={sectionTitle}>Especialidades *</h3>
+          {fieldError('specialties') && (
+            <p role='alert' style={errorText}>
+              {fieldError('specialties')}
+            </p>
+          )}
           <div
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
               gap: '8px',
+              ...(fieldError('specialties')
+                ? {
+                    border: `1.5px solid ${ERROR_COLOR}`,
+                    borderRadius: '10px',
+                    padding: '12px',
+                  }
+                : {}),
             }}
           >
             {SPECIALTIES.map(s => (
@@ -335,19 +661,40 @@ export function DoctorForm({
 
         {/* --- Editor de horários por clínica ---------------------------------- */}
         <section
-          style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+          id='schedules-section'
+          tabIndex={-1}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px',
+            outline: 'none',
+          }}
         >
           <h3 style={sectionTitle}>Horários por clínica *</h3>
+          {generalScheduleErrors.map((x, i) => (
+            <p key={i} role='alert' style={errorText}>
+              {x.message}
+            </p>
+          ))}
           {clinics.map(c => {
             const cs = schedules[c.id];
+            const blockErrors = clinicErrors(c.id);
+            const hasErrors =
+              generalScheduleErrors.length > 0 ||
+              (errors?.schedule.some(x => x.clinicId === c.id) ?? false);
             return (
               <div
                 key={c.id}
+                id={`clinic-block-${c.id}`}
+                tabIndex={-1}
                 style={{
-                  border: '1px solid #EEF1F8',
+                  border: hasErrors
+                    ? `1.5px solid ${ERROR_COLOR}`
+                    : '1px solid #EEF1F8',
                   borderRadius: '10px',
                   padding: '16px',
                   backgroundColor: cs.enabled ? '#FFFFFF' : '#FAFBFE',
+                  outline: 'none',
                 }}
               >
                 <div
@@ -378,6 +725,16 @@ export function DoctorForm({
                     />
                   )}
                 </div>
+
+                {blockErrors.map((x, i) => (
+                  <p
+                    key={i}
+                    role='alert'
+                    style={{ ...errorText, marginTop: '10px' }}
+                  >
+                    {x.message}
+                  </p>
+                ))}
 
                 {cs.enabled && (
                   <>
@@ -475,7 +832,12 @@ export function DoctorForm({
                                 paddingTop: 8,
                                 fontSize: '13px',
                                 fontWeight: 600,
-                                color: ranges.length ? '#1B2A6B' : '#9AA1B4',
+                                color:
+                                  dayErrors(c.id, w.value).length > 0
+                                    ? ERROR_COLOR
+                                    : ranges.length
+                                      ? '#1B2A6B'
+                                      : '#9AA1B4',
                                 flexShrink: 0,
                               }}
                             >
@@ -591,6 +953,11 @@ export function DoctorForm({
                                 <Plus size={14} />
                                 Período
                               </button>
+                              {dayErrors(c.id, w.value).map((x, i) => (
+                                <p key={i} role='alert' style={errorText}>
+                                  {x.message}
+                                </p>
+                              ))}
                               {/* 5.ª ronda/07: turno quinzenal */}
                               {ranges.length > 0 && (
                                 <label
@@ -687,6 +1054,9 @@ export function DoctorForm({
                 type='email'
                 label='Email do profissional'
                 placeholder='medico@exemplo.pt'
+                error={fieldError('email')}
+                aria-invalid={fieldError('email') ? true : undefined}
+                help='Serve para o convite de acesso. Sem convite assinalado, o email não fica guardado — pode dar o acesso mais tarde, na ficha do profissional.'
               />
             </div>
             <Checkbox
@@ -698,19 +1068,41 @@ export function DoctorForm({
           </section>
         )}
 
-        {/* Erro (inclui a mensagem de sobreposição entre clínicas) */}
-        {state && 'error' in state && (
+        {/* Junto ao botão: lembra que há avisos mais acima */}
+        {errors && errorCount > 0 && (
           <p
+            role='status'
             style={{
               margin: 0,
               borderRadius: '8px',
               padding: '10px 14px',
               fontSize: '14px',
               backgroundColor: '#FDEDED',
-              color: '#B3261E',
+              color: ERROR_COLOR,
             }}
           >
-            {state.error}
+            {doctorErrorsSummary(errors)}{' '}
+            <button
+              type='button'
+              onClick={() =>
+                summaryRef.current?.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'center',
+                })
+              }
+              style={{
+                border: 'none',
+                background: 'transparent',
+                padding: 0,
+                font: 'inherit',
+                fontWeight: 700,
+                color: ERROR_COLOR,
+                textDecoration: 'underline',
+                cursor: 'pointer',
+              }}
+            >
+              Ver a lista
+            </button>
           </p>
         )}
 
