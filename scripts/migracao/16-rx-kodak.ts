@@ -14,6 +14,10 @@
 // · SIMULAÇÃO por omissão: só lê e conta. `--apply` grava.
 // · Só preenche fichas SEM pasta; com `--update` corrige as que diferem.
 //   Nunca apaga uma pasta já atribuída.
+// · Pastas PARTILHADAS (o mesmo código em mais de um paciente no Dentoral)
+//   ficam DE FORA por omissão: abrir o Kodak nessas fichas mostraria as
+//   radiografias de outra pessoa. O relatório lista-as (código × n.º de
+//   pacientes) para a clínica decidir; `--partilhadas` inclui-as.
 // · `--clinica N` escolhe o refclinica (por omissão 1 = Colombo). O arquivo
 //   Kodak da Buraca é outro (\\192.30.20.1\nntburaca\raiox) e não entra aqui.
 // · `--pastas <rx-pastas.csv>` (opcional): cruza com o inventário tirado no
@@ -59,14 +63,22 @@ void runScript('16-rx-kodak', async args => {
   }
   const perFolder = new Map<string, number>();
   for (const code of byPac.values()) perFolder.set(code, (perFolder.get(code) ?? 0) + 1);
-  const shared = [...perFolder.values()].filter(n => n > 1).length;
+  const sharedList = [...perFolder.entries()].filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]);
+  const sharedCodes = new Set(sharedList.map(([code]) => code));
+  const includeShared = args.flags['partilhadas'] === true;
   log(`rx_kodak (refclinica ${clinica}): ${rows.length} linhas → ${byPac.size} pacientes, ${perFolder.size} pastas distintas`, {
     formatoInvalido: invalid.length,
     exemplosInvalidos: [...new Set(invalid)].slice(0, 8),
     pacientesComMaisDeUmaPasta: repeatedPac,
-    pastasPartilhadas: shared,
+    pastasPartilhadas: sharedList.length,
     soNumericas: [...perFolder.keys()].filter(c => /^\d+$/.test(c)).length,
   });
+  if (sharedList.length) {
+    log(`pastas partilhadas (${includeShared ? 'INCLUÍDAS' : 'ficam de fora'}): código × pacientes`, {
+      pacientesAbrangidos: sharedList.reduce((a, [, n]) => a + n, 0),
+      lista: sharedList.slice(0, 40).map(([code, n]) => `${code}×${n}`),
+    });
+  }
 
   // --- 2. Cruzar com o inventário do disco (opcional) ----------------------
   const csv = args.flags['pastas'];
@@ -91,8 +103,9 @@ void runScript('16-rx-kodak', async args => {
   for await (const p of cursor) current.set(String(p._id), (p as { kodakFolder?: string | null }).kodakFolder ?? null);
 
   const ops: { updateOne: { filter: Record<string, unknown>; update: Record<string, unknown> } }[] = [];
-  let noPatient = 0, same = 0, differ = 0, fill = 0;
+  let noPatient = 0, same = 0, differ = 0, fill = 0, sharedSkipped = 0;
   for (const [pac, code] of byPac) {
+    if (sharedCodes.has(code) && !includeShared) { sharedSkipped++; continue; }
     const id = legacy.get(`dentoral:${pac}`);
     if (!id) { noPatient++; continue; }
     const now = current.get(String(id)) ?? null;
@@ -108,6 +121,7 @@ void runScript('16-rx-kodak', async args => {
     diferentes: differ,
     diferentesACorrigir: args.update ? differ : 0,
     semFichaNoCdc: noPatient,
+    emPastaPartilhada: sharedSkipped,
     operacoes: ops.length,
   });
   if (apply) {
