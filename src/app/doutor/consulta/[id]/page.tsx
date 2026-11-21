@@ -155,7 +155,7 @@ export default async function ConsultationPage({
     lastCompleted,
   ] = await Promise.all([
     Patient.findById(appt.patientId)
-      .select('name processNumber phone birthDate')
+      .select('name processNumber phone birthDate kodakFolder')
       .lean(),
     getClinicById(String(appt.clinicId)),
     TreatmentType.find({ active: true })
@@ -593,6 +593,7 @@ export default async function ConsultationPage({
                 patient
                   ? {
                       processNumber: patient.processNumber ?? null,
+                      kodakFolder: patient.kodakFolder ?? null,
                       name: patient.name,
                     }
                   : undefined

@@ -5,6 +5,7 @@ import {
   irysLaunchUrl,
   irysPatId,
   kodakLaunchUrl,
+  normalizeKodakFolder,
   rxCleanName,
   rxSplitName,
 } from '../../src/lib/rx-launch';
@@ -16,7 +17,7 @@ const test = (name: string, fn: () => void) => {
   console.log(`  ✓ ${name}`);
 };
 
-// O que o lançador do posto aceita (scripts/rx-agent/cdc-rx-launcher.ps1)
+// O que o lançador do posto aceita (public/rx-agent/cdc-rx-launcher.ps1)
 const LAUNCHER_NAME = /^[\p{L}\p{M} .'-]{1,60}$/u;
 const LAUNCHER_DIR = /^([\p{L}\d(])\.RVG\\([\p{L}\d(])\d{7}$/u;
 const query = (url: string) => new URLSearchParams(url.split('?')[1]);
@@ -93,6 +94,22 @@ test('Kodak: código inválido ou sem nome não dá endereço', () => {
     assert.equal(kodakLaunchUrl({ folder: bad, name: 'Ana Silva' }), null, String(bad));
   }
   assert.equal(kodakLaunchUrl({ folder: 'J0002369', name: '' }), null);
+});
+
+test('Kodak: a migração limpa os valores da rx_kodak (código ou caminho)', () => {
+  assert.equal(normalizeKodakFolder(' m0001323 '), 'M0001323');
+  assert.equal(normalizeKodakFolder('00079641'), '00079641');
+  assert.equal(normalizeKodakFolder('Z:\\M.RVG\\M0001323'), 'M0001323');
+  assert.equal(normalizeKodakFolder('dadoskodak/DB/K.RVG/K0000035/'), 'K0000035');
+  assert.equal(normalizeKodakFolder('á0000056'), 'Á0000056');
+  for (const bad of ['', null, undefined, 'recp', 'M.RVG', 'M000132', 'MM001323', 'M00013233']) {
+    assert.equal(normalizeKodakFolder(bad), null, String(bad));
+  }
+});
+
+test('Kodak: o endereço só aceita o código simples, nunca um caminho', () => {
+  assert.equal(kodakLaunchUrl({ folder: 'Z:\\J.RVG\\J0002369', name: 'Ana Silva' }), null);
+  assert.equal(kodakLaunchUrl({ folder: 'J.RVG/J0002369', name: 'Ana Silva' }), null);
 });
 
 console.log(`\n${n} testes OK (rx-launch)`);

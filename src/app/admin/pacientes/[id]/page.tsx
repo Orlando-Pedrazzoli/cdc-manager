@@ -143,6 +143,7 @@ export default async function PatientPage({
   const header: PatientHeaderData = {
     id,
     processNumber: patient.processNumber ?? null,
+    kodakFolder: patient.kodakFolder ?? null,
     name: patient.name,
     status: patient.status,
     birthDate: patient.birthDate ? patient.birthDate.toISOString() : null,

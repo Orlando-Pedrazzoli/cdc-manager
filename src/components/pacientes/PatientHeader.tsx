@@ -38,11 +38,13 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { PatientStatusBadge } from '@/components/ui/Badge';
 import { GdprConsentButton } from '@/components/pacientes/GdprConsentButton';
-import { RxLaunchButton } from '@/components/rx/RxLaunchButton';
+import { RxLaunchButtons } from '@/components/rx/RxLaunchButton';
 
 export interface PatientHeaderData {
   id: string;
   processNumber: number | null;
+  /** Pasta do paciente no Kodak / CS Imaging (null = sem pasta) */
+  kodakFolder: string | null;
   name: string;
   status: string;
   birthDate: string | null; // ISO
@@ -419,10 +421,11 @@ export function PatientHeader({ patient }: { patient: PatientHeaderData }) {
 
       {/* Ações — no telemóvel em grelha de 2 colunas (.cdc-actions) */}
       <div className='cdc-actions' style={{ gap: '10px' }}>
-        {/* Raio-X: abre o paciente no iRYS do posto (paridade Dentoral) */}
+        {/* Raio-X: abre o paciente no Kodak e no iRYS do posto (paridade Dentoral) */}
         {patient.status === 'active' && (
-          <RxLaunchButton
+          <RxLaunchButtons
             processNumber={patient.processNumber}
+            kodakFolder={patient.kodakFolder}
             name={patient.name}
           />
         )}

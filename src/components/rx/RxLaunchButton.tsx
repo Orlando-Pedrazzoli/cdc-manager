@@ -1,36 +1,42 @@
 // 📄 src/components/rx/RxLaunchButton.tsx
 // =============================================================================
-// CDC Manager — Raio-X: botão "Abrir no iRYS"
+// CDC Manager — Raio-X: botões "Abrir no iRYS" e "Abrir no Kodak"
 // -----------------------------------------------------------------------------
-// Abre o paciente no iRYS (MyRay) do posto, como o botão MyRay do Dentoral.
-// É uma ligação `cdcrx://` — quem a executa é o lançador instalado no posto
-// (scripts/rx-agent). Num posto sem lançador o clique não faz nada; por isso
-// o texto de ajuda no `title`.
+// Abrem o paciente no software de imagem do posto, como os botões MyRay e
+// Kodak do Dentoral. São ligações `cdcrx://` — quem as executa é o lançador
+// instalado no posto (public/rx-agent). Num posto sem lançador o clique não
+// faz nada; por isso o texto de ajuda no `title`.
 //
-// SEM 'use client': não tem hooks, serve em Server e Client Components.
-// Visual 100% inline (convenção do projeto). Sem n.º de processo ou sem
-// nome utilizável não há endereço — o botão não aparece.
+//   · iRYS  — precisa do n.º de processo (o código é P + processo)
+//   · Kodak — precisa da pasta do paciente (Patient.kodakFolder, migrada da
+//             rx_kodak do Dentoral). Sem pasta, o botão não aparece.
+//
+// SEM 'use client': não têm hooks, servem em Server e Client Components.
+// Visual 100% inline (convenção do projeto).
 // =============================================================================
 
-import { ScanLine } from 'lucide-react';
-import { irysLaunchUrl } from '@/lib/rx-launch';
+import type { ReactNode } from 'react';
+import { Scan, ScanLine } from 'lucide-react';
+import { irysLaunchUrl, kodakLaunchUrl } from '@/lib/rx-launch';
 
-export function RxLaunchButton({
-  processNumber,
-  name,
-  size = 'md',
+type Size = 'sm' | 'md';
+
+function LaunchLink({
+  href,
+  title,
+  size,
+  children,
 }: {
-  processNumber: number | null;
-  name: string;
-  size?: 'sm' | 'md';
+  href: string;
+  title: string;
+  size: Size;
+  children: ReactNode;
 }) {
-  const url = irysLaunchUrl({ processNumber, name });
-  if (!url) return null;
   const sm = size === 'sm';
   return (
     <a
-      href={url}
-      title='Abre este paciente no iRYS (MyRay) deste posto. Requer o lançador CDC RX instalado.'
+      href={href}
+      title={title}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -47,8 +53,75 @@ export function RxLaunchButton({
         whiteSpace: 'nowrap',
       }}
     >
-      <ScanLine size={sm ? 14 : 15} />
-      Abrir no iRYS
+      {children}
     </a>
+  );
+}
+
+/** Abre o paciente no iRYS (MyRay). Sem n.º de processo não aparece. */
+export function RxLaunchButton({
+  processNumber,
+  name,
+  size = 'md',
+}: {
+  processNumber: number | null;
+  name: string;
+  size?: Size;
+}) {
+  const url = irysLaunchUrl({ processNumber, name });
+  if (!url) return null;
+  return (
+    <LaunchLink
+      href={url}
+      size={size}
+      title='Abre este paciente no iRYS (MyRay) deste posto. Requer o lançador CDC RX instalado.'
+    >
+      <ScanLine size={size === 'sm' ? 14 : 15} />
+      Abrir no iRYS
+    </LaunchLink>
+  );
+}
+
+/** Abre o paciente no Kodak (CS Imaging). Sem pasta atribuída não aparece. */
+export function KodakLaunchButton({
+  kodakFolder,
+  name,
+  size = 'md',
+}: {
+  kodakFolder: string | null;
+  name: string;
+  size?: Size;
+}) {
+  const url = kodakLaunchUrl({ folder: kodakFolder, name });
+  if (!url) return null;
+  return (
+    <LaunchLink
+      href={url}
+      size={size}
+      title={`Abre este paciente no Kodak (CS Imaging) deste posto — pasta ${kodakFolder}. Requer o lançador CDC RX instalado.`}
+    >
+      <Scan size={size === 'sm' ? 14 : 15} />
+      Abrir no Kodak
+    </LaunchLink>
+  );
+}
+
+/** Os dois botões lado a lado (cada um só aparece se tiver dados) */
+export function RxLaunchButtons({
+  processNumber,
+  kodakFolder,
+  name,
+  size = 'md',
+}: {
+  processNumber: number | null;
+  kodakFolder: string | null;
+  name: string;
+  size?: Size;
+}) {
+  return (
+    <>
+      <KodakLaunchButton kodakFolder={kodakFolder} name={name} size={size} />
+      <RxLaunchButton processNumber={processNumber} name={name} size={size} />
+    </>
   );
 }

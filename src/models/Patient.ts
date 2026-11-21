@@ -245,6 +245,21 @@ const PatientSchema = new Schema(
       type: Date,
       default: null,
     },
+    // Raio-X (Kodak / CS Imaging): código da pasta de imagens do paciente no
+    // arquivo Carestream do Colombo (ex.: "J0002369" → <raiz>\J.RVG\J0002369).
+    // O CS Imaging identifica o paciente por esta pasta, não pelo n.º de
+    // processo; a ligação vem da tabela rx_kodak do Dentoral
+    // (scripts/migracao/16-rx-kodak.ts). null = sem pasta atribuída — o
+    // botão "Abrir no Kodak" não aparece. Não é único: o Dentoral tem pastas
+    // partilhadas por mais de um paciente.
+    kodakFolder: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      maxlength: 8,
+      default: null,
+      index: true,
+    },
     // Migração Dentoral
     legacyId: {
       type: String,

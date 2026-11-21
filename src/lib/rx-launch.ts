@@ -3,11 +3,11 @@
 // CDC Manager — Raio-X: abrir o paciente no software de imagem do posto
 // -----------------------------------------------------------------------------
 // Paridade com o Dentoral: a ficha do paciente abre esse paciente no iRYS
-// (MyRay, intraoral) ou no CS Imaging (Carestream, panorâmica). As imagens
-// ficam onde estão; nada é importado.
+// (MyRay) ou no Kodak / CS Imaging (Carestream: sensores dos gabinetes e
+// panorâmica). As imagens ficam onde estão; nada é importado.
 //
 // O CDC Manager é web, por isso não lança programas: constrói um endereço
-// `cdcrx://` que o LANÇADOR instalado no posto (scripts/rx-agent) recebe,
+// `cdcrx://` que o LANÇADOR instalado no posto (public/rx-agent) recebe,
 // valida e converte na mesma linha de comandos que o Dentoral usa.
 //
 // Formatos confirmados no posto GABINETE4 a 19/11/2026 (captura das chamadas
@@ -17,11 +17,12 @@
 //          · PATID = "P" + n.º de processo com 7 dígitos (o PRXLink do Dentoral)
 //          · /NAME leva o apelido e /SURNAME o nome próprio
 //   Kodak  TW.exe -P<raiz>\<inicial>.RVG\<código> -N<NOME COMPLETO>
-//          · <código> = pasta do paciente (tabela rx_kodak do Dentoral)
+//          · <código> = pasta do paciente (tabela rx_kodak do Dentoral,
+//            migrada para Patient.kodakFolder)
 //
-// POR CONFIRMAR: a regra com que o Dentoral parte o nome completo. Nos
-// ficheiros antigos da ponte cada parte tem uma só palavra; aqui usa-se a
-// primeira palavra (nome próprio) e a última (apelido).
+// Regra do nome no iRYS (confirmada a 19/11/2026 com um paciente de quatro
+// nomes): o Dentoral envia só a primeira palavra (nome próprio) e a última
+// (apelido); os nomes do meio não vão.
 //
 // Módulo puro (sem imports do projeto) — testado em scripts/tests.
 // =============================================================================
@@ -42,7 +43,7 @@ export function rxCleanName(name: string | null | undefined): string {
     .trim();
 }
 
-/** Nome próprio (1.ª palavra) e apelido (última) — ver nota POR CONFIRMAR */
+/** Nome próprio (1.ª palavra) e apelido (última) — regra do Dentoral */
 export function rxSplitName(
   name: string | null | undefined,
 ): { first: string; last: string } | null {
@@ -80,6 +81,18 @@ export function irysLaunchUrl(patient: {
 const KODAK_FOLDER = /^[\p{L}\d(]\d{7}$/u;
 
 /**
+ * Código de pasta normalizado (maiúsculas, sem caminho) ou null se não tiver
+ * o formato do arquivo Carestream. Aceita o código simples ("j0002369") ou um
+ * caminho que termine nele ("Z:\J.RVG\J0002369") — é o que a migração da
+ * rx_kodak usa para limpar os valores do Dentoral.
+ */
+export function normalizeKodakFolder(raw: string | null | undefined): string | null {
+  const last = (raw ?? '').trim().split(/[\\/]/).filter(Boolean).pop() ?? '';
+  const code = last.toLocaleUpperCase('pt-PT');
+  return KODAK_FOLDER.test(code) ? code : null;
+}
+
+/**
  * Endereço que abre o paciente no CS Imaging do posto, a partir do código
  * da pasta (ex.: "J0002369" → J.RVG\J0002369). null se o código for inválido.
  * A raiz (Z:\ nos gabinetes) é configuração do posto, não vai no endereço.
@@ -88,9 +101,11 @@ export function kodakLaunchUrl(patient: {
   folder: string | null | undefined;
   name: string | null | undefined;
 }): string | null {
-  const folder = (patient.folder ?? '').trim().toLocaleUpperCase('pt-PT');
+  const raw = (patient.folder ?? '').trim();
+  // Só o código simples: um caminho aqui seria um erro de quem chama
+  const folder = /[\\/]/.test(raw) ? null : normalizeKodakFolder(raw);
   const name = rxCleanName(patient.name);
-  if (!KODAK_FOLDER.test(folder) || !name) return null;
+  if (!folder || !name) return null;
   const dir = `${folder[0]}.RVG\\${folder}`;
   return (
     `cdcrx://kodak/?dir=${encodeURIComponent(dir)}` +
