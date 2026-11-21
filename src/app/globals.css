@@ -74,6 +74,22 @@ body {
 .cdc-shell {
   display: flex;
   min-height: 100vh;
+  /* a página nunca desliza para o lado: o que for largo (tabelas, agenda)
+     rola dentro do seu próprio contentor. `clip` (e não `hidden`) para não
+     criar um contentor de scroll — senão o sticky deixava de funcionar. */
+  overflow-x: clip;
+  --cdc-topbar-h: 63px;
+  --cdc-bottom-nav-h: 0px;
+}
+/* Barra superior presa ao topo no computador */
+.cdc-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+/* Menu inferior (telemóvel) — só existe abaixo de 1024px */
+.cdc-bottom-nav {
+  display: none;
 }
 .cdc-sidebar-desktop {
   display: flex;
@@ -120,6 +136,29 @@ body {
   }
   .cdc-hide-mobile {
     display: none !important;
+  }
+  /* no telemóvel quem fica preso ao topo é a barra da marca (hambúrguer) */
+  .cdc-shell {
+    --cdc-topbar-h: 54px;
+  }
+  .cdc-topbar {
+    position: static;
+  }
+  .cdc-shell[data-bottom-nav='on'] {
+    --cdc-bottom-nav-h: calc(60px + env(safe-area-inset-bottom, 0px));
+  }
+  .cdc-bottom-nav {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
+    height: var(--cdc-bottom-nav-h);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .cdc-shell[data-bottom-nav='on'] .cdc-main {
+    padding-bottom: calc(16px + var(--cdc-bottom-nav-h));
   }
   .cdc-topbar-user {
     display: none;
@@ -172,6 +211,46 @@ body {
   .cdc-drawer,
   .cdc-drawer-backdrop {
     transition: none;
+  }
+}
+
+/* --- Portal do Paciente --------------------------------------------------- */
+.cdc-portal {
+  min-height: 100vh;
+  overflow-x: clip;
+  --cdc-bottom-nav-h: 0px;
+}
+.cdc-portal-top {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+.cdc-portal-main {
+  padding: 20px 16px 40px;
+}
+.cdc-portal-bottom {
+  display: none;
+}
+@media (max-width: 767px) {
+  .cdc-portal {
+    --cdc-bottom-nav-h: calc(60px + env(safe-area-inset-bottom, 0px));
+  }
+  /* no telemóvel as tabs dão lugar ao menu fixo no fundo */
+  .cdc-portal-tabs {
+    display: none;
+  }
+  .cdc-portal-bottom {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
+    height: var(--cdc-bottom-nav-h);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .cdc-portal-main {
+    padding-bottom: calc(24px + var(--cdc-bottom-nav-h));
   }
 }
 
@@ -399,8 +478,9 @@ body {
   }
   .cdc-odonto-side {
     position: sticky;
-    top: 12px;
-    max-height: calc(100vh - 24px);
+    /* abaixo da barra superior, que agora fica presa ao topo */
+    top: calc(var(--cdc-topbar-h, 0px) + 12px);
+    max-height: calc(100vh - var(--cdc-topbar-h, 0px) - 24px);
     overflow-y: auto;
     padding-right: 4px;
   }

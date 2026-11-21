@@ -577,7 +577,8 @@ export function AnamnesisQuestionnaire({
           alignItems: 'center',
           gap: 12,
           position: 'sticky',
-          bottom: 0,
+          // por cima do menu inferior do telemóvel (0 onde ele não existe)
+          bottom: 'var(--cdc-bottom-nav-h, 0px)',
           padding: '10px 0',
           backgroundColor: '#FFFFFF',
           borderTop: '1px solid #EEF1F8',

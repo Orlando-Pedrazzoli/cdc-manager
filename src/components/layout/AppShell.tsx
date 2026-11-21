@@ -15,6 +15,10 @@
 //            dentro de um drawer (.cdc-drawer) com backdrop. Fecha ao navegar
 //            (onNavigate), no Escape e ao clicar fora. Bloqueia o scroll do body enquanto
 //            aberto. A estrutura responsiva vive em globals.css (.cdc-*).
+//            Na área do médico há ainda um menu fixo no fundo do ecrã
+//            (MobileTabBar) com os destinos do dia a dia; "Mais" abre o
+//            drawer com o menu completo.
+// A barra superior do computador (.cdc-topbar) fica presa ao topo.
 // =============================================================================
 
 'use client';
@@ -25,10 +29,20 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { Menu, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
+import {
+  CalendarDays,
+  LayoutDashboard,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Smile,
+  Users,
+  X,
+} from 'lucide-react';
 import { AdminSidebar } from './AdminSidebar';
 import { DoctorSidebar } from './DoctorSidebar';
 import { BrandMark, type BrandMarkProps } from './BrandMark';
+import { MobileTabBar, type MobileTabItem } from './MobileTabBar';
 
 type Props = {
   area: 'admin' | 'doutor';
@@ -109,11 +123,29 @@ export function AppShell({
 
   const close = () => setOpen(false);
 
+  // Menu inferior (telemóvel) — só na área do médico: o que ele abre entre
+  // consultas. O resto do menu continua no drawer ("Mais").
+  const bottomItems: MobileTabItem[] | null =
+    area === 'doutor'
+      ? [
+          {
+            href: '/doutor/dashboard',
+            label: 'O meu dia',
+            icon: LayoutDashboard,
+          },
+          { href: '/doutor/agenda', label: 'Agenda', icon: CalendarDays },
+          { href: '/doutor/pacientes', label: 'Pacientes', icon: Users },
+          { href: '/doutor/odontograma', label: 'Odontograma', icon: Smile },
+          { label: 'Mais', icon: Menu, onClick: () => setOpen(true) },
+        ]
+      : null;
+
   return (
     <div
       className='cdc-shell'
       data-drawer={open ? 'open' : 'closed'}
       data-sidebar={sidebarHidden ? 'hidden' : 'shown'}
+      data-bottom-nav={bottomItems ? 'on' : 'off'}
       style={{ backgroundColor: '#F4F6FB' }}
     >
       {/* Sidebar desktop */}
@@ -210,7 +242,9 @@ export function AppShell({
         </div>
 
         <header
-          className={topbarOnMobile ? undefined : 'cdc-hide-mobile'}
+          className={
+            topbarOnMobile ? 'cdc-topbar' : 'cdc-topbar cdc-hide-mobile'
+          }
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -256,6 +290,14 @@ export function AppShell({
 
         <main className='cdc-main'>{children}</main>
       </div>
+
+      {bottomItems && (
+        <MobileTabBar
+          className='cdc-bottom-nav'
+          label='Atalhos'
+          items={bottomItems}
+        />
+      )}
     </div>
   );
 }
