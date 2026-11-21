@@ -2,6 +2,7 @@
 // =============================================================================
 // CDC Manager — Layout da área de autenticação (login, ativar, recuperar)
 // Split-screen: painel institucional azul à esquerda, formulário à direita.
+// No telemóvel: fundo azul + formulário num cartão branco (.cdc-auth-*).
 // Logo servido com <img> nativo (sem otimizador) — máxima compatibilidade.
 // =============================================================================
 
@@ -75,37 +76,33 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         </p>
       </div>
 
-      {/* Formulário */}
-      <div
-        className='flex w-full flex-col items-center justify-center px-6 py-12 lg:w-1/2'
-        style={{ backgroundColor: '#FFFFFF' }}
-      >
-        {/* Branding só-mobile: o painel azul está oculto < 1024px e os
-            pacientes entram sobretudo pelo telemóvel — sem isto o
-            formulário aparecia sem identidade nenhuma */}
-        <div className='mb-8 flex flex-col items-center gap-2 lg:hidden'>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src='/logo-cdc.png'
-            alt='Centro Dentário Colombo'
-            style={{
-              height: '56px',
-              width: '56px',
-              objectFit: 'contain',
-              display: 'block',
-            }}
-          />
-          <span
-            className='text-center text-sm font-bold leading-tight'
-            style={{ color: '#1B2A6B' }}
-          >
-            CENTRO DENTÁRIO COLOMBO
+      {/* Formulário
+          ≥ 1024px: metade direita branca, formulário centrado.
+          <  1024px: fundo institucional azul, marca no topo e o formulário
+          num cartão branco com borda e sombra (.cdc-auth-* no globals.css) —
+          os pacientes entram sobretudo pelo telemóvel. */}
+      <div className='cdc-auth-pane'>
+        <div className='cdc-auth-brand'>
+          <span className='cdc-auth-logo'>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src='/logo-cdc.png'
+              alt='Centro Dentário Colombo'
+              style={{
+                height: '48px',
+                width: '48px',
+                objectFit: 'contain',
+                display: 'block',
+              }}
+            />
           </span>
-          <span className='text-xs' style={{ color: '#6A7186' }}>
-            Clínicas Colombo e Buraca
-          </span>
+          <span className='cdc-auth-brand-name'>CENTRO DENTÁRIO COLOMBO</span>
+          <span className='cdc-auth-brand-sub'>Clínicas Colombo e Buraca</span>
         </div>
-        <div className='w-full max-w-md'>{children}</div>
+        <div className='cdc-auth-card'>{children}</div>
+        <p className='cdc-auth-foot'>
+          © {new Date().getFullYear()} Centro Dentário Colombo · CDC Manager
+        </p>
       </div>
     </div>
   );

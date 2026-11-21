@@ -1,4 +1,4 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 
 :root {
   color-scheme: light;
@@ -21,6 +21,100 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Telemóvel/tablet: o iOS amplia a página ao focar um campo com letra abaixo
+   de 16px — e o zoom ficava preso depois do login. Com 16px não amplia.
+   !important porque os tamanhos dos campos são inline nos componentes. */
+@media (max-width: 1023px), (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* --- Autenticação (login, ativar, recuperar) ------------------------------ */
+.cdc-auth-pane {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 50%;
+  padding: 48px 24px;
+  background: #ffffff;
+}
+.cdc-auth-brand,
+.cdc-auth-foot {
+  display: none;
+}
+.cdc-auth-card {
+  width: 100%;
+  max-width: 448px;
+}
+@media (max-width: 1023px) {
+  .cdc-auth-pane {
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    justify-content: flex-start;
+    padding: max(32px, env(safe-area-inset-top, 0px)) 16px 24px;
+    background:
+      radial-gradient(
+        circle at 100% 0%,
+        rgba(255, 255, 255, 0.1) 0,
+        transparent 42%
+      ),
+      radial-gradient(
+        circle at 0% 100%,
+        rgba(255, 255, 255, 0.07) 0,
+        transparent 38%
+      ),
+      linear-gradient(160deg, #1b2a6b 0%, #2743a6 60%, #4a66d0 100%);
+  }
+  .cdc-auth-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0 24px;
+    text-align: center;
+  }
+  .cdc-auth-logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 72px;
+    height: 72px;
+    margin-bottom: 8px;
+    border-radius: 20px;
+    background: #ffffff;
+    box-shadow: 0 10px 28px rgba(8, 15, 52, 0.35);
+  }
+  .cdc-auth-brand-name {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    color: #ffffff;
+  }
+  .cdc-auth-brand-sub {
+    font-size: 13px;
+    color: #c9d4ff;
+  }
+  .cdc-auth-card {
+    padding: 28px 20px 24px;
+    border-radius: 20px;
+    border: 1px solid #d8deef;
+    background: #ffffff;
+    box-shadow: 0 24px 60px rgba(8, 15, 52, 0.38);
+  }
+  .cdc-auth-foot {
+    display: block;
+    margin: 20px 0 0;
+    font-size: 12px;
+    text-align: center;
+    color: #9fb0f0;
+  }
 }
 
 /* X1 — campos de formulário destacados (components/ui/Input.tsx) */
@@ -101,7 +195,7 @@ body {
 }
 /* 7.ª ronda/B2a: menu lateral recolhível no computador. O botão vive na
    barra superior; a preferência fica guardada no browser (AppShell). */
-.cdc-shell[data-sidebar='hidden'] .cdc-sidebar-desktop {
+.cdc-shell[data-sidebar="hidden"] .cdc-sidebar-desktop {
   display: none;
 }
 .cdc-sidebar-toggle {
@@ -144,7 +238,7 @@ body {
   .cdc-topbar {
     position: static;
   }
-  .cdc-shell[data-bottom-nav='on'] {
+  .cdc-shell[data-bottom-nav="on"] {
     --cdc-bottom-nav-h: calc(60px + env(safe-area-inset-bottom, 0px));
   }
   .cdc-bottom-nav {
@@ -157,7 +251,7 @@ body {
     height: var(--cdc-bottom-nav-h);
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
-  .cdc-shell[data-bottom-nav='on'] .cdc-main {
+  .cdc-shell[data-bottom-nav="on"] .cdc-main {
     padding-bottom: calc(16px + var(--cdc-bottom-nav-h));
   }
   .cdc-topbar-user {
@@ -196,11 +290,11 @@ body {
     height: auto;
     flex: 1;
   }
-  .cdc-shell[data-drawer='open'] .cdc-drawer-backdrop {
+  .cdc-shell[data-drawer="open"] .cdc-drawer-backdrop {
     opacity: 1;
     pointer-events: auto;
   }
-  .cdc-shell[data-drawer='open'] .cdc-drawer {
+  .cdc-shell[data-drawer="open"] .cdc-drawer {
     transform: translateX(0);
   }
   .cdc-main {
