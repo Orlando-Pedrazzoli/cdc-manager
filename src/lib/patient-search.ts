@@ -26,7 +26,7 @@
 // importam apenas o TIPO PatientSearchHit (`import type` — apagado no build).
 // =============================================================================
 
-import { signedPreviewUrl } from '@/lib/cloudinary';
+import { previewUrl } from '@/lib/storage';
 
 export interface PatientSearchHit {
   id: string;
@@ -119,8 +119,9 @@ export function patientSearchOr(rawTerm: string): Record<string, unknown>[] {
   return or;
 }
 
-/** Documento lean do Patient (com PATIENT_SEARCH_SELECT) → hit */
-export function toPatientSearchHit(p: {
+/** Documento lean do Patient (com PATIENT_SEARCH_SELECT) → hit.
+ *  Assíncrono: a URL da foto é pré-assinada (lib/storage). */
+export async function toPatientSearchHit(p: {
   _id: unknown;
   processNumber?: number | null;
   name?: string | null;
@@ -129,7 +130,7 @@ export function toPatientSearchHit(p: {
   snsNumber?: string | null;
   birthDate?: Date | null;
   photoPublicId?: string | null;
-}): PatientSearchHit {
+}): Promise<PatientSearchHit> {
   const name = p.name ?? '';
   const processNumber = p.processNumber ?? 0;
   const phone = p.phone ?? null;
@@ -143,7 +144,7 @@ export function toPatientSearchHit(p: {
     snsNumber: p.snsNumber ?? null,
     birth,
     photoUrl: p.photoPublicId
-      ? signedPreviewUrl(p.photoPublicId, { width: 96 })
+      ? await previewUrl(p.photoPublicId, { width: 96, fresh: true })
       : null,
     label: `${processNumber} · ${name}${birth ? ` · ${birth}` : ''}${phone ? ` · ${phone}` : ''}`,
   };

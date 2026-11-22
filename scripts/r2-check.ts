@@ -72,7 +72,7 @@ async function main(): Promise<void> {
   check('PUT aceite', put.ok, `HTTP ${put.status}${put.ok ? '' : ` ${(await put.text()).slice(0, 200)}`}`);
   const info2 = await fetchObjectInfo(k2);
   check('HEAD confirma o upload', info2?.bytes === jpeg.length && info2.resourceType === 'image', `${info2?.bytes} bytes, ${info2?.contentType}`);
-  check('miniaturas geradas no registo', await generateDerivatives(k2));
+  check('miniaturas geradas no registo', (await generateDerivatives(k2)) === 'gerados');
   // Adulteração numa chave à parte (se fosse aceite, não estraga o resto do teste)
   const kBad = `${base}/adulterado`;
   keys.push(kBad);

@@ -15,6 +15,7 @@
 'use client';
 
 import { useActionState, useRef, useState } from 'react';
+import { FileText } from 'lucide-react';
 import {
   createRxRequestAction,
   cancelRxRequestAction,
@@ -38,8 +39,10 @@ export type RxItem = {
   notes: string | null;
   status: RxStatus;
   requestedAtLabel: string; // HH:mm já formatado no servidor (Lisboa)
-  /** Imagens captadas (URLs assinados gerados no servidor — signedPreviewUrl) */
-  images: { url: string; label: string }[];
+  /** Imagens captadas (URLs assinadas geradas no servidor — lib/storage).
+   *  url = abrir em tamanho real (imagem grande ou o próprio PDF);
+   *  thumbUrl = miniatura no painel; null (PDF) → mostra um ícone */
+  images: { url: string; thumbUrl: string | null; label: string }[];
 };
 
 const STATUS_STYLE: Record<RxStatus, { bg: string; fg: string }> = {
@@ -284,17 +287,37 @@ export function RxRequestPanel({
                           lineHeight: 0,
                         }}
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={img.url}
-                          alt={img.label}
-                          style={{
-                            height: 140,
-                            maxWidth: 240,
-                            objectFit: 'contain',
-                            display: 'block',
-                          }}
-                        />
+                        {img.thumbUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={img.thumbUrl}
+                            alt={img.label}
+                            style={{
+                              height: 140,
+                              maxWidth: 240,
+                              objectFit: 'contain',
+                              display: 'block',
+                            }}
+                          />
+                        ) : (
+                          <span
+                            style={{
+                              height: 140,
+                              width: 110,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 6,
+                              color: '#C9D1E8',
+                              fontSize: 12,
+                              lineHeight: 1.2,
+                            }}
+                          >
+                            <FileText size={30} />
+                            PDF
+                          </span>
+                        )}
                       </a>
                     ))}
                   </div>

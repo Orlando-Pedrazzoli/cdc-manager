@@ -37,12 +37,13 @@ import {
 } from '@/lib/domain';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { fileInfo, putFile } from '@/lib/upload-client';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea, Checkbox } from '@/components/ui/Input';
 
-// Limite do plano free do Cloudinary (image e raw): ficheiros maiores
-// falhariam no upload — avisar ANTES com mensagem útil
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+// Limite do registo (o servidor lê o ficheiro para gerar miniaturas —
+// lib/storage MAX_DOCUMENT_BYTES): avisar ANTES com mensagem útil
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 export interface DocumentItem {
   id: string;
@@ -92,7 +93,7 @@ function UploadModal({
     if (!f) return;
     if (f.size > MAX_FILE_BYTES) {
       toast.error(
-        `Ficheiro com ${humanSize(f.size)} — o máximo é 10 MB. Reduza a resolução ou exporte em JPEG.`,
+        `Ficheiro com ${humanSize(f.size)} — o máximo é 50 MB. Reduza a resolução ou exporte em JPEG.`,
         { duration: 8000 },
       );
       return;
@@ -119,33 +120,29 @@ function UploadModal({
     if (!file || pending) return;
     setPending(true);
     try {
-      // 1. Ticket assinado (documentId + assinatura)
-      const ticket = await createDocumentUploadTicketAction({ patientId });
+      // 1. Ticket assinado (documentId + URL PUT pré-assinada)
+      const ticket = await createDocumentUploadTicketAction({
+        patientId,
+        file: fileInfo(file),
+      });
       if (!ticket.ok) {
         toast.error(ticket.error, { duration: 8000 });
         return;
       }
 
-      // 2. Upload DIRETO ao Cloudinary
-      const fd = new FormData();
-      fd.append('file', file);
-      for (const [key, value] of Object.entries(ticket.ticket.fields)) {
-        fd.append(key, String(value));
-      }
-      const upload = await fetch(ticket.ticket.uploadUrl, {
-        method: 'POST',
-        body: fd,
-      });
-      if (!upload.ok) {
+      // 2. Upload DIRETO ao armazenamento (R2), fora da Vercel
+      const upload = await putFile(ticket.ticket, file);
+      if (!upload) {
         toast.error('O upload falhou — verifique a ligação e tente de novo.', {
           duration: 8000,
         });
         return;
       }
 
-      // 3. Registo verificado (o server confirma o asset no Cloudinary)
+      // 3. Registo verificado (o server confirma o ficheiro no R2)
       const reg = new FormData();
       reg.append('documentId', ticket.documentId);
+      reg.append('filename', file.name);
       reg.append('patientId', patientId);
       reg.append('category', category);
       reg.append('title', title);
@@ -235,7 +232,7 @@ function UploadModal({
               Arraste um ficheiro ou clique para escolher
               <br />
               <span style={{ fontSize: '12px', color: '#9AA1B4' }}>
-                Imagens, PDF ou DICOM (.dcm) · máx. 10 MB
+                Imagens, PDF ou DICOM (.dcm) · máx. 50 MB
               </span>
             </p>
           )}

@@ -1,35 +1,28 @@
 // 📄 scripts/migracao/lib/cloud.ts
 // =============================================================================
-// Upload de BLOBs do Dentoral para o Cloudinary (conta da clínica).
-// Usa as mesmas variáveis da app (CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET /
-// CLOUDINARY_FOLDER) e as mesmas convenções de src/lib/cloudinary.ts:
-//   · type 'authenticated' (a app assina as URLs de preview/download)
+// Upload de BLOBs do Dentoral para o armazenamento da app (Cloudflare R2).
+// Usa as mesmas variáveis da app (R2_ENDPOINT / R2_ACCESS_KEY_ID /
+// R2_SECRET_ACCESS_KEY / R2_BUCKET) e o mesmo módulo (src/lib/storage.ts):
+//   · bucket privado; a app assina as URLs de preview/download
 //   · documentos: {root}/pacientes/{documentId}   · fotos: {root}/pacientes-foto/{patientId}
+//   · miniaturas geradas no upload (como no registo pela app)
+// Até 21/11/2026 isto ia para a Cloudinary; as chaves mantêm-se iguais.
 // =============================================================================
 
-import { v2 as cloudinary, type UploadApiResponse } from 'cloudinary';
+import {
+  contentTypeForFormat,
+  deleteObjectAndDerivatives,
+  fetchObjectInfo,
+  generateDerivatives,
+  putObject,
+  resourceTypeFor,
+} from '@/lib/storage';
 
-let configured = false;
-export function ensureCloudinary(): void {
-  if (configured) return;
-  if (process.env.CLOUDINARY_URL) cloudinary.config({ secure: true });
-  else {
-    const { CLOUDINARY_CLOUD_NAME: cloud_name, CLOUDINARY_API_KEY: api_key, CLOUDINARY_API_SECRET: api_secret } = process.env;
-    if (!cloud_name || !api_key || !api_secret) throw new Error('CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET em falta no .env.local');
-    cloudinary.config({ cloud_name, api_key, api_secret, secure: true });
-  }
-  configured = true;
-}
-
-export const ROOT_FOLDER = () => process.env.CLOUDINARY_FOLDER || 'cdc-manager';
+/** Prefixo raiz das chaves (igual ao da app) */
+export const ROOT_FOLDER = () =>
+  process.env.STORAGE_PREFIX || process.env.CLOUDINARY_FOLDER || 'cdc-manager';
 
 export type UploadResult = { publicId: string; resourceType: 'image' | 'raw'; format: string | null; bytes: number };
-
-const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tif', 'tiff', 'webp', 'pdf']);
-
-export function resourceTypeFor(ext: string | null): 'image' | 'raw' {
-  return ext && IMAGE_EXT.has(ext.toLowerCase()) ? 'image' : 'raw';
-}
 
 export function extOf(fileName: string | null, fileType: string | null): string | null {
   const fromName = fileName?.match(/\.([a-z0-9]{1,5})$/i)?.[1];
@@ -37,30 +30,24 @@ export function extOf(fileName: string | null, fileType: string | null): string 
   return t || null;
 }
 
-/** Devolve null se já existir um asset com este publicId (idempotência). */
-export async function existsInCloudinary(publicId: string, resourceType: 'image' | 'raw'): Promise<boolean> {
-  ensureCloudinary();
-  try {
-    await cloudinary.api.resource(publicId, { resource_type: resourceType, type: 'authenticated' });
-    return true;
-  } catch (e: any) {
-    if (e?.error?.http_code === 404 || e?.http_code === 404) return false;
-    throw e;
-  }
+/** true se já existir um objeto com esta chave (idempotência). */
+export async function existsInStorage(publicId: string): Promise<boolean> {
+  return (await fetchObjectInfo(publicId)) !== null;
 }
 
-export async function uploadBuffer(buf: Buffer, publicId: string, ext: string | null, opts: { folder?: string } = {}): Promise<UploadResult> {
-  ensureCloudinary();
-  const resourceType = resourceTypeFor(ext);
-  // upload em pedaços de 5 MB + timeout de 3 min: tolera ligações lentas / Cloudinary a abrandar
-  const res = await new Promise<UploadApiResponse>((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_chunked_stream(
-      { public_id: publicId, resource_type: resourceType, overwrite: false, invalidate: false, type: 'authenticated', chunk_size: 5 * 1024 * 1024, timeout: 180000, ...(opts.folder ? { folder: opts.folder } : {}) },
-      (err, result) => (err || !result ? reject(err ?? new Error('upload sem resultado')) : resolve(result)),
-    );
-    stream.end(buf);
-  });
-  return { publicId: res.public_id, resourceType, format: res.format ?? ext, bytes: res.bytes ?? buf.length };
+/** Sobe o buffer para a chave dada e gera as miniaturas (imagens). */
+export async function uploadBuffer(buf: Buffer, publicId: string, ext: string | null): Promise<UploadResult> {
+  const contentType = contentTypeForFormat(ext);
+  await putObject(publicId, buf, contentType);
+  await generateDerivatives(publicId, { body: buf, contentType }).catch(err =>
+    console.warn(`\n[cloud] miniaturas de ${publicId} falharam: ${errMsg(err)}`),
+  );
+  return { publicId, resourceType: resourceTypeFor(contentType), format: ext, bytes: buf.length };
+}
+
+/** Remove o ficheiro e as miniaturas (09b — documentos com conteúdo errado). */
+export async function removeFromStorage(publicId: string): Promise<boolean> {
+  return deleteObjectAndDerivatives(publicId);
 }
 
 export function errMsg(e: any): string {
@@ -70,7 +57,7 @@ export function errMsg(e: any): string {
 export async function withRetry<T>(fn: () => Promise<T>, tries = 4): Promise<T> {
   let last: unknown;
   for (let i = 0; i < tries; i++) {
-    try { return await fn(); } catch (e) { last = e; if (/rate limit|420/i.test(errMsg(e))) throw e; await new Promise(r => setTimeout(r, 5000 * (i + 1))); }
+    try { return await fn(); } catch (e) { last = e; await new Promise(r => setTimeout(r, 5000 * (i + 1))); }
   }
   throw last;
 }

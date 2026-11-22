@@ -1,6 +1,6 @@
 // 📄 scripts/migracao/09-documents.ts
 // =============================================================================
-// Passo 9 — documents (BLOB) + documentspac → Cloudinary + Document
+// Passo 9 — documents (BLOB) + documentspac → R2 + Document
 //
 // A tabela `documents` NÃO tem chave: a única ligação ao paciente é o FileName
 // (documentspac.FileName). 10 966 ficheiros, 10 102 nomes distintos; 11 008
@@ -13,7 +13,7 @@
 //     C:\cdc\inventario\documentos-ambiguos.csv para classificar à mão no Dentoral
 // Categoria: documentspac.ItemNumber 4 = RGPD → 'consent'; 3 = FICHA NOVA e
 // restantes → 'other' (docitems: 1 fichas anteriores, 2 ficha antiga).
-// Cloudinary: `{CLOUDINARY_FOLDER}/pacientes/<documentId>` (type authenticated),
+// R2: `{root}/pacientes/<documentId>` (bucket privado, + miniaturas),
 // como a app. legacyId = documents:<FileName>:<Pac>:<k>. Idempotente/retomável.
 // Flags: --limit N (grupos) · --since AAAA-MM-DD (DatePost) · --dry-run
 // =============================================================================
@@ -88,7 +88,7 @@ void runScript('09-documents', async args => {
     } catch (e: any) {
       stats.falhas++;
       log(`ERRO ${blobRow.FileName} (pac ${pac}): ${errMsg(e)}`);
-      if (/rate limit|420/i.test(errMsg(e))) throw new Error('Cloudinary em rate limit — relança mais tarde (retoma onde ficou)');
+      if (/SlowDown|429|503/i.test(errMsg(e))) throw new Error('Armazenamento a limitar pedidos — relança mais tarde (retoma onde ficou)');
     }
   }
 
@@ -142,5 +142,5 @@ void runScript('09-documents', async args => {
   if (ambiguous.length > 1) {
     try { writeFileSync(AMBIGUOUS_CSV, ambiguous.join('\n'), 'utf8'); log(`ambíguos listados em ${AMBIGUOUS_CSV}`); } catch { log('ambíguos:\n' + ambiguous.join('\n')); }
   }
-  log('documents → cloudinary + documents', stats);
+  log('documents → R2 + documents', stats);
 });

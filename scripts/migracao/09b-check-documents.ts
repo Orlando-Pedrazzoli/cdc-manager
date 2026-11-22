@@ -3,17 +3,15 @@
 // Passo 9b — verifica os documentos migrados: o MD5 guardado em
 // legacyData.md5 tem de existir entre os BLOBs do MySQL com EXATAMENTE o
 // mesmo nome (BINARY). Os que não batem (apanhados com comparação frouxa na
-// 1.ª ronda) são apagados do Mongo e do Cloudinary para o 09 os refazer.
+// 1.ª ronda) são apagados do Mongo e do R2 para o 09 os refazer.
 // --dry-run só lista.
 // =============================================================================
 
-import { v2 as cloudinary } from 'cloudinary';
 import { runScript, q, log, progress } from './lib/common';
-import { ensureCloudinary } from './lib/cloud';
+import { removeFromStorage } from './lib/cloud';
 
 void runScript('09b-check-documents', async args => {
   const { Document } = await import('@/models');
-  ensureCloudinary();
   const docs = await Document.find({ legacyId: /^documents:/ }, { legacyId: 1, publicId: 1, resourceType: 1, legacyData: 1 }).lean();
   log(`documentos migrados: ${docs.length}`);
   const md5ByName = new Map<string, Set<string>>();
@@ -31,7 +29,7 @@ void runScript('09b-check-documents', async args => {
   if (args.dryRun || !bad.length) return;
   let removed = 0;
   for (const d of bad) {
-    try { await cloudinary.uploader.destroy(String(d.publicId), { resource_type: (d as any).resourceType ?? 'image', type: 'authenticated', invalidate: true }); } catch { /* asset pode já não existir */ }
+    await removeFromStorage(String(d.publicId)); // best-effort: pode já não existir
     await Document.deleteOne({ _id: d._id });
     removed++;
     progress('a remover', removed, bad.length, t0);

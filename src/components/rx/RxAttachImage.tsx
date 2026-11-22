@@ -17,6 +17,7 @@
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ImagePlus } from 'lucide-react';
+import { fileInfo, putFile } from '@/lib/upload-client';
 import { createDocumentUploadTicketAction } from '@/actions/documents';
 import { registerRxImageAction } from '@/actions/rx';
 
@@ -37,24 +38,18 @@ export function RxAttachImage({
     setPending(true);
     setError(null);
     try {
-      // 1. Ticket assinado (documentId + assinatura)
-      const ticket = await createDocumentUploadTicketAction({ patientId });
+      // 1. Ticket assinado (documentId + URL PUT pré-assinada)
+      const ticket = await createDocumentUploadTicketAction({
+        patientId,
+        file: fileInfo(file),
+      });
       if (!ticket.ok) {
         setError(ticket.error);
         return;
       }
 
-      // 2. Upload DIRETO ao Cloudinary
-      const fd = new FormData();
-      fd.append('file', file);
-      for (const [key, value] of Object.entries(ticket.ticket.fields)) {
-        fd.append(key, String(value));
-      }
-      const upload = await fetch(ticket.ticket.uploadUrl, {
-        method: 'POST',
-        body: fd,
-      });
-      if (!upload.ok) {
+      // 2. Upload DIRETO ao armazenamento (R2)
+      if (!(await putFile(ticket.ticket, file))) {
         setError('O upload falhou — verifique a ligação e tente de novo.');
         return;
       }

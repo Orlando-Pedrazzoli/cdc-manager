@@ -30,6 +30,9 @@
 //     _derivados/{chave}/preview.webp  (≤ 1600 px — visualizador)
 //   O original fica INTACTO (qualidade diagnóstica). PDFs não têm miniatura
 //   (o sharp não rasteriza PDF): o visualizador abre o próprio PDF.
+//   Imagens que o sharp não lê (BMP do Dentoral, ficheiros estranhos): as
+//   "miniaturas" são cópia do original — o browser mostra BMP nativamente.
+//   Assim TODA a imagem não-PDF tem derivados e a UI não precisa de saber.
 // =============================================================================
 
 import {
@@ -42,6 +45,9 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import sharp from 'sharp';
+import type { UploadFileInfo, UploadTicket } from '@/lib/storage-types';
+
+export type { UploadFileInfo, UploadTicket };
 
 // -----------------------------------------------------------------------------
 // Config lazy (evita exigir env vars em build time)
@@ -88,7 +94,7 @@ const VIEW_URL_TTL_SECONDS = 2 * 60 * 60;
 const UPLOAD_URL_TTL_SECONDS = 15 * 60;
 
 /** Limites por omissão (verificados no registo) */
-export const MAX_DOCUMENT_BYTES = 100 * 1024 * 1024; // RX/TAC/DICOM grandes
+export const MAX_DOCUMENT_BYTES = 50 * 1024 * 1024; // RX/TAC/DICOM grandes (o registo lê o ficheiro para gerar miniaturas)
 export const MAX_IMAGE_BYTES = 15 * 1024 * 1024; // fotos de telemóvel
 
 // -----------------------------------------------------------------------------
@@ -143,6 +149,14 @@ const MIME_TO_FORMAT: Record<string, string> = {
   'image/svg+xml': 'svg',
   'application/pdf': 'pdf',
   'application/dicom': 'dcm',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/rtf': 'rtf',
+  'text/plain': 'txt',
+  'application/zip': 'zip',
+  'video/mp4': 'mp4',
 };
 
 const FORMAT_TO_MIME: Record<string, string> = Object.fromEntries(
@@ -151,6 +165,13 @@ const FORMAT_TO_MIME: Record<string, string> = Object.fromEntries(
 FORMAT_TO_MIME.jpeg = 'image/jpeg';
 FORMAT_TO_MIME.tiff = 'image/tiff';
 FORMAT_TO_MIME.dicom = 'application/dicom';
+FORMAT_TO_MIME.tiff = 'image/tiff';
+FORMAT_TO_MIME.dib = 'image/bmp';
+
+/** Content-Type a partir de um formato/extensão ('jpg', 'pdf', 'dcm'…) */
+export function contentTypeForFormat(format: string | null | undefined): string {
+  return (format && FORMAT_TO_MIME[format.toLowerCase().replace(/^\./, '')]) || 'application/octet-stream';
+}
 
 /** Tipos que o sharp consegue reduzir para miniatura */
 const RASTER_MIMES = new Set([
@@ -206,13 +227,6 @@ function decodeMeta(v: string | undefined): string | null {
 // 1. Upload direto browser → R2 (URL PUT pré-assinada)
 // -----------------------------------------------------------------------------
 
-export interface UploadTicket {
-  /** URL para o PUT (o ficheiro vai como body, sem FormData) */
-  uploadUrl: string;
-  method: 'PUT';
-  /** Headers que o browser TEM de enviar exatamente assim (entram na assinatura) */
-  headers: Record<string, string>;
-}
 
 /**
  * Assina um PUT para a chave dada. O Content-Type fica preso à assinatura:
@@ -225,6 +239,7 @@ export async function createUploadTicket(
   key: string,
   file: { contentType?: string | null; filename?: string | null },
 ): Promise<UploadTicket> {
+  if (!key) throw new Error('[storage] chave vazia');
   const contentType = resolveContentType(file.contentType, file.filename);
   const uploadUrl = await getSignedUrl(
     s3(),
@@ -311,11 +326,35 @@ async function signedGet(
  */
 export async function previewUrl(
   key: string,
-  opts: { width?: number; isPdf?: boolean } = {},
+  opts: { width?: number; isPdf?: boolean; fresh?: boolean } = {},
 ): Promise<string | null> {
   if (opts.isPdf) return null;
   const variant: DerivativeVariant = (opts.width ?? 1600) <= DERIVATIVE_WIDTH.thumb ? 'thumb' : 'preview';
-  return signedGet(derivativeKey(key, variant), { ttl: VIEW_URL_TTL_SECONDS, stable: true });
+  // fresh: fotos que se substituem na mesma chave (paciente, stock) — uma URL
+  // nova a cada render evita o browser mostrar a foto antiga da cache
+  return signedGet(derivativeKey(key, variant), { ttl: VIEW_URL_TTL_SECONDS, stable: !opts.fresh });
+}
+
+/**
+ * URLs de um documento clínico para as listas (mesma semântica da Cloudinary):
+ *   thumbUrl   — miniatura (imagens); null em PDF e não-imagens (UI mostra ícone)
+ *   previewUrl — "Ver": imagem grande, ou o próprio PDF no visualizador;
+ *                null em não-imagens (DICOM etc. só têm download)
+ */
+export async function documentUrls(doc: {
+  publicId: string;
+  resourceType?: string | null;
+  format?: string | null;
+}): Promise<{ thumbUrl: string | null; previewUrl: string | null }> {
+  if (doc.resourceType !== 'image') return { thumbUrl: null, previewUrl: null };
+  if ((doc.format ?? '').toLowerCase() === 'pdf') {
+    return { thumbUrl: null, previewUrl: await viewUrl(doc.publicId, { contentType: 'application/pdf' }) };
+  }
+  const [thumbUrl, big] = await Promise.all([
+    previewUrl(doc.publicId, { width: DERIVATIVE_WIDTH.thumb }),
+    previewUrl(doc.publicId, { width: DERIVATIVE_WIDTH.preview }),
+  ]);
+  return { thumbUrl, previewUrl: big };
 }
 
 /** URL para ABRIR o original no browser (PDF no visualizador, imagem em tamanho real). */
@@ -433,23 +472,70 @@ export async function getObjectBuffer(
 export async function generateDerivatives(
   key: string,
   source?: { body: Buffer; contentType: string },
-): Promise<boolean> {
+): Promise<'gerados' | 'copia' | false> {
   const src = source ?? (await getObjectBuffer(key));
   if (!src) return false;
   const ct = src.contentType.toLowerCase().split(';')[0].trim();
-  if (!RASTER_MIMES.has(ct)) return false;
+  if (!ct.startsWith('image/')) return false; // PDF, DICOM, Office…: sem miniatura
 
-  for (const variant of ['thumb', 'preview'] as const) {
-    const out = await sharp(src.body, { failOn: 'none', animated: false })
-      .rotate() // respeita a orientação EXIF das fotos de telemóvel
-      .resize({ width: DERIVATIVE_WIDTH[variant], height: DERIVATIVE_WIDTH[variant], fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: variant === 'thumb' ? 72 : 82 })
-      .toBuffer();
-    await putObject(derivativeKey(key, variant), out, 'image/webp', {
-      cacheControl: 'private, max-age=86400',
-    });
+  if (RASTER_MIMES.has(ct)) {
+    try {
+      const outputs: Buffer[] = [];
+      for (const variant of ['thumb', 'preview'] as const) {
+        outputs.push(
+          await sharp(src.body, { failOn: 'none', animated: false })
+            .rotate() // respeita a orientação EXIF das fotos de telemóvel
+            .resize({ width: DERIVATIVE_WIDTH[variant], height: DERIVATIVE_WIDTH[variant], fit: 'inside', withoutEnlargement: true })
+            .webp({ quality: variant === 'thumb' ? 72 : 82 })
+            .toBuffer(),
+        );
+      }
+      await Promise.all(
+        (['thumb', 'preview'] as const).map((variant, i) =>
+          putObject(derivativeKey(key, variant), outputs[i], 'image/webp', { cacheControl: 'private, max-age=86400' }),
+        ),
+      );
+      return 'gerados';
+    } catch (err) {
+      console.warn(`[storage] sharp não conseguiu ler ${key} (${ct}) — miniatura = cópia do original:`, (err as Error).message);
+    }
   }
-  return true;
+
+  // BMP e afins: o browser mostra-os; a "miniatura" é o próprio original
+  await Promise.all(
+    (['thumb', 'preview'] as const).map(variant =>
+      putObject(derivativeKey(key, variant), src.body, ct, { cacheControl: 'private, max-age=86400' }),
+    ),
+  );
+  return 'copia';
+}
+
+/**
+ * Fotos de identificação e de catálogo (NÃO clínicas): reduz o original no
+ * servidor — o equivalente à transformação na receção da Cloudinary
+ * (paciente ≤ 800 px, stock ≤ 1600 px) — e gera as miniaturas.
+ * Devolve null se o ficheiro não for uma imagem legível (o chamador apaga-o
+ * e recusa).
+ */
+export async function normalizePhoto(
+  key: string,
+  maxPx: number,
+): Promise<{ bytes: number } | null> {
+  const src = await getObjectBuffer(key);
+  if (!src) return null;
+  let out: Buffer;
+  try {
+    out = await sharp(src.body, { failOn: 'none', animated: false })
+      .rotate()
+      .resize({ width: maxPx, height: maxPx, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 82, mozjpeg: true })
+      .toBuffer();
+  } catch {
+    return null;
+  }
+  await putObject(key, out, 'image/jpeg');
+  await generateDerivatives(key, { body: out, contentType: 'image/jpeg' });
+  return { bytes: out.length };
 }
 
 // -----------------------------------------------------------------------------

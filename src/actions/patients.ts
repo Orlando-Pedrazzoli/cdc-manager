@@ -33,11 +33,15 @@ import { dbConnect } from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Recall from '@/models/Recall';
 import {
-  signDocumentUpload,
-  fetchDocumentAssetInfo,
-  destroyDocumentAsset,
-  type CloudinaryUploadTicket,
-} from '@/lib/cloudinary';
+  createUploadTicket,
+  deleteObjectAndDerivatives,
+  fetchObjectInfo,
+  normalizePhoto,
+  patientPhotoKey,
+  MAX_IMAGE_BYTES,
+  type UploadFileInfo,
+  type UploadTicket,
+} from '@/lib/storage';
 import User from '@/models/User';
 import { createActivationCode } from '@/lib/activation';
 import { sendActivationEmail } from '@/lib/resend';
@@ -692,20 +696,18 @@ export async function sendPatientInviteAction(
 
 // -----------------------------------------------------------------------------
 // FOTO DO PACIENTE (paridade Dentoral) — mesmo fluxo em 3 passos dos
-// documentos (lib/cloudinary.ts). Foto de identificação, não clínica:
-// leva incoming transformation (o Cloudinary guarda já reduzida) e a
-// remoção apaga o asset. Public ID opaco: {root}/pacientes-foto/{id}.
+// documentos (lib/storage.ts). Foto de identificação, não clínica: o
+// servidor reduz a ≤ 800 px depois do upload (normalizePhoto) e a remoção
+// apaga o ficheiro. Chave opaca: {root}/pacientes-foto/{id}.
 // -----------------------------------------------------------------------------
 
-function patientPhotoPublicId(patientId: string): string {
-  const root = process.env.CLOUDINARY_FOLDER || 'cdc-manager';
-  return `${root}/pacientes-foto/${patientId}`;
-}
+const PATIENT_PHOTO_MAX_PX = 800;
 
 export async function createPatientPhotoTicketAction(input: {
   patientId: string;
+  file: UploadFileInfo;
 }): Promise<
-  { ok: true; ticket: CloudinaryUploadTicket } | { ok: false; error: string }
+  { ok: true; ticket: UploadTicket } | { ok: false; error: string }
 > {
   const staff = await requireStaff();
   if (!staff) return { ok: false, error: 'Sem permissões.' };
@@ -717,16 +719,24 @@ export async function createPatientPhotoTicketAction(input: {
   const patient = await Patient.findById(input.patientId).select('_id').lean();
   if (!patient) return { ok: false, error: 'Paciente não encontrado.' };
 
+  if (!input.file?.type?.startsWith('image/')) {
+    return { ok: false, error: 'A foto tem de ser uma imagem (JPEG/PNG).' };
+  }
+  if (input.file.size > MAX_IMAGE_BYTES) {
+    return { ok: false, error: 'A foto tem de ter no máximo 15 MB.' };
+  }
+
   try {
-    const ticket = signDocumentUpload(patientPhotoPublicId(input.patientId), {
-      incomingTransformation: 'c_limit,w_800,q_auto',
+    const ticket = await createUploadTicket(patientPhotoKey(input.patientId), {
+      contentType: input.file.type,
+      filename: input.file.name,
     });
     return { ok: true, ticket };
   } catch (err) {
     console.error('[patients] assinatura de foto falhou:', err);
     return {
       ok: false,
-      error: 'Cloudinary não configurado — verifique as variáveis de ambiente.',
+      error: 'Armazenamento não configurado — verifique as variáveis R2_*.',
     };
   }
 }
@@ -744,13 +754,19 @@ export async function setPatientPhotoAction(input: {
   const patient = await Patient.findById(input.patientId);
   if (!patient) return { ok: false, error: 'Paciente não encontrado.' };
 
-  const publicId = patientPhotoPublicId(input.patientId);
-  const asset = await fetchDocumentAssetInfo(publicId);
+  const publicId = patientPhotoKey(input.patientId);
+  const asset = await fetchObjectInfo(publicId);
   if (!asset) {
     return { ok: false, error: 'Upload não encontrado — tente novamente.' };
   }
-  if (asset.resourceType !== 'image') {
-    await destroyDocumentAsset(publicId, asset.resourceType);
+  if (asset.bytes > MAX_IMAGE_BYTES) {
+    await deleteObjectAndDerivatives(publicId);
+    return { ok: false, error: 'A foto tem de ter no máximo 15 MB.' };
+  }
+  // Reduz a ≤ 800 px e gera as miniaturas; null = não é imagem legível
+  const normalized = await normalizePhoto(publicId, PATIENT_PHOTO_MAX_PX);
+  if (!normalized) {
+    await deleteObjectAndDerivatives(publicId);
     return { ok: false, error: 'A foto tem de ser uma imagem (JPEG/PNG).' };
   }
 
@@ -786,7 +802,7 @@ export async function removePatientPhotoAction(input: {
     return { ok: false, error: 'Paciente sem foto.' };
   }
 
-  await destroyDocumentAsset(patient.photoPublicId, 'image');
+  await deleteObjectAndDerivatives(patient.photoPublicId);
   patient.photoPublicId = null;
   await patient.save();
 
@@ -834,7 +850,7 @@ export async function quickSearchPatientsAction(
     .select(PATIENT_SEARCH_SELECT)
     .lean();
 
-  return rows.map(toPatientSearchHit);
+  return Promise.all(rows.map(toPatientSearchHit));
 }
 
 // -----------------------------------------------------------------------------

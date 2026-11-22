@@ -7,14 +7,14 @@ reescrevem o que já existe.
 ## 1. Preparação (uma vez)
 
 ```powershell
-npm i mysql2   # cloudinary e tsx já estão no projeto
+npm i mysql2   # tsx e o SDK S3 (R2) já estão no projeto
 ```
 
 `.env.local` (raiz do projeto) — acrescentar:
 
 ```
 DENTORAL_MYSQL_URL=mysql://root@127.0.0.1:3308/drdata
-# Cloudinary: usa as variáveis que a app já tem (CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, CLOUDINARY_FOLDER)
+# Ficheiros (R2): usa as variáveis que a app já tem (R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET)
 ```
 
 `MONGODB_URI` já lá está (Atlas `cdc-manager`). **Aponta para o cluster certo antes de correr.**
@@ -39,8 +39,8 @@ MySQL local tem de estar a correr (terminal 1):
 | 07 | `07-clinical-records.ts` | `obsger` + `obsdent` + `anmtexto/anmtitulo` → `ClinicalRecord` | 164k notas | 5–10 min |
 | 08 | `08-legacy-invoices.ts` | `ccorrentes` + `doclin` + `defdocs` + `ccconcilia` → `LegacyInvoice` | 329k | 10–20 min |
 | 8b | `08b-concilia.ts` | `ccconcilia` → `LegacyInvoice.relatedLegacyIds` (recibo ↔ fatura) | 11.7k | segundos |
-| 09 | `09-documents.ts` | `documents` + `documentspac` (BLOB) → Cloudinary + `Document` | 11k / 2.2 GB | horas (retomável) |
-| 10 | `10-photos.ts` | `paciente.PFoto` → Cloudinary + `Patient.photoPublicId` | 77k | horas (retomável) |
+| 09 | `09-documents.ts` | `documents` + `documentspac` (BLOB) → R2 + `Document` | 11k / 2.2 GB | horas (retomável) |
+| 10 | `10-photos.ts` | `paciente.PFoto` → R2 + `Patient.photoPublicId` | 77k | horas (retomável) |
 | 11 | `11-users.ts` | `data/medicos-ativos.json` (lista do Victor) → `Doctor.active` + `User` (invited) | 22 | segundos |
 | 12 | `12-fix-nif.ts` | anula NIFs placeholder/inválidos nos pacientes (original em legacyData) | — | segundos |
 | 13 | `13-chart-effects.ts` | infere `TreatmentType.chartEffect` (como o ato pinta o odontograma) + CSV para revisão | 1 290 | segundos |
@@ -75,7 +75,7 @@ npx tsx --env-file=.env.local scripts/migracao/12-fix-nif.ts
 npx tsx --env-file=.env.local scripts/migracao/13-chart-effects.ts
 npx tsx --env-file=.env.local scripts/migracao/14-odontogram.ts --faces "1=O,2=M,4=D,16=V,32=L"
 npx tsx --env-file=.env.local scripts/migracao/99-verify.ts
-# BLOBs — só depois de ter a conta Cloudinary da clínica:
+# BLOBs — vão para o R2 da clínica (até 21/11/2026 iam para a Cloudinary):
 npx tsx --env-file=.env.local scripts/migracao/09-documents.ts --limit 50     # teste
 npx tsx --env-file=.env.local scripts/migracao/09-documents.ts
 npx tsx --env-file=.env.local scripts/migracao/10-photos.ts --limit 50        # teste
@@ -100,7 +100,7 @@ db.legacyinvoices.deleteMany({})
 db.documents.deleteMany({ legacyId: /^documents:/ })
 ```
 
-Os assets no Cloudinary ficam (os scripts 09/10 detetam-nos e não voltam a enviar).
+Os ficheiros no R2 ficam (os scripts 09/10 detetam-nos e não voltam a enviar).
 
 ## 4. Decisões tomadas
 

@@ -58,6 +58,11 @@ export const registerDocumentSchema = z.object({
   ),
   visibleToPatient: toggleBoolean,
   appointmentId: optionalObjectIdField('Consulta inválida'),
+  /** Nome original do ficheiro (só para o título por omissão e o formato) */
+  filename: z.preprocess(
+    emptyToNull,
+    z.string().trim().max(255, 'Nome de ficheiro demasiado longo').nullable(),
+  ),
 });
 
 export type RegisterDocumentInput = z.infer<typeof registerDocumentSchema>;

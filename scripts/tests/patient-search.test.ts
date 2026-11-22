@@ -75,8 +75,15 @@ test('data inválida (31/02) não gera cláusula de nascimento', () => {
   );
 });
 
-test('hit: label com processo · nome · nascimento · telemóvel; sem foto', () => {
-  const hit = toPatientSearchHit({
+const testAsync = async (name: string, fn: () => Promise<void>) => {
+  await fn();
+  n++;
+  console.log(`  ✓ ${name}`);
+};
+
+void (async () => {
+await testAsync('hit: label com processo · nome · nascimento · telemóvel; sem foto', async () => {
+  const hit = await toPatientSearchHit({
     _id: 'abc',
     processNumber: 42,
     name: 'João Silva',
@@ -94,3 +101,7 @@ test('hit: label com processo · nome · nascimento · telemóvel; sem foto', ()
 });
 
 console.log(`\n${n} testes OK`);
+})().catch(err => {
+  console.error(err);
+  process.exitCode = 1;
+});

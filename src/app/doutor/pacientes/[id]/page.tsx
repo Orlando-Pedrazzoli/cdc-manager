@@ -34,7 +34,7 @@ import {
   type DocumentItem,
 } from '@/components/pacientes/DocumentsTab';
 import ClinicalDocument from '@/models/Document';
-import { signedPreviewUrl } from '@/lib/cloudinary';
+import { documentUrls } from '@/lib/storage';
 import { PatientLabCases } from '@/components/proteses/PatientLabCases';
 import { IssueDocumentToolbar } from '@/components/documentos/IssueDocumentToolbar';
 import { DoctorAnamnesisPanel } from '@/components/clinico/DoctorAnamnesisPanel';
@@ -135,19 +135,18 @@ export default async function DoctorPatientPage({
         uploadedByUserId: { name?: string } | null;
       }>('uploadedByUserId', 'name')
       .lean();
-    documents = docs.map(d => {
-      const isImage = d.resourceType === 'image';
-      const isPdf = d.format === 'pdf';
+    documents = await Promise.all(docs.map(async d => {
+      const { thumbUrl, previewUrl: bigUrl } = await documentUrls({
+        publicId: d.publicId,
+        resourceType: d.resourceType,
+        format: d.format,
+      });
       return {
         id: String(d._id),
         category: d.category,
         title: d.title,
-        thumbUrl: isImage
-          ? signedPreviewUrl(d.publicId, { width: 480, isPdf })
-          : null,
-        previewUrl: isImage
-          ? signedPreviewUrl(d.publicId, { width: 1600, isPdf })
-          : null,
+        thumbUrl,
+        previewUrl: bigUrl,
         format: d.format ?? null,
         bytes: d.bytes ?? 0,
         visibleToPatient: Boolean(d.visibleToPatient),
@@ -155,7 +154,7 @@ export default async function DoctorPatientPage({
         createdAtLabel: d.createdAt ? lisbonDateTime(d.createdAt) : '',
         note: d.note ?? null,
       };
-    });
+    }));
   }
 
   const [patient, record] = await Promise.all([

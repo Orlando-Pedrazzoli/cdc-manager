@@ -26,10 +26,10 @@ import { logAudit } from '@/lib/audit';
 import { renderDocumentPdf } from '@/lib/document-pdf';
 import { longDatePt, shortDatePt } from '@/lib/document-merge';
 import {
-  patientDocumentPublicId,
-  uploadAuthenticatedDataUrl,
-  uploadAuthenticatedPdf,
-} from '@/lib/cloudinary';
+  patientDocumentKey,
+  uploadDataUrl,
+  uploadPdf,
+} from '@/lib/storage';
 import {
   TEMPLATE_KIND_DOC_CATEGORY,
   type TemplateKind,
@@ -69,8 +69,8 @@ export async function finalizeGdprConsent(params: {
     return { error: 'Paciente não encontrado ou inativo.' };
 
   const docId = new mongoose.Types.ObjectId();
-  const publicId = patientDocumentPublicId(String(docId));
-  const asset = await uploadAuthenticatedDataUrl(
+  const publicId = patientDocumentKey(String(docId));
+  const asset = await uploadDataUrl(
     publicId,
     params.signatureDataUrl,
   );
@@ -179,8 +179,8 @@ export async function finalizeIssuedDocument(params: {
   });
 
   const docId = new mongoose.Types.ObjectId();
-  const publicId = patientDocumentPublicId(String(docId));
-  const asset = await uploadAuthenticatedPdf(publicId, pdf);
+  const publicId = patientDocumentKey(String(docId));
+  const asset = await uploadPdf(publicId, pdf);
   const category =
     TEMPLATE_KIND_DOC_CATEGORY[t.kind as TemplateKind] ?? 'other';
   await ClinicalDocument.create({

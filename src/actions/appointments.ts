@@ -1354,5 +1354,5 @@ export async function findPatientsAction(
     .select(PATIENT_SEARCH_SELECT)
     .lean();
 
-  return patients.map(toPatientSearchHit);
+  return Promise.all(patients.map(toPatientSearchHit));
 }

@@ -1,8 +1,8 @@
 // 📄 scripts/migracao/10-photos.ts
 // =============================================================================
-// Passo 10 — paciente.PFoto (BLOB) → Cloudinary → Patient.photoPublicId
+// Passo 10 — paciente.PFoto (BLOB) → R2 → Patient.photoPublicId
 //
-// · publicId: `{CLOUDINARY_FOLDER}/pacientes-foto/<patientId>` (type authenticated) —
+// · publicId: `{root}/pacientes-foto/<patientId>` (R2, bucket privado) —
 //   a mesma convenção de src/actions/patients.ts, para a app ler/substituir a foto.
 // · Só pacientes migrados sem photoPublicId. Idempotente/retomável.
 // · 77 220 fotos no Dentoral; por defeito só pacientes ativos nos últimos 5 anos
@@ -109,10 +109,10 @@ void runScript('10-photos', async args => {
     } catch (e: any) {
       failed++;
       log(`ERRO foto ${PMecano}: ${errMsg(e)}`);
-      if (/rate limit|420/i.test(errMsg(e))) { log('Cloudinary em rate limit — a parar; relança mais tarde (retoma onde ficou)'); break; }
+      if (/SlowDown|429|503/i.test(errMsg(e))) { log('Armazenamento a limitar pedidos — a parar; relança mais tarde (retoma onde ficou)'); break; }
     }
     progress('fotos', done, ids.length, t0);
   }
   console.log();
-  log('PFoto → cloudinary + patients.photoPublicId', { lidas: done, enviadas: uploaded, bmpReparados: repaired, saltadas: skipped, falhas: failed });
+  log('PFoto → R2 + patients.photoPublicId', { lidas: done, enviadas: uploaded, bmpReparados: repaired, saltadas: skipped, falhas: failed });
 });

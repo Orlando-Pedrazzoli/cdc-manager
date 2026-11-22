@@ -18,7 +18,7 @@ import StockMovement from '@/models/StockMovement';
 import Warehouse from '@/models/Warehouse';
 import User from '@/models/User';
 import { getActiveClinics } from '@/models/Clinic';
-import { signedPreviewUrl } from '@/lib/cloudinary';
+import { previewUrl } from '@/lib/storage';
 import {
   PRODUCT_UNIT_LABEL,
   STOCK_MOVEMENT_LABEL,
@@ -100,6 +100,13 @@ export default async function ProductLedgerPage({
   const low =
     product.active && (product.minStock ?? 0) > 0 && total < product.minStock;
 
+
+  // Miniatura da foto (URL pré-assinada nova a cada render: a foto
+  // substitui-se na mesma chave e não pode vir da cache)
+  const productImageUrl = product.imagePublicId
+    ? await previewUrl(product.imagePublicId, { width: 128, fresh: true })
+    : null;
+
   return (
     <div
       style={{
@@ -139,7 +146,7 @@ export default async function ProductLedgerPage({
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- URL assinada dinâmica */}
               <img
-                src={signedPreviewUrl(product.imagePublicId, { width: 128 })}
+                src={productImageUrl ?? ''}
                 alt={product.name}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />

@@ -38,7 +38,7 @@ import {
   type DocumentItem,
 } from '@/components/pacientes/DocumentsTab';
 import ClinicalDocument from '@/models/Document';
-import { signedPreviewUrl } from '@/lib/cloudinary';
+import { documentUrls, previewUrl } from '@/lib/storage';
 import { PatientLabCases } from '@/components/proteses/PatientLabCases';
 import { PatientAppointments } from '@/components/pacientes/PatientAppointments';
 import {
@@ -150,7 +150,7 @@ export default async function PatientPage({
     phone: patient.phone ?? null,
     email: patient.email ?? null,
     photoThumbUrl: patient.photoPublicId
-      ? signedPreviewUrl(patient.photoPublicId, { width: 192 })
+      ? await previewUrl(patient.photoPublicId, { width: 192, fresh: true })
       : null,
     deceased: Boolean(patient.deceasedAt),
     firstConsultLabel: bounds?.first ? lisbonShort.format(bounds.first) : null,
@@ -196,19 +196,18 @@ export default async function PatientPage({
         uploadedByUserId: { name?: string } | null;
       }>('uploadedByUserId', 'name')
       .lean();
-    documents = docs.map(d => {
-      const isImage = d.resourceType === 'image';
-      const isPdf = d.format === 'pdf';
+    documents = await Promise.all(docs.map(async d => {
+      const { thumbUrl, previewUrl: bigUrl } = await documentUrls({
+        publicId: d.publicId,
+        resourceType: d.resourceType,
+        format: d.format,
+      });
       return {
         id: String(d._id),
         category: d.category,
         title: d.title,
-        thumbUrl: isImage
-          ? signedPreviewUrl(d.publicId, { width: 480, isPdf })
-          : null,
-        previewUrl: isImage
-          ? signedPreviewUrl(d.publicId, { width: 1600, isPdf })
-          : null,
+        thumbUrl,
+        previewUrl: bigUrl,
         format: d.format ?? null,
         bytes: d.bytes ?? 0,
         visibleToPatient: Boolean(d.visibleToPatient),
@@ -216,7 +215,7 @@ export default async function PatientPage({
         createdAtLabel: d.createdAt ? lisbonDateTime.format(d.createdAt) : '',
         note: d.note ?? null,
       };
-    });
+    }));
   }
 
   const initial: PatientFormInitial = {

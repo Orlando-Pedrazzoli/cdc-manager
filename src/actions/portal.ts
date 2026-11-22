@@ -12,7 +12,7 @@
 //   1. doc.patientId TEM de ser o patientId da sessão
 //   2. doc.visibleToPatient TEM de ser true (notas internas nunca saem)
 //   3. doc anulado (voidedAt) é invisível — never delete, mas nunca exposto
-// URL assinada de curta duração (TTL do lib/cloudinary) + audit 'view':
+// URL assinada de curta duração (TTL do lib/storage) + audit 'view':
 // acesso de pacientes a binários de dados de saúde fica registado como o
 // de staff — trilho RGPD completo de quem viu o quê e quando.
 // =============================================================================
@@ -22,7 +22,7 @@
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
-import { signedDownloadUrl } from '@/lib/cloudinary';
+import { downloadUrl } from '@/lib/storage';
 import ClinicalDocument from '@/models/Document';
 import Appointment from '@/models/Appointment';
 import User from '@/models/User';
@@ -84,9 +84,9 @@ export async function getMyDocumentUrlAction(input: {
 
   if (!doc) return { ok: false, error: 'Documento não encontrado.' };
 
-  const url = signedDownloadUrl({
-    publicId: doc.publicId,
-    resourceType: doc.resourceType as 'image' | 'raw',
+  const url = await downloadUrl({
+    key: doc.publicId,
+    filename: doc.title,
     format: doc.format ?? null,
   });
 

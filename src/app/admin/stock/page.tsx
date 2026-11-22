@@ -13,7 +13,7 @@ import { dbConnect } from '@/lib/mongodb';
 import Product from '@/models/Product';
 import Warehouse from '@/models/Warehouse';
 import { getActiveClinics } from '@/models/Clinic';
-import { signedPreviewUrl } from '@/lib/cloudinary';
+import { previewUrl } from '@/lib/storage';
 import {
   StockTable,
   type StockProductRow,
@@ -49,7 +49,7 @@ export default async function StockPage() {
     ]),
   );
 
-  const rows: StockProductRow[] = products.map(p => {
+  const rows: StockProductRow[] = await Promise.all(products.map(async p => {
     const balances: Record<string, number> = {};
     for (const c of clinics) balances[c.slug] = 0;
     let total = 0;
@@ -68,12 +68,12 @@ export default async function StockPage() {
       minStock: p.minStock ?? 0,
       active: !!p.active,
       imageThumbUrl: p.imagePublicId
-        ? signedPreviewUrl(p.imagePublicId, { width: 96 })
+        ? await previewUrl(p.imagePublicId, { width: 96, fresh: true })
         : null,
       balances,
       total,
     };
-  });
+  }));
 
   // Taxonomia emergente: famílias em uso alimentam o datalist e o filtro
   const families = [

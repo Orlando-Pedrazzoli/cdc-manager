@@ -17,6 +17,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import { fileInfo, putFile } from '@/lib/upload-client';
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -131,8 +132,8 @@ function ProductPhotoSection({ product }: { product: StockProductRow }) {
 
   const upload = async (file: File | null) => {
     if (!file || pending) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Foto com mais de 10 MB — reduza a resolução.', {
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Foto com mais de 15 MB — reduza a resolução.', {
         duration: 7000,
       });
       return;
@@ -141,21 +142,13 @@ function ProductPhotoSection({ product }: { product: StockProductRow }) {
     try {
       const ticket = await createProductImageTicketAction({
         productId: product.id,
+        file: fileInfo(file),
       });
       if (!ticket.ok) {
         toast.error(ticket.error, { duration: 7000 });
         return;
       }
-      const fd = new FormData();
-      fd.append('file', file);
-      for (const [key, value] of Object.entries(ticket.ticket.fields)) {
-        fd.append(key, String(value));
-      }
-      const res = await fetch(ticket.ticket.uploadUrl, {
-        method: 'POST',
-        body: fd,
-      });
-      if (!res.ok) {
+      if (!(await putFile(ticket.ticket, file))) {
         toast.error('O upload falhou — tente novamente.', { duration: 7000 });
         return;
       }

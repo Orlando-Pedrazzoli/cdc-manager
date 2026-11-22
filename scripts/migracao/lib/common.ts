@@ -13,7 +13,7 @@
 // Variáveis (.env.local — correr com `npx tsx --env-file=.env.local ...`):
 //   MONGODB_URI          cluster CDC (conta da clínica)
 //   DENTORAL_MYSQL_URL   mysql://root@127.0.0.1:3308/drdata   (MySQL 5.5 local)
-//   CLOUDINARY_URL       só para 09-documents / 10-photos
+//   R2_*                 só para 09-documents / 10-photos (as mesmas da app)
 // =============================================================================
 
 import mongoose, { type Model, Types } from 'mongoose';

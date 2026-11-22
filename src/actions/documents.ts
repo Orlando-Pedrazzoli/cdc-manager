@@ -2,18 +2,18 @@
 // =============================================================================
 // CDC Manager — Actions: Documentos clínicos (admin + receção + médicos)
 // -----------------------------------------------------------------------------
-// Fluxo de upload em 3 passos (ver lib/cloudinary.ts):
-//   1. createDocumentUploadTicketAction → documentId novo + assinatura
-//   2. o browser envia o ficheiro DIRETO ao Cloudinary (fora da Vercel)
-//   3. registerDocumentAction → VERIFICA o asset no Cloudinary (bytes/
-//      formato reais — nunca confiar no client) e grava o Document com
-//      _id = documentId (public_id opaco garantido por construção)
+// Fluxo de upload em 3 passos (ver lib/storage.ts):
+//   1. createDocumentUploadTicketAction → documentId novo + URL PUT assinada
+//   2. o browser envia o ficheiro DIRETO ao R2 (fora da Vercel)
+//   3. registerDocumentAction → VERIFICA o objeto no R2 (bytes/tipo reais —
+//      nunca confiar no client), gera as miniaturas e grava o Document com
+//      _id = documentId (chave opaca garantida por construção)
 //
 // getDocumentDownloadUrlAction: URL do original com expiração 10 min +
 // audit 'view' (acesso a binário de dados de saúde fica registado).
 //
-// voidDocumentAction: never delete — voidedAt/autor/motivo; o asset fica
-// no Cloudinary. Admin anula qualquer; receção/médico só os próprios.
+// voidDocumentAction: never delete — voidedAt/autor/motivo; o ficheiro
+// fica no R2. Admin anula qualquer; receção/médico só os próprios.
 //
 // RBAC: documentos são GLOBAIS como a ficha do paciente (sem clinicId) —
 // admin, receção e médicos ativos; sem canOperateClinic aqui.
@@ -33,12 +33,16 @@ import {
 } from '@/lib/validations/documents';
 import { DOCUMENT_CATEGORY_LABEL } from '@/lib/domain';
 import {
-  patientDocumentPublicId,
-  signDocumentUpload,
-  fetchDocumentAssetInfo,
-  signedDownloadUrl,
-  type CloudinaryUploadTicket,
-} from '@/lib/cloudinary';
+  createUploadTicket,
+  deleteObjectAndDerivatives,
+  downloadUrl,
+  fetchObjectInfo,
+  generateDerivatives,
+  patientDocumentKey,
+  MAX_DOCUMENT_BYTES,
+  type UploadFileInfo,
+  type UploadTicket,
+} from '@/lib/storage';
 import ClinicalDocument from '@/models/Document';
 import Patient from '@/models/Patient';
 import User from '@/models/User';
@@ -116,8 +120,9 @@ function revalidatePatientPaths(patientId: string): void {
 // -----------------------------------------------------------------------------
 export async function createDocumentUploadTicketAction(input: {
   patientId: string;
+  file: UploadFileInfo;
 }): Promise<
-  { ok: true; documentId: string; ticket: CloudinaryUploadTicket } | ActionError
+  { ok: true; documentId: string; ticket: UploadTicket } | ActionError
 > {
   const gate = await requireStaff();
   if (!gate.ok) return gate;
@@ -139,17 +144,27 @@ export async function createDocumentUploadTicketAction(input: {
     return { ok: false, error: 'Paciente não encontrado.' };
   }
 
+  if (!input.file || input.file.size <= 0) {
+    return { ok: false, error: 'Ficheiro vazio.' };
+  }
+  if (input.file.size > MAX_DOCUMENT_BYTES) {
+    return { ok: false, error: 'O ficheiro tem de ter no máximo 50 MB.' };
+  }
+
   const documentId = new mongoose.Types.ObjectId();
-  const publicId = patientDocumentPublicId(String(documentId));
+  const publicId = patientDocumentKey(String(documentId));
 
   try {
-    const ticket = signDocumentUpload(publicId);
+    const ticket = await createUploadTicket(publicId, {
+      contentType: input.file.type,
+      filename: input.file.name,
+    });
     return { ok: true, documentId: String(documentId), ticket };
   } catch (err) {
     console.error('[documents] assinatura de upload falhou:', err);
     return {
       ok: false,
-      error: 'Cloudinary não configurado — verifique as variáveis de ambiente.',
+      error: 'Armazenamento não configurado — verifique as variáveis R2_*.',
     };
   }
 }
@@ -219,21 +234,32 @@ export async function registerDocumentAction(
     }
   }
 
-  // Fonte de verdade: o asset TEM de existir no Cloudinary com o public_id
-  // que NÓS emitimos no ticket (o client nunca escolhe o caminho)
-  const publicId = patientDocumentPublicId(data.documentId);
-  const asset = await fetchDocumentAssetInfo(publicId);
+  // Fonte de verdade: o objeto TEM de existir no R2 com a chave que NÓS
+  // emitimos no ticket (o client nunca escolhe o caminho)
+  const publicId = patientDocumentKey(data.documentId);
+  const asset = await fetchObjectInfo(publicId);
   if (!asset) {
     return {
       ok: false,
-      error: 'Upload não encontrado no Cloudinary — tente novamente.',
+      error: 'Upload não encontrado — tente novamente.',
     };
   }
+  if (asset.bytes > MAX_DOCUMENT_BYTES) {
+    await deleteObjectAndDerivatives(publicId);
+    return { ok: false, error: 'O ficheiro tem de ter no máximo 50 MB.' };
+  }
+  // Miniaturas (imagens): falha aqui não impede o registo do documento
+  await generateDerivatives(publicId).catch(err =>
+    console.error('[documents] miniaturas falharam:', err),
+  );
 
+  const filenameBase = data.filename?.replace(/\.[a-z0-9]{1,5}$/i, '') || null;
   const title =
     data.title ??
-    asset.originalFilename ??
+    filenameBase?.slice(0, 160) ??
     DOCUMENT_CATEGORY_LABEL[data.category];
+  const format =
+    asset.format ?? data.filename?.match(/\.([a-z0-9]{1,5})$/i)?.[1]?.toLowerCase() ?? null;
 
   await ClinicalDocument.create({
     _id: new mongoose.Types.ObjectId(data.documentId),
@@ -242,7 +268,7 @@ export async function registerDocumentAction(
     title,
     publicId,
     resourceType: asset.resourceType,
-    format: asset.format,
+    format,
     bytes: asset.bytes,
     visibleToPatient: data.visibleToPatient,
     uploadedByUserId: gate.userId,
@@ -286,9 +312,9 @@ export async function getDocumentDownloadUrlAction(input: {
     return { ok: false, error: 'Documento não encontrado.' };
   }
 
-  const url = signedDownloadUrl({
-    publicId: doc.publicId,
-    resourceType: doc.resourceType as 'image' | 'raw',
+  const url = await downloadUrl({
+    key: doc.publicId,
+    filename: doc.title,
     format: doc.format ?? null,
   });
 

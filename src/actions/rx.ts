@@ -24,10 +24,13 @@ import User, { canOperateClinic } from '@/models/User';
 import RxRequest from '@/models/RxRequest';
 import ClinicalDocument from '@/models/Document';
 import {
-  patientDocumentPublicId,
-  uploadAuthenticatedDataUrl,
-  fetchDocumentAssetInfo,
-} from '@/lib/cloudinary';
+  patientDocumentKey,
+  uploadDataUrl,
+  fetchObjectInfo,
+  generateDerivatives,
+  deleteObjectAndDerivatives,
+  MAX_DOCUMENT_BYTES,
+} from '@/lib/storage';
 import {
   canTransitionRx,
   RX_MODALITY_LABEL,
@@ -139,15 +142,15 @@ export async function createRxRequestAction(
     const teeth = modality === 'panoramica' ? [] : toothNumbers;
 
     // --- B.6: consentimento POR EXPOSIÇÃO, assinado ANTES do pedido --------
-    // 1) Assinatura sobe para o Cloudinary (authenticated, id opaco)
+    // 1) Assinatura sobe para o R2 (bucket privado, chave opaca)
     // 2) Document categoria 'consent' com snapshot do texto legal
     // 3) Só então nasce o RxRequest, já ligado ao consentimento
     // Se (1) falhar, NÃO há pedido — RX sem consentimento não existe.
     // Se (3) falhar após (2), fica um consentimento órfão auditado —
     // inofensivo e visível nos Documentos; nunca o inverso.
     const consentDocId = new mongoose.Types.ObjectId();
-    const publicId = patientDocumentPublicId(String(consentDocId));
-    const asset = await uploadAuthenticatedDataUrl(publicId, consentSignature);
+    const publicId = patientDocumentKey(String(consentDocId));
+    const asset = await uploadDataUrl(publicId, consentSignature);
 
     const dateLabel = new Intl.DateTimeFormat('pt-PT', {
       day: '2-digit',
@@ -355,7 +358,7 @@ export async function cancelRxRequestAction(
 // (a imagem É a prova da captação). Quando a ponte iRYS/CS Imaging chegar
 // (fase 2), preencherá os mesmos imageRefs — a UI não muda.
 // Fluxo de upload: o MESMO 3-passos dos documentos (ticket assinado →
-// POST direto ao Cloudinary → registo verificado aqui).
+// PUT direto ao R2 → registo verificado aqui).
 export async function registerRxImageAction(
   formData: FormData,
 ): Promise<RxActionState> {
@@ -375,13 +378,20 @@ export async function registerRxImageAction(
       return { error: 'Pedido cancelado — não é possível anexar imagens.' };
     }
 
-    // Fonte de verdade: o asset TEM de existir no Cloudinary com o
+    // Fonte de verdade: o objeto TEM de existir no R2 com a chave
     // public_id que NÓS emitimos no ticket (mesma regra dos documentos)
-    const publicId = patientDocumentPublicId(documentId);
-    const asset = await fetchDocumentAssetInfo(publicId);
+    const publicId = patientDocumentKey(documentId);
+    const asset = await fetchObjectInfo(publicId);
     if (!asset) {
-      return { error: 'Upload não encontrado no Cloudinary — tente de novo.' };
+      return { error: 'Upload não encontrado — tente de novo.' };
     }
+    if (asset.bytes > MAX_DOCUMENT_BYTES) {
+      await deleteObjectAndDerivatives(publicId);
+      return { error: 'O ficheiro tem de ter no máximo 50 MB.' };
+    }
+    await generateDerivatives(publicId).catch(err =>
+      console.error('[rx] miniaturas falharam:', err),
+    );
 
     const modalityLabel =
       RX_MODALITY_LABEL[req.modality as keyof typeof RX_MODALITY_LABEL] ??

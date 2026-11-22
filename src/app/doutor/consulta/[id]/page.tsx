@@ -27,7 +27,7 @@ import ClinicalRecord from '@/models/ClinicalRecord';
 import RxRequest from '@/models/RxRequest';
 import ClinicalDocument from '@/models/Document';
 import { getClinicById } from '@/models/Clinic';
-import { signedPreviewUrl } from '@/lib/cloudinary';
+import { documentUrls, previewUrl } from '@/lib/storage';
 import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
 import { MandatoryAnamnesisGate } from '@/components/clinico/MandatoryAnamnesisGate';
 import { ConsultProgress } from '@/components/agenda/ConsultProgress';
@@ -255,7 +255,7 @@ export default async function ConsultationPage({
   const noKnownAllergies =
     allergies.length === 0 && !!questionnaireData?.general?.noKnownAllergies;
 
-  // Imagens dos pedidos: imageRefs manuais guardam o publicId Cloudinary
+  // Imagens dos pedidos: imageRefs manuais guardam a chave do ficheiro
   // em externalRef → resolver formato via Document e assinar o preview
   // AQUI (server, com RBAC já verificado). Refs da futura ponte iRYS que
   // tragam url próprio passam direto.
@@ -266,12 +266,12 @@ export default async function ConsultationPage({
   );
   const rxDocs = rxPublicIds.length
     ? await ClinicalDocument.find({ publicId: { $in: rxPublicIds } })
-        .select('publicId title format voidedAt')
+        .select('publicId title format resourceType voidedAt')
         .lean()
     : [];
   const rxDocByPublicId = new Map(rxDocs.map(d => [d.publicId, d]));
 
-  const rxItems: RxItem[] = rxRequests.map(r => ({
+  const rxItems: RxItem[] = await Promise.all(rxRequests.map(async r => ({
     id: String(r._id),
     modality: r.modality as RxModality,
     toothNumbers: (r.toothNumbers as string[]) ?? [],
@@ -279,28 +279,35 @@ export default async function ConsultationPage({
     status: r.status as RxStatus,
     requestedAtLabel: r.requestedAt ? lisbonHhmm(r.requestedAt) : '—',
     images: (
-      (r.imageRefs ?? []) as {
-        source: string;
-        externalRef: string;
-        url: string | null;
-      }[]
-    )
-      .map(ref => {
-        if (ref.source === 'manual') {
-          const doc = rxDocByPublicId.get(ref.externalRef);
-          if (!doc || doc.voidedAt) return null;
-          return {
-            url: signedPreviewUrl(doc.publicId, {
-              width: 1600,
-              isPdf: doc.format === 'pdf',
-            }),
-            label: doc.title ?? 'RX',
-          };
-        }
-        return ref.url ? { url: ref.url, label: 'RX' } : null;
-      })
-      .filter((x): x is { url: string; label: string } => x !== null),
-  }));
+      await Promise.all(
+        (
+          (r.imageRefs ?? []) as {
+            source: string;
+            externalRef: string;
+            url: string | null;
+          }[]
+        ).map(async ref => {
+          if (ref.source === 'manual') {
+            const doc = rxDocByPublicId.get(ref.externalRef);
+            if (!doc || doc.voidedAt) return null;
+            const urls = await documentUrls({
+              publicId: doc.publicId,
+              resourceType: doc.resourceType ?? 'image',
+              format: doc.format,
+            });
+            // "Ver" = imagem grande (ou o PDF); a miniatura fica no painel
+            const url =
+              urls.previewUrl ?? (await previewUrl(doc.publicId, { width: 1600 }));
+            if (!url) return null;
+            return { url, thumbUrl: urls.thumbUrl, label: doc.title ?? 'RX' };
+          }
+          return ref.url ? { url: ref.url, thumbUrl: ref.url, label: 'RX' } : null;
+        }),
+      )
+    ).filter(
+      (x): x is { url: string; thumbUrl: string | null; label: string } => x !== null,
+    ),
+  })));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

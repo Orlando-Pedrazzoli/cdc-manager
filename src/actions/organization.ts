@@ -7,9 +7,11 @@
 // (o branding aparece em todas as páginas) e regista auditoria.
 //
 // Logo: upload SERVER-SIDE pela própria action (ficheiro pequeno, ≤ 800 KB —
-// abaixo do limite de 1 MB do body das server actions), guardado como asset
-// PÚBLICO no Cloudinary (ver lib/cloudinary § 4). O URL versionado fica em
-// Organization.logoUrl — o mesmo campo que o admin pode preencher à mão.
+// abaixo do limite de 1 MB do body das server actions), guardado no R2
+// (bucket privado) e servido pela rota pública /api/organizacao/logo — tem
+// de abrir sem sessão (login, quiosque). Organization.logoUrl guarda o URL
+// relativo com ?v=<timestamp> como cache-bust — o mesmo campo que o admin
+// pode preencher à mão com outro URL.
 // =============================================================================
 
 'use server';
@@ -21,7 +23,15 @@ import { logAudit } from '@/lib/audit';
 import { updateOrganizationSchema } from '@/lib/validations/settings';
 import Organization from '@/models/Organization';
 import User from '@/models/User';
-import { uploadPublicLogo, destroyPublicLogo } from '@/lib/cloudinary';
+import sharp from 'sharp';
+import {
+  deleteObjectAndDerivatives,
+  organizationLogoKey,
+  putObject,
+} from '@/lib/storage';
+
+/** Rota que serve o logo guardado no R2 (ver app/api/organizacao/logo) */
+const LOGO_ROUTE = '/api/organizacao/logo';
 
 export type OrganizationActionState =
   | { success: true }
@@ -133,8 +143,22 @@ export async function uploadOrganizationLogoAction(
       return { error: 'O logo tem de ter no máximo 800 KB.' };
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const { url, bytes } = await uploadPublicLogo(buffer, file.type);
+    let buffer: Buffer = Buffer.from(await file.arrayBuffer());
+    let mime = file.type;
+    // SVG fica intacto (vetorial); raster é limitado a 512 px (ficheiro leve)
+    if (mime !== 'image/svg+xml') {
+      try {
+        buffer = await sharp(buffer)
+          .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+          .png()
+          .toBuffer();
+        mime = 'image/png';
+      } catch {
+        return { error: 'Não foi possível ler a imagem do logo.' };
+      }
+    }
+    const { bytes } = await putObject(organizationLogoKey(), buffer, mime);
+    const url = `${LOGO_ROUTE}?v=${Date.now()}`;
 
     await dbConnect();
     const org =
@@ -170,12 +194,10 @@ export async function removeOrganizationLogoAction(): Promise<OrganizationAction
     const org = await Organization.findOne();
     if (!org) return { success: true };
 
-    // Só destrói no Cloudinary se o logo atual for o asset gerido por nós
-    // (um URL manual para /public ou outro CDN não é nosso para apagar)
-    if (org.logoUrl?.includes('/organizacao/logo')) {
-      await destroyPublicLogo().catch(err =>
-        console.error('[organization] destroy logo:', err),
-      );
+    // Só apaga no R2 se o logo atual for o ficheiro gerido por nós
+    // (um URL manual para /public ou outro sítio não é nosso para apagar)
+    if (org.logoUrl?.startsWith(LOGO_ROUTE)) {
+      await deleteObjectAndDerivatives(organizationLogoKey());
     }
     org.logoUrl = null;
     await org.save();

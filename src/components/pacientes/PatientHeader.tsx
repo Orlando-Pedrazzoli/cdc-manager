@@ -14,6 +14,7 @@
 import { useActionState, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import { fileInfo, putFile } from '@/lib/upload-client';
 import {
   Camera,
   Copy,
@@ -100,24 +101,21 @@ function PatientPhoto({
 
   const upload = async (file: File | null) => {
     if (!file || busy) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Foto com mais de 10 MB — reduza a resolução.');
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Foto com mais de 15 MB — reduza a resolução.');
       return;
     }
     setBusy(true);
     try {
-      const t = await createPatientPhotoTicketAction({ patientId });
+      const t = await createPatientPhotoTicketAction({
+        patientId,
+        file: fileInfo(file),
+      });
       if (!t.ok) {
         toast.error(t.error);
         return;
       }
-      const fd = new FormData();
-      fd.append('file', file);
-      for (const [k, v] of Object.entries(t.ticket.fields)) {
-        fd.append(k, String(v));
-      }
-      const res = await fetch(t.ticket.uploadUrl, { method: 'POST', body: fd });
-      if (!res.ok) {
+      if (!(await putFile(t.ticket, file))) {
         toast.error('O upload falhou — tente novamente.');
         return;
       }
