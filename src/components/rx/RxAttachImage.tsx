@@ -9,7 +9,7 @@
 // paciente. Anexar também conclui o pedido se ainda estiver aberto.
 //
 // Upload nos MESMOS 3 passos dos documentos (padrão DocumentsTab):
-//   1. ticket assinado  2. POST direto ao Cloudinary  3. registo verificado
+//   1. ticket assinado  2. PUT direto ao R2  3. registo verificado
 // =============================================================================
 
 'use client';

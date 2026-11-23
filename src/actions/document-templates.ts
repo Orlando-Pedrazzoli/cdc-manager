@@ -7,7 +7,7 @@
 // · saveTemplateAction / toggleTemplateAction — admin edita/desativa
 // · prepareDocumentAction — devolve o texto do modelo já com placeholders
 //   substituídos para o médico rever/editar (não grava nada)
-// · issueDocumentAction — gera o PDF (react-pdf), sobe ao Cloudinary, cria
+// · issueDocumentAction — gera o PDF (react-pdf), sobe ao R2, cria
 //   o Document na ficha (categoria por tipo) e devolve o id; auditado.
 // RBAC: emitir → médico sempre; admin/receção só em modelos `allowStaff`
 // (certificados de presença, autorizações). Editar modelos → admin.

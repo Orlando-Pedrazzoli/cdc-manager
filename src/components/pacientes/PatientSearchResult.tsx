@@ -63,7 +63,7 @@ export function PatientSearchResult({
       }}
     >
       {hit.photoUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element -- URL assinada Cloudinary, sem domínio fixo
+        // eslint-disable-next-line @next/next/no-img-element -- URL pré-assinada do R2, sem domínio fixo
         <img
           src={hit.photoUrl}
           alt=''

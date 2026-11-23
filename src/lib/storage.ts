@@ -2,7 +2,8 @@
 // =============================================================================
 // CDC Manager — Armazenamento de ficheiros (Cloudflare R2, API S3)
 // -----------------------------------------------------------------------------
-// Substitui src/lib/cloudinary.ts. Bucket PRIVADO, jurisdição UE.
+// Até 11/2026 os ficheiros estavam na Cloudinary (lib/cloudinary.ts, removido).
+// Bucket PRIVADO, jurisdição UE.
 //
 // GUARDRAILS RGPD (dados de saúde, art. 9.º) — inegociáveis:
 // · Nenhum objeto é público. Toda a leitura passa por URL PRÉ-ASSINADA, gerada

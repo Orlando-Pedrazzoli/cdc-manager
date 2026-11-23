@@ -857,7 +857,7 @@ export async function quickSearchPatientsAction(
 // RGPD ASSINADO (Fase 3, P10 — "botão para RGPD" na ficha)
 // -----------------------------------------------------------------------------
 // Mesmo padrão do consentimento RX: a assinatura (PNG) sobe para o
-// Cloudinary (authenticated), nasce um Document 'consent' com o SNAPSHOT do
+// R2 (bucket privado), nasce um Document 'consent' com o SNAPSHOT do
 // texto apresentado, e a ficha fica com consents.gdprSignedAt +
 // gdprDocumentId. Também preenche dataProcessingAt se ainda estava vazio.
 // RBAC: admin + receção (é no balcão que se recolhe a assinatura).

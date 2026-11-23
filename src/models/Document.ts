@@ -2,18 +2,21 @@
 // =============================================================================
 // CDC Manager — Model: Document
 // -----------------------------------------------------------------------------
-// Ficheiro clínico/administrativo do paciente no Cloudinary: radiografias,
+// Ficheiro clínico/administrativo do paciente no Cloudflare R2: radiografias,
 // TAC, fotografias clínicas, consentimentos assinados, relatórios externos.
-// Guardamos METADADOS + public_id; o binário vive no Cloudinary com acesso
-// `authenticated` (nunca URLs públicas — dados de saúde). As URLs de
-// visualização são assinadas e geradas on-demand em lib/cloudinary.ts.
+// Guardamos METADADOS + publicId (a chave do ficheiro); o binário vive num
+// bucket R2 PRIVADO, jurisdição UE (nunca URLs públicas — dados de saúde).
+// As URLs de visualização/download são pré-assinadas, com validade curta,
+// e geradas on-demand em lib/storage.ts.
 //
 // Convenções:
-// · _id do Document É o sufixo do public_id no Cloudinary (IDs opacos —
-//   nunca nome do paciente nem nº de processo no caminho do asset).
+// · _id do Document É o sufixo da chave ({root}/pacientes/{_id}) — IDs
+//   opacos, nunca nome do paciente nem nº de processo no caminho.
+//   O nome "publicId" vem da Cloudinary (até 11/2026); as chaves no R2
+//   são as mesmas, por isso o campo manteve o nome.
 // · NEVER DELETE: anular = voidedAt + autor + motivo (padrão Procedure).
-//   O asset fica no Cloudinary; remoção física só em apagamento RGPD
-//   deliberado (destroyAsset em lib/cloudinary.ts, fase posterior).
+//   O ficheiro fica no R2; remoção física só em apagamento RGPD
+//   deliberado (deleteObjectAndDerivatives em lib/storage.ts).
 // · DOCUMENT_CATEGORIES vive em lib/domain.ts (o client usa no select de
 //   upload); aqui importa-se e RE-EXPORTA — código server importa do model.
 // =============================================================================
@@ -43,7 +46,7 @@ const DocumentSchema = new Schema(
       trim: true,
       maxlength: 160,
     },
-    // Cloudinary
+    // Armazenamento (R2) — chave do ficheiro
     publicId: { type: String, required: true, unique: true },
     resourceType: {
       type: String,

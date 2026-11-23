@@ -196,7 +196,7 @@ const PatientSchema = new Schema(
       ref: 'User',
       default: null,
     },
-    // Foto de perfil (Cloudinary public_id — o Dentoral também tinha foto)
+    // Foto de perfil (chave no R2 — o Dentoral também tinha foto)
     photoPublicId: {
       type: String,
       default: null,

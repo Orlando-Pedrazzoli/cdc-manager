@@ -4,7 +4,7 @@
 // -----------------------------------------------------------------------------
 // Componente puro (funciona em server e client). Recebe a marca já lida do
 // Organization pelo layout. <img> em vez de next/image porque o logo pode
-// ser um URL externo (Cloudinary/cliente) sem remotePatterns configurados.
+// ser um URL externo (do cliente) sem remotePatterns configurados.
 // =============================================================================
 
 import Link from 'next/link';

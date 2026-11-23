@@ -4,9 +4,9 @@
 // -----------------------------------------------------------------------------
 // Três blocos:
 //   1. TICKET — pedir assinatura de upload (só precisa do paciente).
-//   2. REGISTO — gravar o Document após o upload direto ao Cloudinary.
+//   2. REGISTO — gravar o Document após o upload direto ao R2.
 //      title é OPCIONAL: se vazio, a action usa o nome original do ficheiro
-//      (vindo do Cloudinary) ou o label da categoria.
+//      (nome do ficheiro) ou o label da categoria.
 //   3. ANULAÇÃO — motivo OBRIGATÓRIO (never delete, padrão das quebras
 //      de stock: corrige-se anulando e o porquê fica escrito).
 //

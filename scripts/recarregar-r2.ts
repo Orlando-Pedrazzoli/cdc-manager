@@ -2,7 +2,8 @@
 // =============================================================================
 // Recarga do backup da Cloudinary para o Cloudflare R2 (passo 5 da migração)
 // -----------------------------------------------------------------------------
-// Lê o manifesto do backup (scripts/backup-cloudinary.ts) e, para cada
+// Lê o manifesto do backup (scripts/backup-cloudinary.ts, removido depois da
+// migração — ver o histórico do git) e, para cada
 // ficheiro:
 //   1. confirma no disco o SHA-256 registado no backup (integridade)
 //   2. sobe-o para a MESMA chave (= publicId gravado na BD; nada muda no Mongo)

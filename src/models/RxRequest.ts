@@ -45,14 +45,14 @@ const ImageRefSchema = new Schema(
       required: true,
     },
     // Identificador no sistema de origem (caminho na pasta partilhada,
-    // ID DICOM, public_id Cloudinary…) — string opaca, a ponte define
+    // ID DICOM, chave do ficheiro no R2…) — string opaca, a ponte define
     externalRef: {
       type: String,
       required: true,
       trim: true,
       maxlength: 500,
     },
-    // URL de visualização quando disponível (Cloudinary assinado, etc.)
+    // URL de visualização quando disponível (URL pré-assinada, etc.)
     url: {
       type: String,
       default: null,

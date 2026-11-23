@@ -22,7 +22,7 @@
 // Um termo de 9 dígitos tenta telefone + NIF + utente ao mesmo tempo: o
 // utilizador não precisa de dizer o que está a colar.
 //
-// SERVER-ONLY (usa a assinatura Cloudinary). Os componentes de cliente
+// SERVER-ONLY (usa as URLs pré-assinadas de lib/storage). Os componentes de cliente
 // importam apenas o TIPO PatientSearchHit (`import type` — apagado no build).
 // =============================================================================
 
@@ -37,7 +37,7 @@ export interface PatientSearchHit {
   snsNumber: string | null;
   /** dd/mm/aaaa (Lisboa) — já formatada */
   birth: string | null;
-  /** Miniatura assinada (Cloudinary, 96px) ou null sem foto */
+  /** Miniatura pré-assinada (R2) ou null sem foto */
   photoUrl: string | null;
   /** Texto de uma linha para inputs que mostram o paciente escolhido */
   label: string;

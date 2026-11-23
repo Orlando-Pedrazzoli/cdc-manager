@@ -5,7 +5,7 @@
 // @react-pdf/renderer no servidor: cabeçalho da clínica, título, corpo
 // (texto já com placeholders substituídos e editado pelo médico), rodapé
 // com médico + cédula, linha de assinatura e, se existir, a assinatura do
-// paciente (PNG). Devolve um Buffer para subir ao Cloudinary.
+// paciente (PNG). Devolve um Buffer para subir ao R2.
 // =============================================================================
 
 import React from 'react';

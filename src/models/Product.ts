@@ -64,7 +64,7 @@ const ProductSchema = new Schema(
       trim: true,
       default: null,
     },
-    // Foto opcional do produto (Cloudinary, asset 'authenticated' como os
+    // Foto opcional do produto (R2, bucket privado como os
     // documentos — um só fluxo de upload no projeto). public_id opaco:
     // {root}/stock/{productId}. null = sem foto.
     imagePublicId: {

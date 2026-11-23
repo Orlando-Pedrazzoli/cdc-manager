@@ -3,7 +3,7 @@
 // CDC Manager — Ficha do paciente: separador Documentos
 // -----------------------------------------------------------------------------
 // Upload em 3 passos (ver actions/documents.ts): ticket → POST direto ao
-// Cloudinary (fora da Vercel — sem limite de body) → registo verificado.
+// R2 (fora da Vercel — sem limite de body) → registo verificado.
 // Grelha de cartões com thumbnail assinada (gerada server-side na página),
 // "Ver" (preview assinado em novo separador), "Transferir" (URL com
 // expiração 10 min, pedida on-demand — fica auditada) e "Anular" com
