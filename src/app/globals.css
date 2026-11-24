@@ -211,6 +211,18 @@ body {
 .cdc-topbar-user {
   display: flex;
 }
+/* Hora local + temperatura (ClockWeather) — só no computador */
+.cdc-ambient {
+  display: flex;
+}
+.cdc-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .cdc-main {
   flex: 1;
   min-width: 0;
@@ -257,6 +269,9 @@ body {
   .cdc-topbar-user {
     display: none;
   }
+  .cdc-ambient {
+    display: none !important;
+  }
   .cdc-mobile-bar {
     display: flex;
     position: sticky;
@@ -299,6 +314,12 @@ body {
   }
   .cdc-main {
     padding: 16px;
+  }
+}
+/* ecrãs de computador estreitos: fica o ícone e a temperatura */
+@media (max-width: 1279px) {
+  .cdc-ambient-detail {
+    display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {

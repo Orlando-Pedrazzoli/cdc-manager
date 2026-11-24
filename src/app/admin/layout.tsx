@@ -13,6 +13,7 @@ import type { ReactNode } from 'react';
 import { requireActiveSession } from '@/lib/require-active-session';
 import { logoutAction } from '@/actions/auth';
 import { AppShell } from '@/components/layout/AppShell';
+import { ClockWeather } from '@/components/layout/ClockWeather';
 import { QuickPatientSearch } from '@/components/layout/QuickPatientSearch';
 import { getOrganization } from '@/models/Organization';
 
@@ -48,42 +49,53 @@ export default async function AdminLayout({
     <>
       <QuickPatientSearch />
       <div
-        className='cdc-topbar-user'
-        style={{ alignItems: 'center', gap: '16px', flexShrink: 0 }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '20px',
+          flexShrink: 0,
+        }}
       >
-        <div style={{ textAlign: 'right' }}>
-          <p
-            style={{
-              margin: 0,
-              fontSize: '14px',
-              fontWeight: 600,
-              color: '#1B2A6B',
-              lineHeight: 1.3,
-            }}
-          >
-            {name}
-          </p>
-          <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
-            {roleLabel}
-          </p>
+        {/* Hora de Lisboa + temperatura — o ecrã fica aberto o dia todo */}
+        <ClockWeather />
+        <div
+          className='cdc-topbar-user'
+          style={{ alignItems: 'center', gap: '16px', flexShrink: 0 }}
+        >
+          <div style={{ textAlign: 'right' }}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: '14px',
+                fontWeight: 600,
+                color: '#1B2A6B',
+                lineHeight: 1.3,
+              }}
+            >
+              {name}
+            </p>
+            <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
+              {roleLabel}
+            </p>
+          </div>
+          <form action={logoutAction}>
+            <button
+              type='submit'
+              style={{
+                borderRadius: '8px',
+                border: '1px solid #D8DEEF',
+                padding: '7px 14px',
+                fontSize: '13px',
+                fontWeight: 600,
+                color: '#1B2A6B',
+                backgroundColor: '#FFFFFF',
+                cursor: 'pointer',
+              }}
+            >
+              Sair
+            </button>
+          </form>
         </div>
-        <form action={logoutAction}>
-          <button
-            type='submit'
-            style={{
-              borderRadius: '8px',
-              border: '1px solid #D8DEEF',
-              padding: '7px 14px',
-              fontSize: '13px',
-              fontWeight: 600,
-              color: '#1B2A6B',
-              backgroundColor: '#FFFFFF',
-              cursor: 'pointer',
-            }}
-          >
-            Sair
-          </button>
-        </form>
       </div>
     </>
   );
