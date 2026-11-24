@@ -60,6 +60,7 @@ import {
   dateRange,
 } from '@/lib/availability';
 import { formatCents } from '@/lib/commissions';
+import { buildGreeting } from '@/lib/greeting';
 
 import { HojeStrip } from '@/components/dashboard/HojeStrip';
 
@@ -406,8 +407,11 @@ export default async function DoctorDashboardPage() {
   const monthCents = monthAgg[0]?.cents ?? 0;
   // E18: objetivo mensal definido pela administração na ficha do médico
   const doctorDoc = await Doctor.findById(doctorId)
-    .select('monthlyGoalCents')
+    .select('monthlyGoalCents name')
     .lean();
+  // Saudação pela hora de Lisboa + nome da ficha do médico ("Dra. Marta");
+  // o <AutoRefresh/> re-renderiza a página, por isso muda sozinha ao longo do dia
+  const greeting = buildGreeting(doctorDoc?.name ?? session?.user?.name);
   const goalCents = doctorDoc?.monthlyGoalCents ?? null;
   const goalPct =
     goalCents && goalCents > 0
@@ -490,7 +494,7 @@ export default async function DoctorDashboardPage() {
             color: '#1B2A6B',
           }}
         >
-          O meu dia
+          {greeting}
         </h1>
         <p
           style={{
@@ -499,7 +503,7 @@ export default async function DoctorDashboardPage() {
             color: '#6A7186',
           }}
         >
-          {dateLabel}
+          O meu dia · {dateLabel}
         </p>
       </div>
 
