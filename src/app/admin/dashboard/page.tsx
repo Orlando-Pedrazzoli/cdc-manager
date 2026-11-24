@@ -36,6 +36,7 @@
 
 import Link from 'next/link';
 import AutoRefresh from '@/components/ui/AutoRefresh';
+import { buildGreeting } from '@/lib/greeting';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import mongoose from 'mongoose';
@@ -110,7 +111,9 @@ function slugLabel(slug: string): string {
 
 export default async function AdminDashboardPage() {
   const session = await auth();
-  const firstName = (session?.user?.name ?? '').split(' ')[0];
+  // Saudação pela hora de Lisboa ("Bom dia / Boa tarde / Boa noite, Nome");
+  // o <AutoRefresh/> re-renderiza a página, por isso muda sozinha ao longo do dia
+  const greeting = buildGreeting(session?.user?.name);
   // 8.ª ronda/09, 16, 17, 18: avisos da gestão (aniversários da equipa, fins
   // de contrato, documentos dos médicos, renovações) — só o perfil de gestão
   const isAdminUser = session?.user?.role === 'admin';
@@ -1044,7 +1047,7 @@ export default async function AdminDashboardPage() {
               color: C.navy,
             }}
           >
-            {firstName ? `Olá, ${firstName}` : 'Dashboard'}
+            {greeting}
           </h1>
           <p style={{ margin: '3px 0 0', fontSize: '13px', color: C.faint }}>
             {dateLabel}
