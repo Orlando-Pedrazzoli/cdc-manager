@@ -191,10 +191,16 @@ export function OdontogramaPaciente3D({
   states,
   selected,
   onSelect,
+  legend = true,
+  hint = 'clique num dente para ver o detalhe',
 }: {
   states: Map<string, ToothChartState>;
   selected: string | null;
   onSelect: (toothNumber: string) => void;
+  /** false no Atlas Dentário: não há estados de paciente para legendar */
+  legend?: boolean;
+  /** fim da frase de ajuda por baixo do modelo */
+  hint?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<DentalViewer | null>(null);
@@ -353,10 +359,10 @@ export function OdontogramaPaciente3D({
       </div>
 
       <p style={{ margin: 0, fontSize: '12px', color: '#6A7186', textAlign: 'center' }}>
-        Arraste para rodar · roda do rato ou dois dedos para aproximar · clique num dente para ver o detalhe
+        Arraste para rodar · roda do rato ou dois dedos para aproximar · {hint}
       </p>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 18px', justifyContent: 'center', paddingTop: '10px', borderTop: '1px solid #F4F6FB' }}>
+      {legend && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 18px', justifyContent: 'center', paddingTop: '10px', borderTop: '1px solid #F4F6FB' }}>
         {LEGEND.map(item => (
           <span key={item.label} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#3D4257' }}>
             <span
@@ -372,7 +378,7 @@ export function OdontogramaPaciente3D({
             {item.label}
           </span>
         ))}
-      </div>
+      </div>}
     </div>
   );
 }

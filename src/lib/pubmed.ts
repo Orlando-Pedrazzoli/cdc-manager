@@ -11,6 +11,8 @@
 // =============================================================================
 
 const BASE = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils';
+// A NCBI às vezes fica pendurada: mais vale falhar e mostrar "tente de novo"
+const TIMEOUT_MS = 10_000;
 const IDENT = () => {
   const p = new URLSearchParams({
     tool: 'cdc-manager',
@@ -149,6 +151,7 @@ export async function searchPubmed(params: {
   sp.set('reldate', String(params.days));
   const sRes = await fetch(`${BASE}/esearch.fcgi?${sp}`, {
     next: { revalidate: 3600 },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!sRes.ok) throw new Error(`PubMed indisponível (${sRes.status})`);
   const sJson = (await sRes.json()) as {
@@ -164,6 +167,7 @@ export async function searchPubmed(params: {
   mp.set('retmode', 'json');
   const mRes = await fetch(`${BASE}/esummary.fcgi?${mp}`, {
     next: { revalidate: 3600 },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!mRes.ok) throw new Error(`PubMed indisponível (${mRes.status})`);
   const mJson = (await mRes.json()) as {
@@ -202,7 +206,9 @@ export async function fetchAbstract(pmid: string): Promise<string> {
   p.set('rettype', 'abstract');
   p.set('retmode', 'text');
   const res = await fetch(`${BASE}/efetch.fcgi?${p}`, {
-    next: { revalidate: 86400 },
+    // um resumo publicado não muda: 7 dias
+    next: { revalidate: 7 * 86400 },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`PubMed indisponível (${res.status})`);
   const text = await res.text();
