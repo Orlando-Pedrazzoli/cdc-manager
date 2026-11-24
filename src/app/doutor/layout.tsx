@@ -14,6 +14,7 @@
 import type { ReactNode } from 'react';
 import { requireActiveSession } from '@/lib/require-active-session';
 import { logoutAction } from '@/actions/auth';
+import { ClockWeather } from '@/components/layout/ClockWeather';
 import { AppShell } from '@/components/layout/AppShell';
 import { getOrganization } from '@/models/Organization';
 
@@ -40,50 +41,57 @@ export default async function DoctorLayout({
     .map(p => p[0]?.toUpperCase() ?? '')
     .join('');
 
-  // Barra superior (desktop): identificação + Sair
+  // Barra superior (desktop): hora/tempo + identificação + Sair
   const topbar = (
     <div
-      className='cdc-topbar-user'
       style={{
+        display: 'flex',
         alignItems: 'center',
-        gap: '16px',
+        gap: '20px',
         flexShrink: 0,
         marginLeft: 'auto',
       }}
     >
-      <div style={{ textAlign: 'right' }}>
-        <p
-          style={{
-            margin: 0,
-            fontSize: '14px',
-            fontWeight: 600,
-            color: '#1B2A6B',
-            lineHeight: 1.3,
-          }}
-        >
-          {name}
-        </p>
-        <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
-          Corpo Clínico
-        </p>
+      {/* Hora de Lisboa + temperatura — o ecrã fica aberto o dia todo */}
+      <ClockWeather />
+      <div
+        className='cdc-topbar-user'
+        style={{ alignItems: 'center', gap: '16px', flexShrink: 0 }}
+      >
+        <div style={{ textAlign: 'right' }}>
+          <p
+            style={{
+              margin: 0,
+              fontSize: '14px',
+              fontWeight: 600,
+              color: '#1B2A6B',
+              lineHeight: 1.3,
+            }}
+          >
+            {name}
+          </p>
+          <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
+            Corpo Clínico
+          </p>
+        </div>
+        <form action={logoutAction}>
+          <button
+            type='submit'
+            style={{
+              borderRadius: '8px',
+              border: '1px solid #D8DEEF',
+              padding: '7px 14px',
+              fontSize: '13px',
+              fontWeight: 600,
+              color: '#1B2A6B',
+              backgroundColor: '#FFFFFF',
+              cursor: 'pointer',
+            }}
+          >
+            Sair
+          </button>
+        </form>
       </div>
-      <form action={logoutAction}>
-        <button
-          type='submit'
-          style={{
-            borderRadius: '8px',
-            border: '1px solid #D8DEEF',
-            padding: '7px 14px',
-            fontSize: '13px',
-            fontWeight: 600,
-            color: '#1B2A6B',
-            backgroundColor: '#FFFFFF',
-            cursor: 'pointer',
-          }}
-        >
-          Sair
-        </button>
-      </form>
     </div>
   );
 
