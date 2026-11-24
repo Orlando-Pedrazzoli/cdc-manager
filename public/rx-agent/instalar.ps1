@@ -1,4 +1,4 @@
-# CDC-RX-INSTALAR v2
+# CDC-RX-INSTALAR v3
 # =============================================================================
 # CDC Manager - Raio-X: instala ou atualiza o lancador cdcrx:// neste posto,
 # para o utilizador do Windows que esta com sessao aberta. SEM administrador.
@@ -49,11 +49,16 @@
       'C:\Program Files (x86)\Carestream\Dental Imaging Software\TW.exe',
       'C:\Program Files\Kodak\KODAK Dental Imaging Software\TW.exe')
     foreach ($c in $candK) { if ($c -and (Test-Path -LiteralPath $c)) { $kodakExe = $c; break } }
-    $kodakRaiz = $v['TROPHY.DATA']
-    if (-not $kodakRaiz) {
-      foreach ($c in @('Z:\', 'E:\BaseDadosCarestream')) { if (Test-Path -LiteralPath (Join-Path $c 'PATIENTS.DBF')) { $kodakRaiz = $c; break } }
+    # Raiz do arquivo: a primeira que tiver o PATIENTS.DBF. Sem Join-Path: no
+    # Windows PowerShell 5.1 o Join-Path da erro ("Cannot find drive") quando a
+    # unidade nao existe (ex.: Z: no PC RAIOX ou numa conta sem a unidade mapeada).
+    function TemDbf([string]$r) {
+      if (-not $r) { return $false }
+      try { return (Test-Path -LiteralPath ($r.TrimEnd('\') + '\PATIENTS.DBF')) } catch { return $false }
     }
-    if (-not $kodakRaiz) { $kodakRaiz = 'Z:\' }
+    $kodakRaiz = ''
+    foreach ($c in @($v['TROPHY.DATA'], 'Z:\', 'E:\BaseDadosCarestream')) { if (TemDbf $c) { $kodakRaiz = $c; break } }
+    if (-not $kodakRaiz) { $kodakRaiz = $(if ($v['TROPHY.DATA']) { $v['TROPHY.DATA'] } else { 'Z:\' }) }
     $irys = ''
     foreach ($c in @($v['MYRAY.PROGRAM'], 'C:\NNT\NNTBridge.exe')) { if ($c -and (Test-Path -LiteralPath $c)) { $irys = $c; break } }
 
@@ -75,8 +80,8 @@
     Set-ItemProperty "$k\shell\open\command" -Name '(default)' -Value ('"{0}" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{1}" "%1"' -f $ps, (Join-Path $dir 'cdc-rx-launcher.ps1'))
 
     # 4. Resumo
-    $dbf = Test-Path -LiteralPath (Join-Path $kodakRaiz 'PATIENTS.DBF')
-    "=== CDC RX v$versao | POSTO: $env:COMPUTERNAME | $env:USERDOMAIN\$env:USERNAME ==="
+    $dbf = TemDbf $kodakRaiz
+    "=== CDC RX v$versao (instalador 3) | POSTO: $env:COMPUTERNAME | $env:USERDOMAIN\$env:USERNAME ==="
     "Kodak : " + $(if ($kodakExe) { $kodakExe } else { 'NAO ENCONTRADO' })
     "Raiz  : $kodakRaiz | arquivo acessivel: $dbf"
     "iRYS  : " + $(if ($irys) { $irys } else { 'nao tem' })
