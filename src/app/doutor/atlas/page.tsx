@@ -12,15 +12,14 @@
 // Filosofia: "temos uma pergunta clínica → este exame ajuda a responder".
 // Continua sem dados de paciente e sem gravar nada (não é diagnóstico).
 // Dados: lib/data/atlas.ts (inalterado) + lib/data/atlas-flow.ts (v2).
+// 24/11/2026: o dente escolhe-se no odontograma novo (Anatómico + Paciente
+// 3D, o mesmo da ficha do paciente) — ver atlas/AtlasToothPicker.
 // =============================================================================
 
 'use client';
 
 import { useMemo, useState } from 'react';
 import { ScanSearch, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
-import { OdontogramaArcada } from '@/components/clinico/OdontogramaArcada';
-import type { ToothEntry } from '@/components/clinico/ToothDetail';
-import { UPPER_TEETH, LOWER_TEETH } from '@/lib/domain';
 import {
   TOOTH_ANATOMY,
   SYMPTOMS,
@@ -30,6 +29,7 @@ import {
 } from '@/lib/data/atlas';
 import { FOLLOW_UPS, recommendExam } from '@/lib/data/atlas-flow';
 import { AtlasToothFocus } from '@/components/atlas/AtlasToothFocus';
+import { AtlasToothPicker } from '@/components/atlas/AtlasToothPicker';
 import {
   AtlasSymptomPicker,
   AtlasFollowUp,
@@ -64,17 +64,6 @@ export default function AtlasPage() {
   const [symptomId, setSymptomId] = useState<string | null>(null);
   const [followUp, setFollowUp] = useState<string | null>(null);
   const [step, setStep] = useState(0);
-
-  const entries = useMemo<ToothEntry[]>(
-    () =>
-      [...UPPER_TEETH, ...LOWER_TEETH].map(n => ({
-        number: n,
-        status: 'present' as const,
-        faces: [],
-        note: null,
-      })),
-    [],
-  );
 
   const position = selected ? Number(selected[1]) : null;
   const arch: 'upper' | 'lower' | null = selected
@@ -337,8 +326,8 @@ export default function AtlasPage() {
                   >
                     Toque no dente onde sente o problema.
                   </p>
-                  <OdontogramaArcada
-                    entries={entries}
+                  <AtlasToothPicker
+                    defaultView='3d'
                     selected={selected}
                     onSelect={n => {
                       setSelected(prev => (prev === n ? null : n));
@@ -514,8 +503,8 @@ export default function AtlasPage() {
       ) : (
         /* ===================== MODO CLÍNICO — tudo visível ===================== */
         <>
-          <OdontogramaArcada
-            entries={entries}
+          <AtlasToothPicker
+            defaultView='anatomico'
             selected={selected}
             onSelect={n => {
               setSelected(prev => (prev === n ? null : n));

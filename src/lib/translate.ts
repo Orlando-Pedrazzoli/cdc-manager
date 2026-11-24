@@ -13,6 +13,7 @@
 
 import { createHash } from 'node:crypto';
 import { unstable_cache } from 'next/cache';
+import { createBatcher } from './batcher';
 
 // Fornecedor escolhido pela chave presente (ordem: grátis primeiro):
 //   GEMINI_API_KEY   → Google Gemini Flash (free tier: 1500 pedidos/dia, sem cartão)
@@ -20,6 +21,9 @@ import { unstable_cache } from 'next/cache';
 //   ANTHROPIC_API_KEY→ Claude Haiku (pago, cêntimos)
 const SYSTEM =
   'És um tradutor especializado em medicina dentária. Traduz do inglês para PORTUGUÊS EUROPEU (Portugal), com terminologia clínica corrente entre médicos dentistas portugueses. Mantém siglas consagradas (RCT, CAD/CAM, CBCT), nomes de materiais e valores numéricos. Não acrescentes comentários nem explicações.';
+
+// Um tradutor preso não pode prender a página
+const LLM_TIMEOUT_MS = 25_000;
 
 type Provider = 'gemini' | 'groq' | 'anthropic' | null;
 function provider(): Provider {
@@ -41,6 +45,7 @@ async function callLLM(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
         {
           method: 'POST',
+          signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: SYSTEM }] },
@@ -93,6 +98,7 @@ async function callLLM(
         'https://api.groq.com/openai/v1/chat/completions',
         {
           method: 'POST',
+          signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
           headers: {
             'content-type': 'application/json',
             authorization: `Bearer ${process.env.GROQ_API_KEY}`,
@@ -125,6 +131,7 @@ async function callLLM(
       const model = process.env.TRANSLATE_MODEL ?? 'claude-haiku-4-5-20251001';
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
+        signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
         headers: {
           'content-type': 'application/json',
           'x-api-key': process.env.ANTHROPIC_API_KEY as string,
@@ -167,46 +174,79 @@ const hash = (s: string) =>
 class TranslateFailed extends Error {}
 
 /**
- * Traduz N títulos numa só chamada; devolve na mesma ordem (ou null).
+ * Lê o array JSON devolvido pelo tradutor (tolera ```json e texto à volta).
+ * Devolve null se não for exatamente `expected` strings.
+ */
+export function parseTitleArray(
+  out: string,
+  expected: number,
+): string[] | null {
+  const m = out.match(/\[[\s\S]*\]/);
+  if (!m) return null;
+  let arr: unknown;
+  try {
+    arr = JSON.parse(m[0]);
+  } catch {
+    return null;
+  }
+  if (
+    !Array.isArray(arr) ||
+    arr.length !== expected ||
+    !arr.every(x => typeof x === 'string' && x.trim() !== '')
+  ) {
+    return null;
+  }
+  return (arr as string[]).map(x => x.trim());
+}
+
+// Os títulos que ainda não estão em cache juntam-se numa só chamada ao
+// tradutor (lib/batcher). A janela dá tempo às leituras de cache em paralelo.
+const translateBatch = createBatcher<string, string>(
+  async titles => {
+    const numbered = titles.map((t, i) => `${i + 1}. ${t}`).join('\n');
+    const out = await callLLM(
+      `Traduz cada título abaixo. Responde APENAS com um array JSON de strings, na mesma ordem, sem numeração e sem texto fora do JSON:\n\n${numbered}`,
+      2500,
+    );
+    if (!out) throw new TranslateFailed('sem resposta');
+    const arr = parseTitleArray(out, titles.length);
+    if (!arr) throw new TranslateFailed('resposta inválida');
+    return arr;
+  },
+  { windowMs: 60, maxSize: 30 },
+);
+
+/** Um título, com cache própria de 7 dias (chave = hash do texto). */
+function translateTitle(title: string): Promise<string> {
+  return unstable_cache(
+    () => translateBatch(title),
+    ['pubmed-title-pt-v3', hash(title)],
+    { revalidate: 7 * 24 * 3600 },
+  )();
+}
+
+/**
+ * Traduz N títulos; devolve na mesma ordem, com null onde não foi possível.
+ * Cache POR TÍTULO: o mesmo artigo aparece em vários filtros (semana/mês,
+ * tema/tipo) e só é traduzido uma vez; quando entra um artigo novo na lista
+ * traduz-se só esse. Os que faltam saem numa única chamada.
  * IMPORTANTE: a função cacheada LANÇA em caso de falha — o unstable_cache
  * não guarda erros, por isso uma falha (modelo indisponível, quota) nunca
- * fica 7 dias em cache. O wrapper apanha e devolve null.
+ * fica 7 dias em cache.
  */
 export async function translateTitles(
   titles: string[],
-): Promise<string[] | null> {
-  if (titles.length === 0) return [];
-  const key = hash(titles.join('\n'));
-  const run = unstable_cache(
-    async () => {
-      const numbered = titles.map((t, i) => `${i + 1}. ${t}`).join('\n');
-      const out = await callLLM(
-        `Traduz cada título abaixo. Responde APENAS com um array JSON de strings, na mesma ordem, sem numeração e sem texto fora do JSON:\n\n${numbered}`,
-        2500,
-      );
-      if (!out) throw new TranslateFailed('sem resposta');
-      // Extrai o primeiro array JSON mesmo que venha com ```json ou texto à volta
-      const m = out.match(/\[[\s\S]*\]/);
-      if (!m) throw new TranslateFailed('resposta sem JSON');
-      const arr = JSON.parse(m[0]) as unknown;
-      if (
-        !Array.isArray(arr) ||
-        arr.length !== titles.length ||
-        !arr.every(x => typeof x === 'string')
-      ) {
-        throw new TranslateFailed('array inválido');
-      }
-      return arr as string[];
-    },
-    ['pubmed-titles-v2', key],
-    { revalidate: 7 * 24 * 3600 },
-  );
-  try {
-    return await run();
-  } catch (e) {
-    console.error('[translate] títulos:', e instanceof Error ? e.message : e);
-    return null;
+): Promise<(string | null)[]> {
+  const settled = await Promise.allSettled(titles.map(translateTitle));
+  const failed = settled.find(r => r.status === 'rejected');
+  if (failed) {
+    const reason = (failed as PromiseRejectedResult).reason;
+    console.error(
+      '[translate] títulos:',
+      reason instanceof Error ? reason.message : reason,
+    );
   }
+  return settled.map(r => (r.status === 'fulfilled' ? r.value : null));
 }
 
 /** Traduz um abstract (texto corrido) — cache por pmid; falhas não ficam em cache */
