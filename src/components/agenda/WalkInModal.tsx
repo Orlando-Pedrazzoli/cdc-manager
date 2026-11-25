@@ -116,7 +116,7 @@ export function WalkInModal({
               setPatient(null);
               setPatientQuery(e.target.value);
             }}
-            placeholder='Nome, telemóvel, NIF, utente, nascimento ou nº de processo…'
+            placeholder='Nome, telemóvel, NIF, utente, nascimento ou n.º do paciente…'
             autoComplete='off'
           />
           {!patient && patientResults.length > 0 && (

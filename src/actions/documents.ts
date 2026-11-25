@@ -48,6 +48,7 @@ import Patient from '@/models/Patient';
 import User from '@/models/User';
 import Doctor from '@/models/Doctor';
 import Appointment from '@/models/Appointment';
+import { doctorCanSeeDocument } from '@/lib/patient-access';
 
 const STAFF_ROLES = ['admin', 'receptionist', 'doctor'] as const;
 
@@ -307,7 +308,9 @@ export async function getDocumentDownloadUrlAction(input: {
   if (
     !doc ||
     doc.voidedAt ||
-    !(await doctorCanAccessPatient(gate, String(doc.patientId)))
+    !(await doctorCanAccessPatient(gate, String(doc.patientId))) ||
+    // Victor, 25/11 (B3): "Outro" fica fora do alcance do médico
+    (gate.role === 'doctor' && !doctorCanSeeDocument(doc, gate.userId))
   ) {
     return { ok: false, error: 'Documento não encontrado.' };
   }

@@ -47,7 +47,7 @@ export interface AgendaColor {
 }
 
 export const AGENDA_COLORS: Record<AgendaColorKey, AgendaColor> = {
-  pending: { key: 'pending', label: 'Por confirmar', bg: '#FFE066', border: '#D4A300', fg: '#6B5200' },
+  pending: { key: 'pending', label: 'Pendente', bg: '#FFE066', border: '#D4A300', fg: '#6B5200' },
   confirmed: { key: 'confirmed', label: 'Confirmada', bg: '#9FE0B5', border: '#1F9D55', fg: '#125C32' },
   'checked-in': { key: 'checked-in', label: 'Chegou', bg: '#CDB4F5', border: '#7A3FD0', fg: '#47217F' },
   'in-progress': { key: 'in-progress', label: 'Em consulta', bg: '#94DEDE', border: '#0E8C8C', fg: '#075353' },

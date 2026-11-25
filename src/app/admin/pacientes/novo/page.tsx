@@ -59,7 +59,7 @@ export default async function NewPatientPage() {
           Novo paciente
         </h1>
         <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#6A7186' }}>
-          O número de processo é atribuído automaticamente ao guardar.
+          O número do paciente é atribuído automaticamente ao guardar.
         </p>
       </div>
 

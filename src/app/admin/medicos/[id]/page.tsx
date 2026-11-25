@@ -321,7 +321,7 @@ export default async function DoctorPage({
             [
               ['Hoje', todayCount, '#1B2A6B'],
               [`Próximos ${rangeDays} dias`, appts.length, '#2743A6'],
-              ['Por confirmar (24h)', pending24h, '#9A6700'],
+              ['Pendentes (24h)', pending24h, '#9A6700'],
             ] as const
           ).map(([label, value, color]) => (
             <div

@@ -167,7 +167,7 @@ export function CounterSaleForm({
               setPatient(null);
               setPatientQuery(e.target.value);
             }}
-            placeholder='Nome, telemóvel, NIF ou nº de processo…'
+            placeholder='Nome, telemóvel, NIF ou n.º do paciente…'
             autoComplete='off'
           />
           {patient && (

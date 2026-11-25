@@ -145,7 +145,7 @@ export function ClinicCard({
         {stat('Consultas', `${total}`)}
         {stat('Concluídas', `${done}`, done > 0 ? C.good : undefined)}
         {stat(
-          'Por confirmar',
+          'Pendentes',
           `${toConfirm}`,
           toConfirm > 0 ? C.warn : undefined,
         )}

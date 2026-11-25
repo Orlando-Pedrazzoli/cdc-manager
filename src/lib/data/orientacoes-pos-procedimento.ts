@@ -16,7 +16,7 @@ import type { DefaultTemplate } from '@/lib/data/document-templates';
 /** Bloco de identificação comum (mesma ordem dos DOCX) */
 const IDENTIFICACAO = `IDENTIFICAÇÃO
 Nome completo do paciente: {{paciente.nome}}
-N.º de paciente: {{paciente.processo}} · Data do procedimento: {{consulta.data}}
+N.º do paciente: {{paciente.processo}} · Data do procedimento: {{consulta.data}}
 Médico(a) dentista responsável: {{medico.nome}} · Cédula profissional (n.º OMD): {{medico.cedula}}`;
 
 /** Rodapé comum */

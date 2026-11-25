@@ -142,7 +142,7 @@ export function PatientQuickView({
       {data && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
-            {typeof data.processNumber === 'number' ? 'Processo n.º ' : 'Sem n.º de processo · '}<strong style={{ color: '#1B2A6B' }}>{String(data.processNumber)}</strong>
+            {typeof data.processNumber === 'number' ? 'Paciente n.º ' : 'Sem n.º do paciente · '}<strong style={{ color: '#1B2A6B' }}>{String(data.processNumber)}</strong>
             {data.age !== null && ` · ${data.age} anos`}
             {data.birthDateLabel && ` · nasc. ${data.birthDateLabel}`}
             {data.nif && ` · NIF ${data.nif}`}

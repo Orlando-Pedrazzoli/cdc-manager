@@ -442,14 +442,14 @@ export function PatientForm({
     }
 
     if (mode === 'create') {
-      toast.success(`Paciente criado (processo nº ${result.processNumber})`);
+      toast.success(`Paciente criado (n.º ${result.processNumber})`);
       // Fechar o formulário: voltar à LISTA (pedido da direção pós-demo —
       // ficar no formulário deixava dúvida se tinha gravado)
       router.push('/admin/pacientes');
     } else {
       toast.success(
         completing && result.processNumber != null
-          ? `Ficha completa — processo nº ${result.processNumber}`
+          ? `Ficha completa — paciente n.º ${result.processNumber}`
           : 'Ficha atualizada.',
       );
       router.refresh();

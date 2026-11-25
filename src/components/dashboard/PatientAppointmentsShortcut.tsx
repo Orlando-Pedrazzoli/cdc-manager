@@ -130,7 +130,7 @@ export function PatientAppointmentsShortcut({
   let hint: string | null = null;
   if (term.length < 2) {
     hint =
-      'Escreva pelo menos 2 caracteres: nome, telemóvel, NIF, n.º de utente, data de nascimento ou n.º de processo.';
+      'Escreva pelo menos 2 caracteres: nome, telemóvel, NIF, n.º de utente, data de nascimento ou n.º do paciente.';
   } else if (failed) {
     hint = 'Não foi possível pesquisar. Tente outra vez.';
   } else if (results.length === 0) {
@@ -177,7 +177,7 @@ export function PatientAppointmentsShortcut({
             value={q}
             onChange={e => onQueryChange(e.target.value)}
             onKeyDown={onInputKey}
-            placeholder='Nome, telemóvel, NIF, utente, nascimento ou processo'
+            placeholder='Nome, telemóvel, NIF, utente, nascimento ou n.º do paciente'
             aria-label='Pesquisar paciente'
             autoComplete='off'
             style={{

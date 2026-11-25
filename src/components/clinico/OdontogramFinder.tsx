@@ -82,7 +82,7 @@ export function OdontogramFinder({
           icon={<Search size={15} />}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder='Nome, nº de processo, telemóvel, NIF, utente ou data de nascimento…'
+          placeholder='Nome, n.º do paciente, telemóvel, NIF, utente ou data de nascimento…'
           autoComplete='off'
           autoFocus
         />

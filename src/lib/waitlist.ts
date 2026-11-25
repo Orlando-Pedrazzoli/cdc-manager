@@ -80,8 +80,9 @@ export interface MinInterval {
   end: number;
 }
 
-/** Vaga mínima (minutos) para o alerta: um lugar da grelha da agenda */
-export const DAY_REQUEST_MIN_GAP = 15;
+/** Vaga mínima (minutos) para o alerta. Victor, 25/11 (A12): "pelo menos
+ *  30 minutos livres" (antes: 15, um lugar da grelha). */
+export const DAY_REQUEST_MIN_GAP = 30;
 
 /**
  * Primeiro intervalo livre com pelo menos `minGap` minutos dentro do horário

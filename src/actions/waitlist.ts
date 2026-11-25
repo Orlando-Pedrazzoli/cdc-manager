@@ -62,7 +62,7 @@ export async function addToWaitlistAction(
     if (!appt) return { error: 'Marcação não encontrada.' };
     const user = await requireStaff(String(appt.clinicId));
     if (!OPEN_STATUSES.includes(appt.status)) {
-      return { error: 'Só marcações por confirmar ou confirmadas podem ir para a lista de espera.' };
+      return { error: 'Só marcações pendentes ou confirmadas podem ir para a lista de espera.' };
     }
     const cleanNote = note.trim().slice(0, 300) || null;
     const existing = await Waitlist.findOne({

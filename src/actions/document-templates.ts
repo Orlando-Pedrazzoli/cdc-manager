@@ -41,6 +41,7 @@ import {
 import { finalizeIssuedDocument } from '@/lib/signing';
 import User from '@/models/User';
 import { processLabel } from '@/lib/domain';
+import { certificateTimes } from '@/lib/certificate-times';
 
 const OID = /^[0-9a-fA-F]{24}$/;
 
@@ -242,7 +243,7 @@ export interface PreparedDocument {
   missing: string[]; // placeholders sem valor (ficam "________")
   /** 9.ª ronda/20: comprovativo de presença — texto fixo, sem edição */
   locked: boolean;
-  /** Entrada e saída vêm do registo do sistema (false = horário marcado) */
+  /** Entrada ("Chegou") e saída ("Tudo OK") vêm do registo do sistema */
   recordedTimes: boolean;
 }
 
@@ -263,7 +264,7 @@ async function buildValues(params: {
     getActiveClinics(),
     params.appointmentId && OID.test(params.appointmentId)
       ? Appointment.findById(params.appointmentId)
-          .select('startAt endAt checkedInAt startedAt completedAt clinicId')
+          .select('startAt endAt checkedInAt startedAt completedAt closedAt clinicId')
           .lean()
       : null,
   ]);
@@ -276,6 +277,7 @@ async function buildValues(params: {
     ) ?? clinics[0];
   const now = new Date();
   const consultaDate = appt ? (appt.startedAt ?? appt.startAt) : now;
+  const times = certificateTimes(appt);
   const values: Record<string, string | null> = {
     'paciente.nome': patient.name,
     'paciente.nif': patient.nif ?? null,
@@ -295,27 +297,26 @@ async function buildValues(params: {
     data: longDatePt(now),
     'data.curta': shortDatePt(now),
     'consulta.data': shortDatePt(consultaDate as Date),
-    // 9.ª ronda/20: tempo efetivo — entrada = hora a que a receção marcou
-    // "Chegou" (ou o início da consulta); saída = consulta concluída. Só na
-    // falta de registo se usa o horário marcado.
-    'consulta.inicio': appt
-      ? timePt((appt.checkedInAt ?? appt.startedAt ?? appt.startAt) as Date)
-      : null,
-    'consulta.fim': appt
-      ? timePt((appt.completedAt ?? appt.endAt) as Date)
-      : null,
+    // Victor, 25/11 (A4): entrada = hora a que a receção marcou "Chegou";
+    // saída = hora a que a faturação foi fechada com "Tudo OK". Regra em
+    // lib/certificate-times.ts; os comprovativos sem as duas horas
+    // registadas não são emitidos (A5).
+    'consulta.inicio': times.entry ? timePt(times.entry) : null,
+    'consulta.fim': times.exit ? timePt(times.exit) : null,
     ...Object.fromEntries(
       Object.entries(params.extra).filter(([key, value]) =>
         EXTRA_PLACEHOLDERS.has(key) && typeof value === 'string' && value.length <= 500,
       ),
     ),
   };
-  const recordedTimes = !!(
-    appt &&
-    (appt.checkedInAt || appt.startedAt) &&
-    appt.completedAt
-  );
-  return { values, patient, doctor, clinic, recordedTimes };
+  return {
+    values,
+    patient,
+    doctor,
+    clinic,
+    recordedTimes: times.recorded,
+    timesBlockReason: times.blockReason,
+  };
 }
 
 export async function prepareDocumentAction(input: {
@@ -350,13 +351,15 @@ export async function prepareDocumentAction(input: {
       return {
         error: 'Escolha a consulta a que o comprovativo se refere.',
       };
-    const { values, recordedTimes } = await buildValues({
+    const { values, recordedTimes, timesBlockReason } = await buildValues({
       patientId: input.patientId,
       doctorId: access.doctorId,
       clinicId: access.clinicId,
       appointmentId: input.appointmentId ?? null,
       extra: input.extra ?? {},
     });
+    // Victor, 25/11 (A5): sem entrada e saída registadas, não se emite
+    if (locked && timesBlockReason) return { error: timesBlockReason };
     const body = mergeTemplate(t.body, values);
     const missing = Object.entries(values)
       .filter(
@@ -430,13 +433,15 @@ export async function issueDocumentAction(input: {
     let title = input.title;
     let body = input.body;
     if (locked) {
-      const { values } = await buildValues({
+      const { values, timesBlockReason } = await buildValues({
         patientId: input.patientId,
         doctorId: access.doctorId,
         clinicId: access.clinicId,
         appointmentId,
         extra: input.extra ?? {},
       });
+      // Victor, 25/11 (A5): sem entrada e saída registadas, não se emite
+      if (timesBlockReason) return { error: timesBlockReason };
       title = t.title;
       body = stripTitleLine(mergeTemplate(t.body, values));
     }

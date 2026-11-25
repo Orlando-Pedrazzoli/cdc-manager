@@ -70,11 +70,12 @@ export async function logDoctorPatientView(params: {
   }
 }
 
-/** Por médico: fichas diferentes abertas hoje fora da agenda dele */
+/** Por médico: fichas diferentes abertas ESTE MÊS fora da agenda dele */
 export async function loadOutsideAgendaAccess(
   now: Date = new Date(),
 ): Promise<OutsideAgendaAccess[]> {
-  const today = todayLisbon();
+  // Mês civil de Lisboa em curso (Victor, 25/11, A9)
+  const monthStart = `${todayLisbon().slice(0, 7)}-01`;
   const grouped = await AuditLog.aggregate<{
     _id: mongoose.Types.ObjectId;
     patients: mongoose.Types.ObjectId[];
@@ -84,7 +85,7 @@ export async function loadOutsideAgendaAccess(
         action: 'view',
         entityType: ACCESS_ENTITY,
         changedFields: ACCESS_OUTSIDE_AGENDA,
-        createdAt: { $gte: lisbonToUtc(today, 0), $lte: now },
+        createdAt: { $gte: lisbonToUtc(monthStart, 0), $lte: now },
       },
     },
     { $group: { _id: '$userId', patients: { $addToSet: '$patientId' } } },

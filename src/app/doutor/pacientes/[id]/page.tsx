@@ -37,6 +37,7 @@ import {
   DocumentsTab,
   type DocumentItem,
 } from '@/components/pacientes/DocumentsTab';
+import { doctorDocumentFilter } from '@/lib/patient-access';
 import ClinicalDocument from '@/models/Document';
 import { documentUrls } from '@/lib/storage';
 import { PatientLabCases } from '@/components/proteses/PatientLabCases';
@@ -141,7 +142,12 @@ export default async function DoctorPatientPage({
   // geradas server-side após o RBAC acima)
   let documents: DocumentItem[] = [];
   if (activeTab === 'documentos') {
-    const docs = await ClinicalDocument.find({ patientId: id, voidedAt: null })
+    // Victor, 25/11 (B3): a categoria "Outro" não aparece ao médico
+    const docs = await ClinicalDocument.find({
+      patientId: id,
+      voidedAt: null,
+      ...doctorDocumentFilter(session.user.id),
+    })
       .sort({ createdAt: -1 })
       .populate<{
         uploadedByUserId: { name?: string } | null;
