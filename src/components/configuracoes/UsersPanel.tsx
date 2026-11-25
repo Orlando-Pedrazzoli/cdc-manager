@@ -328,7 +328,7 @@ export function UsersPanel({
                     color: '#6A7186',
                   }}
                 >
-                  {u.username ? `utilizador: ${u.username}` : u.email}
+                  <span data-keep-case>{u.username ? `utilizador: ${u.username}` : u.email}</span>
                   {u.username && u.email ? ` · ${u.email}` : ''} · desde{' '}
                   {u.createdAt}
                 </p>

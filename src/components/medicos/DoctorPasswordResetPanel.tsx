@@ -66,7 +66,7 @@ export default function DoctorPasswordResetPanel({
         }}
       >
         <p style={{ margin: 0, fontSize: '13px', color: '#3D4257' }}>
-          Entra com o utilizador <strong>{username}</strong>, sem email.
+          Entra com o utilizador <strong data-keep-case>{username}</strong>, sem email.
           {mustChangePassword && (
             <span style={{ color: '#9A6700', fontWeight: 600 }}>
               {' '}

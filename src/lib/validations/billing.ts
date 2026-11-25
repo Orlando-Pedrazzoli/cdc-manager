@@ -54,6 +54,16 @@ export const checkoutSchema = z.object({
     },
     z.number({ error: 'Valor inválido' }).int().min(0).nullable().default(null),
   ),
+  // Respostas de 25/11 (A1): desconto no momento da faturação, em % ou em €.
+  // O valor é lido em lib/checkout-discount.ts (parseDiscountField).
+  discountMode: z.preprocess(
+    v => (v === 'percent' || v === 'amount' ? v : 'amount'),
+    z.enum(['percent', 'amount']),
+  ),
+  discountValue: z.preprocess(
+    v => (typeof v === 'string' ? v : ''),
+    z.string().trim().max(20),
+  ),
 });
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 

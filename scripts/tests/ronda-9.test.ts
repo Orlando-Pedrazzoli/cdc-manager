@@ -87,36 +87,34 @@ test('RX: o pedido aceita um tipo novo e recusa um desconhecido', () => {
   assert.ok(!createRxRequestSchema.safeParse({ ...base, modality: 'ressonancia' }).success);
 });
 
-test('barra de tempo: dentro do horário marcado, conta sobre o horário', () => {
+// Regra substituída pelas respostas de 25/11 (A3): a barra vai do início
+// real ao fim MARCADO e depois conta o atraso.
+test('barra de tempo: do início real ao fim marcado', () => {
   const s = Date.UTC(2026, 10, 25, 10, 0);
   const e = Date.UTC(2026, 10, 25, 10, 30);
   assert.deepEqual(consultWindow(s, e, null), { startMs: s, endMs: e });
   assert.deepEqual(consultWindow(s, e, undefined), { startMs: s, endMs: e });
   assert.deepEqual(consultWindow(s, e, s), { startMs: s, endMs: e });
-  // começou 10 min atrasada, ainda dentro do horário
-  assert.deepEqual(consultWindow(s, e, s + 10 * 60_000), { startMs: s, endMs: e });
+  // começou 10 min atrasada: a barra não estica, acaba à hora marcada
+  assert.deepEqual(consultWindow(s, e, s + 10 * 60_000), {
+    startMs: s + 10 * 60_000,
+    endMs: e,
+  });
 });
 
 test('barra de tempo: paciente atendido antes da hora', () => {
   const s = Date.UTC(2026, 10, 25, 10, 0);
   const e = Date.UTC(2026, 10, 25, 10, 30);
   const started = s - 20 * 60_000; // 09:40
-  assert.deepEqual(consultWindow(s, e, started), {
-    startMs: started,
-    endMs: started + 30 * 60_000,
-  });
+  assert.deepEqual(consultWindow(s, e, started), { startMs: started, endMs: e });
 });
 
-test('barra de tempo: urgência iniciada depois do fim marcado', () => {
+test('barra de tempo: iniciada depois do fim marcado já está em atraso', () => {
   const s = Date.UTC(2026, 10, 25, 10, 0);
   const e = Date.UTC(2026, 10, 25, 10, 30);
   const started = e + 45 * 60_000; // 11:15
-  assert.deepEqual(consultWindow(s, e, started), {
-    startMs: started,
-    endMs: started + 30 * 60_000,
-  });
-  // início exatamente no fim marcado já é fora do horário
-  assert.equal(consultWindow(s, e, e).startMs, e);
+  assert.deepEqual(consultWindow(s, e, started), { startMs: s, endMs: e });
+  assert.deepEqual(consultWindow(s, e, e), { startMs: s, endMs: e });
 });
 
 test('médico: nome completo é opcional e tem tamanho mínimo', () => {
