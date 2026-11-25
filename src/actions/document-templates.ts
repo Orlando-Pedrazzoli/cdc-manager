@@ -28,6 +28,7 @@ import { getActiveClinics } from '@/models/Clinic';
 import {
   TEMPLATE_FOLDERS,
   TEMPLATE_KINDS,
+  isTimeLockedKind,
   type TemplateKind,
 } from '@/lib/data/document-templates';
 import {
@@ -35,6 +36,7 @@ import {
   longDatePt,
   shortDatePt,
   timePt,
+  stripTitleLine,
 } from '@/lib/document-merge';
 import { finalizeIssuedDocument } from '@/lib/signing';
 import User from '@/models/User';
@@ -238,6 +240,10 @@ export interface PreparedDocument {
   body: string;
   requiresSignature: boolean;
   missing: string[]; // placeholders sem valor (ficam "________")
+  /** 9.ª ronda/20: comprovativo de presença — texto fixo, sem edição */
+  locked: boolean;
+  /** Entrada e saída vêm do registo do sistema (false = horário marcado) */
+  recordedTimes: boolean;
 }
 
 async function buildValues(params: {
@@ -252,12 +258,12 @@ async function buildValues(params: {
       .select('name nif snsNumber birthDate processNumber')
       .lean(),
     params.doctorId
-      ? Doctor.findById(params.doctorId).select('name licenseNumber').lean()
+      ? Doctor.findById(params.doctorId).select('name fullName licenseNumber').lean()
       : null,
     getActiveClinics(),
     params.appointmentId && OID.test(params.appointmentId)
       ? Appointment.findById(params.appointmentId)
-          .select('startAt endAt startedAt completedAt clinicId')
+          .select('startAt endAt checkedInAt startedAt completedAt clinicId')
           .lean()
       : null,
   ]);
@@ -278,7 +284,8 @@ async function buildValues(params: {
       ? shortDatePt(patient.birthDate)
       : null,
     'paciente.processo': processLabel(patient.processNumber),
-    'medico.nome': doctor?.name ?? null,
+    // 9.ª ronda (ponto 19): nome completo do médico, se estiver na ficha
+    'medico.nome': doctor ? doctor.fullName || doctor.name : null,
     'medico.cedula': doctor?.licenseNumber ?? null,
     'clinica.nome': clinic?.name ?? null,
     'clinica.morada': clinic?.address ?? clinic?.name ?? null,
@@ -288,8 +295,11 @@ async function buildValues(params: {
     data: longDatePt(now),
     'data.curta': shortDatePt(now),
     'consulta.data': shortDatePt(consultaDate as Date),
+    // 9.ª ronda/20: tempo efetivo — entrada = hora a que a receção marcou
+    // "Chegou" (ou o início da consulta); saída = consulta concluída. Só na
+    // falta de registo se usa o horário marcado.
     'consulta.inicio': appt
-      ? timePt((appt.startedAt ?? appt.startAt) as Date)
+      ? timePt((appt.checkedInAt ?? appt.startedAt ?? appt.startAt) as Date)
       : null,
     'consulta.fim': appt
       ? timePt((appt.completedAt ?? appt.endAt) as Date)
@@ -300,7 +310,12 @@ async function buildValues(params: {
       ),
     ),
   };
-  return { values, patient, doctor, clinic };
+  const recordedTimes = !!(
+    appt &&
+    (appt.checkedInAt || appt.startedAt) &&
+    appt.completedAt
+  );
+  return { values, patient, doctor, clinic, recordedTimes };
 }
 
 export async function prepareDocumentAction(input: {
@@ -330,7 +345,12 @@ export async function prepareDocumentAction(input: {
     if (!t || !t.active) return { error: 'Modelo indisponível.' };
     if (role !== 'doctor' && !t.allowStaff)
       return { error: 'Este modelo só pode ser emitido pelo médico.' };
-    const { values } = await buildValues({
+    const locked = isTimeLockedKind(t.kind);
+    if (locked && !input.appointmentId)
+      return {
+        error: 'Escolha a consulta a que o comprovativo se refere.',
+      };
+    const { values, recordedTimes } = await buildValues({
       patientId: input.patientId,
       doctorId: access.doctorId,
       clinicId: access.clinicId,
@@ -351,6 +371,8 @@ export async function prepareDocumentAction(input: {
         body,
         requiresSignature: !!t.requiresSignature,
         missing,
+        locked,
+        recordedTimes,
       },
     };
   } catch (e) {
@@ -367,6 +389,9 @@ export async function issueDocumentAction(input: {
   body: string; // texto final, já editado
   signatureDataUrl?: string | null;
   visibleToPatient?: boolean;
+  /** 9.ª ronda/20: obrigatória nos comprovativos de presença */
+  appointmentId?: string | null;
+  extra?: Record<string, string>;
 }): Promise<{ error?: string; documentId?: string }> {
   try {
     const session = await auth();
@@ -376,20 +401,45 @@ export async function issueDocumentAction(input: {
     if (!OID.test(input.templateId) || !OID.test(input.patientId))
       return { error: 'Dados inválidos.' };
     await dbConnect();
+    const t = await DocumentTemplate.findById(input.templateId)
+      .select('active allowStaff kind title body')
+      .lean();
+    if (!t || !t.active) return { error: 'Modelo indisponível.' };
+    if (role !== 'doctor' && !t.allowStaff)
+      return { error: 'Este modelo só pode ser emitido pelo médico.' };
+
+    // 9.ª ronda/20: nos comprovativos de presença o texto que chega do
+    // browser é IGNORADO — refaz-se aqui, a partir do modelo e das horas
+    // registadas na consulta. Ninguém altera a hora de entrada ou de saída.
+    const locked = isTimeLockedKind(t.kind);
+    const appointmentId = locked ? (input.appointmentId ?? null) : null;
+    if (locked && (!appointmentId || !OID.test(appointmentId)))
+      return {
+        error: 'Escolha a consulta a que o comprovativo se refere.',
+      };
+
     const access = await authorizeDocumentContext({
       userId: session.user.id,
       role,
       patientId: input.patientId,
       clinicId: input.clinicId ?? null,
-      appointmentId: null,
+      appointmentId,
     });
     if ('error' in access) return { error: access.error };
-    const t = await DocumentTemplate.findById(input.templateId)
-      .select('active allowStaff')
-      .lean();
-    if (!t || !t.active) return { error: 'Modelo indisponível.' };
-    if (role !== 'doctor' && !t.allowStaff)
-      return { error: 'Este modelo só pode ser emitido pelo médico.' };
+
+    let title = input.title;
+    let body = input.body;
+    if (locked) {
+      const { values } = await buildValues({
+        patientId: input.patientId,
+        doctorId: access.doctorId,
+        clinicId: access.clinicId,
+        appointmentId,
+        extra: input.extra ?? {},
+      });
+      title = t.title;
+      body = stripTitleLine(mergeTemplate(t.body, values));
+    }
 
     // Núcleo partilhado com o tablet (src/lib/signing.ts)
     const res = await finalizeIssuedDocument({
@@ -397,8 +447,8 @@ export async function issueDocumentAction(input: {
       patientId: input.patientId,
       clinicId: access.clinicId,
       doctorId: access.doctorId,
-      title: input.title,
-      body: input.body,
+      title,
+      body,
       signatureDataUrl: input.signatureDataUrl ?? null,
       visibleToPatient: input.visibleToPatient ?? true,
       userId: session.user.id,

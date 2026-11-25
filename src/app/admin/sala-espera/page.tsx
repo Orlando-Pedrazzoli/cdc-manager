@@ -11,12 +11,12 @@
 // automático a cada 30 s no dia de hoje.
 // =============================================================================
 
+import { defaultClinicForPost } from '@/lib/post-clinic';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Siren } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { getActiveClinics } from '@/models/Clinic';
-import { defaultClinic } from '@/lib/branding';
 import Appointment from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
@@ -83,7 +83,7 @@ export default async function SalaEsperaPage({
   await dbConnect();
   const clinics = await getActiveClinics();
   const clinic =
-    clinics.find(c => c.slug === sp.clinic) ?? defaultClinic(clinics);
+    clinics.find(c => c.slug === sp.clinic) ?? (await defaultClinicForPost(clinics));
   if (!clinic) return null;
 
   const appts = await Appointment.find({

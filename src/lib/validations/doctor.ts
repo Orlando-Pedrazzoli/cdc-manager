@@ -199,6 +199,17 @@ export const createDoctorSchema = z.object({
     .trim()
     .min(3, 'Indique o nome do profissional (mínimo 3 letras)')
     .max(120, 'Nome demasiado longo (máximo 120 caracteres)'),
+  // 9.ª ronda (ponto 19): nome completo para atestados e relatórios
+  fullName: z.preprocess(
+    emptyToNull,
+    z
+      .string({ error: 'Nome completo inválido' })
+      .trim()
+      .min(5, 'Nome completo demasiado curto (mínimo 5 letras)')
+      .max(160, 'Nome completo demasiado longo (máximo 160 caracteres)')
+      .nullable()
+      .optional(),
+  ),
   // Cédula profissional (OMD) — numérica. Opcional no registo, mas será
   // exigida quando o médico emitir receitas/consentimentos (B.6): a UI
   // sinaliza quem não a tem para o admin regularizar antes disso.

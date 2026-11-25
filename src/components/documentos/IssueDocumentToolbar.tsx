@@ -4,6 +4,7 @@
 // recentes do paciente e renderiza o botão "Emitir documento".
 // =============================================================================
 
+import { defaultClinicForPost } from '@/lib/post-clinic';
 import { dbConnect } from '@/lib/mongodb';
 import DocumentTemplate from '@/models/DocumentTemplate';
 import Appointment from '@/models/Appointment';
@@ -41,6 +42,8 @@ export async function IssueDocumentToolbar({
       .lean(),
     getActiveClinics(),
   ]);
+  // 9.ª ronda/03: sem consulta, o documento sai pela unidade deste posto
+  const postClinic = await defaultClinicForPost(clinics);
   const tt = await TreatmentType.find({
     _id: { $in: appts.map(a => a.treatmentTypeId) },
   })
@@ -61,8 +64,8 @@ export async function IssueDocumentToolbar({
       clinicId={
         appts[0]
           ? String(appts[0].clinicId)
-          : clinics[0]
-            ? String(clinics[0]._id)
+          : postClinic
+            ? String(postClinic._id)
             : null
       }
       templates={sortByFolder(

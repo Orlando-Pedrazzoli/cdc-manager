@@ -99,6 +99,11 @@ const TreatmentPlanSchema = new Schema(
       trim: true,
       maxlength: 160,
     },
+    // 9.ª ronda/22 (Victor, 17 e 18/11): "os orçamentos devem ser
+    // numerados". Sequencial, atribuído quando o plano é apresentado ao
+    // paciente (rascunhos não gastam números). null = rascunho, ou plano
+    // anterior à numeração (ex.: importado do Dentoral).
+    number: { type: Number, min: 1, default: null },
     status: {
       type: String,
       enum: PLAN_STATUS,
@@ -146,6 +151,12 @@ const TreatmentPlanSchema = new Schema(
   {
     timestamps: true,
   },
+);
+
+// Número do orçamento: único entre os que o têm
+TreatmentPlanSchema.index(
+  { number: 1 },
+  { unique: true, partialFilterExpression: { number: { $type: 'number' } } },
 );
 
 TreatmentPlanSchema.index({ patientId: 1, createdAt: -1 });

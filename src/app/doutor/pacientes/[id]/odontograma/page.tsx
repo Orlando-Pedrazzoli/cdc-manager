@@ -8,11 +8,13 @@
 // RBAC: relação médico↔paciente obrigatória (como na ficha).
 // =============================================================================
 
+import TreatmentType from '@/models/TreatmentType';
+import { getActiveClinics } from '@/models/Clinic';
+import { logDoctorPatientView } from '@/lib/patient-access-data';
 import Link from 'next/link';
 import { ArrowLeft, History } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
-import { logAudit } from '@/lib/audit';
 import Appointment from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
@@ -96,15 +98,14 @@ export default async function OdontogramPage({
       .lean(),
   ]);
   if (!patient) return <NotFound />;
-  if (consultOnly) {
-    await logAudit({
-      userId: session.user.id,
-      action: 'view',
-      entityType: 'Odontogram',
-      patientId: id,
-      summary: 'Odontograma consultado (só leitura) por médico sem consultas com o paciente',
-    });
-  }
+  // 9.ª ronda/08: todas as aberturas ficam no registo de acessos (as de
+  // médico sem consultas com o paciente ficam marcadas "fora da agenda")
+  await logDoctorPatientView({
+    userId: session.user.id,
+    patientId: id,
+    hasRelation: !consultOnly,
+    where: 'odontograma',
+  });
 
   const latestVersion = versions[0]?.version ?? 0;
   const requested = Number(v);
@@ -114,6 +115,18 @@ export default async function OdontogramPage({
       : latestVersion;
   const oldVersion = latestVersion > 0 && showVersion < latestVersion;
   const readOnly = consultOnly || oldVersion;
+  // 9.ª ronda/13: catálogo e clínicas para o orçamento na própria página
+  // (só quando o médico pode editar: tem consultas com o paciente e está na
+  // versão atual)
+  const [budgetTreatments, budgetClinics] = readOnly
+    ? [[], []]
+    : await Promise.all([
+        TreatmentType.find({ active: true })
+          .select('name category dentoralCode priceCents')
+          .sort({ category: 1, name: 1 })
+          .lean(),
+        getActiveClinics(),
+      ]);
   const [{ history, proceduresByTooth }, chartEvents, inProgress] = await Promise.all([
     // 4.ª ronda/07: atos por dente + histórico por data (com notas clínicas)
     loadOdontogramHistory(id, { includeClinicalNotes: !consultOnly }),
@@ -306,6 +319,20 @@ export default async function OdontogramPage({
         history={history}
         planBaseHref={consultOnly ? null : `/doutor/pacientes/${id}/plano?novo=1`}
         consultationHref={inProgress ? `/doutor/consulta/${String(inProgress._id)}` : null}
+        budget={
+          readOnly
+            ? null
+            : {
+                treatments: budgetTreatments.map(t => ({
+                  id: String(t._id),
+                  name: t.name,
+                  category: t.category ?? null,
+                  code: (t.dentoralCode as string | null) ?? null,
+                  priceCents: t.priceCents,
+                })),
+                clinics: budgetClinics.map(c => ({ id: String(c._id), name: c.name })),
+              }
+        }
       />
     </div>
   );

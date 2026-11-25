@@ -7,7 +7,8 @@
 // sobretudo para o médico, que trabalha de costas para o computador: ao olhar
 // para a barra, percebe logo que o tempo está a acabar."
 //
-// Conta sobre o horário MARCADO (início → fim). Cores: azul enquanto há
+// Conta sobre o horário MARCADO (início → fim); quando a consulta começa
+// fora dele, quem chama passa a janela de lib/consult-window.ts. Cores: azul enquanto há
 // tempo, âmbar nos últimos 20% (ou 5 minutos), vermelho depois da hora.
 // O relógio é um store externo partilhado (um só intervalo para todas as
 // barras do ecrã), lido com useSyncExternalStore — no servidor e na

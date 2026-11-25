@@ -9,6 +9,10 @@
 // proxy — este layout assume sessão válida e só a apresenta.
 // =============================================================================
 
+import { getActiveClinics } from '@/models/Clinic';
+import { clinicLabel } from '@/lib/branding';
+import { pickPostClinic, postClinicSlug } from '@/lib/post-clinic';
+import { PostClinicSelect } from '@/components/layout/PostClinicSelect';
 import type { ReactNode } from 'react';
 import { requireActiveSession } from '@/lib/require-active-session';
 import { logoutAction } from '@/actions/auth';
@@ -27,10 +31,14 @@ export default async function AdminLayout({
 }: {
   children: ReactNode;
 }) {
-  const [session, org] = await Promise.all([
+  const [session, org, clinics, postSlug] = await Promise.all([
     requireActiveSession(['admin', 'receptionist'] as const),
     getOrganization(),
+    getActiveClinics(),
+    postClinicSlug(),
   ]);
+  // 9.ª ronda/03: unidade deste posto (pré-define o campo "Clínica")
+  const postClinic = pickPostClinic(clinics, postSlug);
   const brand = {
     appName: org.appName,
     logoUrl: org.logoUrl,
@@ -56,6 +64,11 @@ export default async function AdminLayout({
           flexShrink: 0,
         }}
       >
+        <PostClinicSelect
+          clinics={clinics.map(c => ({ slug: c.slug, label: clinicLabel(c) }))}
+          current={postClinic?.slug ?? ''}
+          chosen={!!postSlug && postClinic?.slug === postSlug}
+        />
         {/* Hora de Lisboa + temperatura — o ecrã fica aberto o dia todo */}
         <ClockWeather />
         <div

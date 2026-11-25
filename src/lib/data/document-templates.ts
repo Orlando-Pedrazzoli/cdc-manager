@@ -36,6 +36,19 @@ export const TEMPLATE_KIND_LABEL: Record<TemplateKind, string> = {
   outro: 'Outro',
 };
 
+// 9.ª ronda (ponto 20, Victor, 17 e 18/11): "qualquer comprovativo de
+// presença indica automaticamente o tempo de consulta registado no sistema,
+// e não pode ser editado" — para ninguém ser beneficiado e a clínica não
+// correr o risco de uma sanção. Nestes tipos o texto é sempre o do modelo,
+// preenchido no servidor com as horas registadas; não há aba "Editável".
+export const TIME_LOCKED_KINDS: readonly TemplateKind[] = [
+  'presenca',
+  'acompanhante',
+];
+export function isTimeLockedKind(kind: unknown): boolean {
+  return (TIME_LOCKED_KINDS as readonly unknown[]).includes(kind);
+}
+
 // 8.ª ronda/06 (Victor, 17/11/2026): os modelos organizam-se por PASTA, que
 // é a especialidade — "(Cirurgia) Pós-operatório: extração de siso",
 // "(Ortodontia) Consentimento informado: aparelho fixo", "(Geral) Atestado
@@ -117,8 +130,8 @@ export const PLACEHOLDERS: { key: string; label: string }[] = [
   { key: 'paciente.utente', label: 'Nº de utente' },
   { key: 'paciente.nascimento', label: 'Data de nascimento' },
   { key: 'paciente.processo', label: 'Nº de processo' },
-  { key: 'medico.nome', label: 'Nome do médico' },
-  { key: 'medico.cedula', label: 'Cédula profissional' },
+  { key: 'medico.nome', label: 'Nome completo do médico' },
+  { key: 'medico.cedula', label: 'N.º da OMD do médico' },
   { key: 'clinica.nome', label: 'Nome da clínica' },
   { key: 'clinica.morada', label: 'Morada da clínica' },
   { key: 'clinica.telefone', label: 'Telefone da clínica' },

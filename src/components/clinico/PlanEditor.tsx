@@ -4,8 +4,9 @@
 // -----------------------------------------------------------------------------
 //   PlanEditor  — compor um plano novo: título, clínica, linhas de atos
 //                 (ato com lupa → PVP de tabela EDITÁVEL pelo médico com
-//                 aviso "tabela: X", desconto por item % ou €, dentes FDI,
-//                 fase) e desconto global; itens viajam em hidden JSON.
+//                 aviso "tabela: X", dentes FDI, fase); itens viajam em
+//                 hidden JSON. 9.ª ronda (ponto 11): sem descontos — o
+//                 médico altera o PVP, mas não aplica desconto.
 //                 Fase 4C (P13): pode nascer pré-preenchido a partir do
 //                 odontograma (`initialTeeth`).
 //   PlanActions — botões do ciclo de vida conforme o estado + execução
@@ -14,7 +15,14 @@
 
 'use client';
 
-import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useActionState,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Plus, Trash2, Send, Check, X, Play } from 'lucide-react';
@@ -51,8 +59,6 @@ interface ItemRow {
   key: number;
   treatmentTypeId: string;
   priceEuros: string;
-  discountMode: '' | 'percent' | 'amount';
-  discountValue: string;
   note: string;
   toothNumbers: string;
   phase: string;
@@ -61,29 +67,55 @@ const emptyRow = (key: number, teeth = ''): ItemRow => ({
   key,
   treatmentTypeId: '',
   priceEuros: '',
-  discountMode: '',
-  discountValue: '',
   note: '',
   toothNumbers: teeth,
   phase: '1',
 });
+
+/** 9.ª ronda/13: o odontograma acrescenta linhas ao orçamento */
+export interface PlanEditorHandle {
+  /** Nova linha para este dente (ou preenche a 1.ª, se ainda estiver vazia) */
+  addTooth: (tooth: string) => void;
+}
 
 export function PlanEditor({
   patientId,
   treatments,
   clinics,
   initialTeeth = '',
+  ref,
+  onCancel,
 }: {
   patientId: string;
   treatments: TreatmentOption[];
   clinics: ClinicOption[];
   /** Vindo do odontograma: "26" ou "26, 27" — pré-preenche a 1.ª linha */
   initialTeeth?: string;
+  ref?: React.Ref<PlanEditorHandle>;
+  /** Embutido no odontograma: "Cancelar" fecha o painel em vez de navegar */
+  onCancel?: () => void;
 }) {
   const router = useRouter();
   const nextKey = useRef(1);
   const [rows, setRows] = useState<ItemRow[]>([emptyRow(0, initialTeeth)]);
-  const [discount, setDiscount] = useState('');
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      addTooth(tooth: string) {
+        const key = nextKey.current++;
+        setRows(prev => {
+          const only = prev.length === 1 ? prev[0] : null;
+          // Orçamento ainda em branco: o dente vai para a linha que já existe
+          if (only && !only.treatmentTypeId && !only.toothNumbers.trim()) {
+            return [{ ...only, toothNumbers: tooth }];
+          }
+          return [...prev, emptyRow(key, tooth)];
+        });
+      },
+    }),
+    [],
+  );
 
   const [state, action, pending] = useActionState<PlanActionState, FormData>(
     createPlanAction,
@@ -118,26 +150,10 @@ export function PlanEditor({
     const n = Number(s.trim().replace(/\s/g, '').replace(',', '.'));
     return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : 0;
   };
-  // Valor ao paciente por linha: PVP aplicado − desconto (espelho do servidor)
-  const lineNet = (r: ItemRow): number => {
-    const list = parseEuros(r.priceEuros);
-    let d = 0;
-    if (r.discountMode === 'percent') {
-      const pct = Number(r.discountValue.replace(',', '.'));
-      if (Number.isFinite(pct) && pct >= 0 && pct <= 100) {
-        d = Math.min(list, Math.round((list * pct) / 100));
-      }
-    } else if (r.discountMode === 'amount') {
-      d = Math.min(list, parseEuros(r.discountValue));
-    }
-    return list - d;
-  };
   const totalCents = useMemo(
-    () => rows.reduce((s, r) => s + lineNet(r), 0),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () => rows.reduce((s, r) => s + parseEuros(r.priceEuros), 0),
     [rows],
   );
-  const discountCents = parseEuros(discount);
 
   const itemsJson = JSON.stringify(
     rows
@@ -145,9 +161,6 @@ export function PlanEditor({
       .map(r => ({
         treatmentTypeId: r.treatmentTypeId,
         priceEuros: r.priceEuros,
-        discountMode: r.discountMode || null,
-        discountPct: r.discountMode === 'percent' ? r.discountValue : '',
-        discountEuros: r.discountMode === 'amount' ? r.discountValue : '',
         note: r.note,
         toothNumbers: r.toothNumbers,
         phase: r.phase || '1',
@@ -222,13 +235,12 @@ export function PlanEditor({
             t != null &&
             r.priceEuros.trim() !== '' &&
             parseEuros(r.priceEuros) !== t.priceCents;
-          const net = lineNet(r);
           return (
             <div
               key={r.key}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '3fr 1fr 1.3fr 1fr 64px 34px',
+                gridTemplateColumns: '3fr 1fr 1fr 64px 34px',
                 gap: '8px',
                 alignItems: 'end',
                 padding: '10px',
@@ -269,46 +281,6 @@ export function PlanEditor({
                     : undefined
                 }
               />
-              <div>
-                <label style={miniLbl}>Desconto</label>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <select
-                    value={r.discountMode}
-                    onChange={e =>
-                      setRow(r.key, {
-                        discountMode: e.target.value as ItemRow['discountMode'],
-                        discountValue: '',
-                      })
-                    }
-                    style={miniSelect}
-                  >
-                    <option value=''>—</option>
-                    <option value='percent'>%</option>
-                    <option value='amount'>€</option>
-                  </select>
-                  <input
-                    className='cdc-field'
-                    value={r.discountValue}
-                    disabled={!r.discountMode}
-                    inputMode='decimal'
-                    placeholder={r.discountMode === 'percent' ? '10' : '20'}
-                    onChange={e =>
-                      setRow(r.key, { discountValue: e.target.value })
-                    }
-                    style={{ ...miniInput, opacity: r.discountMode ? 1 : 0.5 }}
-                  />
-                </div>
-                <p
-                  style={{
-                    margin: '3px 0 0',
-                    fontSize: '11px',
-                    color:
-                      net < parseEuros(r.priceEuros) ? '#0F7B4D' : '#9AA1B4',
-                  }}
-                >
-                  {r.treatmentTypeId ? `Paciente: ${formatCents(net)}` : ' '}
-                </p>
-              </div>
               <Input
                 label='Dentes (FDI)'
                 value={r.toothNumbers}
@@ -338,7 +310,7 @@ export function PlanEditor({
               >
                 <Trash2 size={16} />
               </button>
-              <div style={{ gridColumn: '1 / span 6' }}>
+              <div style={{ gridColumn: '1 / span 5' }}>
                 <input
                   className='cdc-field'
                   value={r.note}
@@ -365,7 +337,7 @@ export function PlanEditor({
         </div>
       </div>
 
-      {/* Desconto + notas + total */}
+      {/* Notas + total */}
       <div
         style={{
           ...box,
@@ -374,23 +346,7 @@ export function PlanEditor({
           gap: '12px',
         }}
       >
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 3fr',
-            gap: '12px',
-          }}
-        >
-          <Input
-            name='discountEuros'
-            label='Desconto global (€)'
-            inputMode='decimal'
-            value={discount}
-            onChange={e => setDiscount(e.target.value)}
-            placeholder='0,00'
-          />
-          <Textarea name='notes' label='Notas do plano' rows={2} />
-        </div>
+        <Textarea name='notes' label='Notas do plano' rows={2} />
         <p
           style={{
             margin: 0,
@@ -401,12 +357,6 @@ export function PlanEditor({
           }}
         >
           Total: {formatCents(totalCents)}
-          {discountCents > 0 && (
-            <span style={{ marginLeft: 10, color: '#0F7B4D' }}>
-              − {formatCents(discountCents)} ={' '}
-              {formatCents(Math.max(totalCents - discountCents, 0))}
-            </span>
-          )}
         </p>
       </div>
 
@@ -414,7 +364,9 @@ export function PlanEditor({
         <Button
           type='button'
           variant='secondary'
-          onClick={() => router.push(`/doutor/pacientes/${patientId}/plano`)}
+          onClick={() =>
+            onCancel ? onCancel() : router.push(`/doutor/pacientes/${patientId}/plano`)
+          }
         >
           Cancelar
         </Button>
@@ -530,22 +482,6 @@ export function ExecuteItemButton({ procedureId }: { procedureId: string }) {
   );
 }
 
-const miniLbl: React.CSSProperties = {
-  display: 'block',
-  fontSize: '13px',
-  fontWeight: 600,
-  color: '#1B2A6B',
-  marginBottom: 6,
-};
-const miniSelect: React.CSSProperties = {
-  border: '1.5px solid #B9C3E0',
-  borderRadius: '8px',
-  padding: '9px 6px',
-  fontSize: '13px',
-  color: '#1B2A6B',
-  backgroundColor: '#FBFCFF',
-  width: 56,
-};
 const miniInput: React.CSSProperties = {
   flex: 1,
   minWidth: 0,

@@ -161,9 +161,11 @@ export async function addProcedureAction(
       appointmentId: formData.get('appointmentId'),
       treatmentTypeId: formData.get('treatmentTypeId'),
       priceEuros: formData.get('priceEuros'),
-      discountMode: formData.get('discountMode') || null,
-      discountPct: formData.get('discountPct'),
-      discountEuros: formData.get('discountEuros'),
+      // 9.ª ronda (ponto 11): o médico não aplica descontos. Os campos de
+      // desconto do formulário são ignorados, mesmo que cheguem preenchidos.
+      discountMode: null,
+      discountPct: null,
+      discountEuros: null,
       costEuros: formData.get('costEuros'),
       toothNumbers: formData.get('toothNumbers'),
       faces: formData.get('faces') ?? '',
@@ -215,13 +217,8 @@ export async function addProcedureAction(
       category: treatment.category ?? null,
     });
 
-    // Desconto (E5): % ou € — exclusivos, validados no schema
-    const discount: DiscountInput =
-      data.discountMode === 'percent'
-        ? { mode: 'percent', value: data.discountPct as number }
-        : data.discountMode === 'amount'
-          ? { mode: 'amount', cents: data.discountEuros as number }
-          : null;
+    // 9.ª ronda (ponto 11): sem desconto do médico; ele altera o PVP.
+    const discount: DiscountInput = null;
 
     // Custo direto (E6): o médico pode ajustar; vazio = custo do catálogo
     const costCents = data.costEuros ?? treatment.costCents ?? 0;

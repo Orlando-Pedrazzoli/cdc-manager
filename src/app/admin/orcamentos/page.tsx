@@ -23,6 +23,9 @@ import {
   budgetStatsByDoctor,
   daysSince,
   isInProgressWithoutReturn,
+  budgetConversion,
+  budgetNumberLabel,
+  budgetTicketStats,
 } from '@/lib/budgets';
 import { formatCents } from '@/lib/commissions';
 import { patientNameWithProcess } from '@/lib/domain';
@@ -30,6 +33,7 @@ import Appointment from '@/models/Appointment';
 import Doctor from '@/models/Doctor';
 import Patient from '@/models/Patient';
 import TreatmentPlan from '@/models/TreatmentPlan';
+import Procedure from '@/models/Procedure';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Orçamentos' };
@@ -73,6 +77,16 @@ const td: React.CSSProperties = {
 };
 const num: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
 const LIST_LIMIT = 300;
+const MONTH_LIST_LIMIT = 200;
+const PLAN_STATUS_LABEL: Record<string, string> = {
+  draft: 'Rascunho',
+  proposed: 'Por responder',
+  approved: 'Aceite',
+  'in-progress': 'Em execução',
+  completed: 'Concluído',
+  declined: 'Recusado',
+  expired: 'Expirado',
+};
 const RECENT_DAYS = 365;
 
 const value = (p: { totalCents?: number | null; discountCents?: number | null }) =>
@@ -118,7 +132,10 @@ export default async function OrcamentosPage({
     Doctor.find({ active: true }).select('name').sort({ name: 1 }).lean(),
     isAdmin
       ? TreatmentPlan.find({ proposedAt: { $gte: from, $lt: to } })
-          .select('doctorId totalCents discountCents proposedAt approvedAt')
+          .select(
+            'number patientId doctorId title status totalCents discountCents proposedAt approvedAt items.procedureId',
+          )
+          .sort({ proposedAt: -1 })
           .lean()
       : Promise.resolve([]),
     TreatmentPlan.find({
@@ -143,7 +160,7 @@ export default async function OrcamentosPage({
           }
         : {}),
     })
-      .select('patientId doctorId title totalCents discountCents proposedAt')
+      .select('number patientId doctorId title totalCents discountCents proposedAt')
       // os mais recentes primeiro: são os que ainda vale a pena ligar
       .sort({ proposedAt: -1 })
       .limit(LIST_LIMIT)
@@ -152,7 +169,7 @@ export default async function OrcamentosPage({
       status: { $in: ['approved', 'in-progress'] },
       proposedAt: { $gte: recentFrom },
     })
-      .select('patientId doctorId title status totalCents discountCents approvedAt')
+      .select('number patientId doctorId title status totalCents discountCents approvedAt')
       .sort({ approvedAt: 1 })
       .limit(1000)
       .lean(),
@@ -197,7 +214,11 @@ export default async function OrcamentosPage({
     .slice(0, LIST_LIMIT);
 
   const patientIds = [
-    ...new Set([...pendingPlans, ...noReturn].map(p => String(p.patientId))),
+    ...new Set(
+      [...pendingPlans, ...noReturn, ...monthPlans.slice(0, MONTH_LIST_LIMIT)].map(
+        p => String(p.patientId),
+      ),
+    ),
   ];
   const patients = patientIds.length
     ? await Patient.find({ _id: { $in: patientIds } })
@@ -223,6 +244,35 @@ export default async function OrcamentosPage({
           (doctorName.get(a.doctorId) ?? '').localeCompare(doctorName.get(b.doctorId) ?? '', 'pt'),
       )
     : [];
+  // 9.ª ronda/22: valor já realizado de cada orçamento do mês (atos do plano
+  // executados), para a conversão por orçamento e o ticket médio
+  const monthProcIds = monthPlans.flatMap(p =>
+    (p.items ?? []).flatMap(i => (i.procedureId ? [String(i.procedureId)] : [])),
+  );
+  const doneProcs = monthProcIds.length
+    ? await Procedure.find({
+        _id: { $in: monthProcIds },
+        status: { $in: ['completed', 'invoiced'] },
+      })
+        .select('priceCents')
+        .lean()
+    : [];
+  const donePrice = new Map(doneProcs.map(p => [String(p._id), p.priceCents ?? 0]));
+  const monthRows = monthPlans.map(p => {
+    const doneCents = (p.items ?? []).reduce(
+      (s, i) => s + (i.procedureId ? (donePrice.get(String(i.procedureId)) ?? 0) : 0),
+      0,
+    );
+    return { plan: p, valueCents: value(p), doneCents };
+  });
+  const ticket = budgetTicketStats(
+    monthRows.map(r => ({
+      valueCents: r.valueCents,
+      accepted: !!r.plan.approvedAt,
+      doneCents: r.doneCents,
+    })),
+  );
+
   const totalPresented = stats.reduce((s, r) => s + r.presentedN, 0);
   const totalAccepted = stats.reduce((s, r) => s + r.acceptedN, 0);
   const withoutAny = stats.filter(r => r.presentedN === 0).length;
@@ -316,7 +366,10 @@ export default async function OrcamentosPage({
                 {pendingPlans.map(p => (
                   <tr key={String(p._id)}>
                     {patientCell(p.patientId)}
-                    <td style={td}>{p.title}</td>
+                    <td style={td}>
+                      {p.number != null ? `n.º ${p.number} · ` : ''}
+                      {p.title}
+                    </td>
                     <td style={td}>{doctorName.get(String(p.doctorId)) ?? '—'}</td>
                     <td style={{ ...td, whiteSpace: 'nowrap' }}>
                       {dayFmt.format(p.proposedAt as Date)}
@@ -360,7 +413,10 @@ export default async function OrcamentosPage({
                   return (
                     <tr key={String(p._id)}>
                       {patientCell(p.patientId)}
-                      <td style={td}>{p.title}</td>
+                      <td style={td}>
+                      {p.number != null ? `n.º ${p.number} · ` : ''}
+                      {p.title}
+                    </td>
                       <td style={td}>{doctorName.get(String(p.doctorId)) ?? '—'}</td>
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>
                         {last ? (
@@ -431,6 +487,133 @@ export default async function OrcamentosPage({
               </tbody>
             </table>
           </div>
+        </section>
+      )}
+
+      {/* 9.ª ronda/22: ticket médio e conversão por orçamento */}
+      {isAdmin && (
+        <section style={card}>
+          <h2 style={h2}>
+            Ticket médio e conversão — {MONTHS[m - 1]} de {y}
+          </h2>
+          <p style={lead}>
+            Orçamentos apresentados no mês. &quot;Realizado&quot; é o valor dos
+            tratamentos do orçamento já feitos até hoje; a conversão de cada
+            orçamento é o realizado a dividir pelo valor do orçamento.
+          </p>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+              gap: 10,
+              marginBottom: 14,
+            }}
+          >
+            {(
+              [
+                [
+                  'Ticket médio apresentado',
+                  ticket.avgPresentedCents,
+                  `${ticket.presentedN} orçamento${ticket.presentedN === 1 ? '' : 's'}`,
+                ],
+                [
+                  'Ticket médio aceite',
+                  ticket.avgAcceptedCents,
+                  `${ticket.acceptedN} aceite${ticket.acceptedN === 1 ? '' : 's'}`,
+                ],
+                [
+                  'Ticket médio do tratamento feito',
+                  ticket.avgDoneCents,
+                  `${ticket.startedN} com tratamento feito`,
+                ],
+              ] as const
+            ).map(([label, cents, sub]) => (
+              <div
+                key={label}
+                style={{
+                  border: '1px solid #EEF1F8',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  backgroundColor: '#FBFCFF',
+                }}
+              >
+                <div style={{ fontSize: '12px', color: '#6A7186' }}>{label}</div>
+                <div style={{ fontSize: '20px', fontWeight: 800, color: '#1B2A6B' }}>
+                  {cents == null ? '—' : formatCents(cents)}
+                </div>
+                <div style={{ fontSize: '12px', color: '#6A7186' }}>{sub}</div>
+              </div>
+            ))}
+            <div
+              style={{
+                border: '1px solid #EEF1F8',
+                borderRadius: '12px',
+                padding: '12px 14px',
+                backgroundColor: '#FBFCFF',
+              }}
+            >
+              <div style={{ fontSize: '12px', color: '#6A7186' }}>Conversão em valor</div>
+              <div style={{ fontSize: '20px', fontWeight: 800, color: '#1B2A6B' }}>
+                {ticket.conversionCents == null ? '—' : `${ticket.conversionCents}%`}
+              </div>
+              <div style={{ fontSize: '12px', color: '#6A7186' }}>
+                {formatCents(ticket.doneCents)} de {formatCents(ticket.presentedCents)}
+              </div>
+            </div>
+          </div>
+          {monthRows.length === 0 ? (
+            <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
+              Nenhum orçamento apresentado neste mês.
+            </p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={th}>N.º</th>
+                    <th style={th}>Apresentado</th>
+                    <th style={th}>Paciente</th>
+                    <th style={th}>Médico</th>
+                    <th style={th}>Estado</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Valor</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Realizado</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Conversão</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthRows.slice(0, MONTH_LIST_LIMIT).map(r => {
+                    const conv = budgetConversion(r.valueCents, r.doneCents);
+                    return (
+                      <tr key={String(r.plan._id)}>
+                        <td style={{ ...td, whiteSpace: 'nowrap', fontWeight: 700 }}>
+                          {budgetNumberLabel(r.plan.number)}
+                        </td>
+                        <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                          {r.plan.proposedAt ? dayFmt.format(r.plan.proposedAt as Date) : '—'}
+                        </td>
+                        {patientCell(r.plan.patientId)}
+                        <td style={td}>{doctorName.get(String(r.plan.doctorId)) ?? '—'}</td>
+                        <td style={td}>
+                          {PLAN_STATUS_LABEL[r.plan.status ?? ''] ?? r.plan.status}
+                        </td>
+                        <td style={num}>{formatCents(r.valueCents)}</td>
+                        <td style={num}>{formatCents(r.doneCents)}</td>
+                        <td style={{ ...num, fontWeight: 700 }}>
+                          {conv == null ? '—' : `${conv}%`}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {monthRows.length > MONTH_LIST_LIMIT && (
+                <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#6A7186' }}>
+                  A mostrar os {MONTH_LIST_LIMIT} mais recentes de {monthRows.length}. Os
+                  totais acima contam todos.
+                </p>
+              )}
+            </div>
+          )}
         </section>
       )}
     </div>

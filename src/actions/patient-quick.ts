@@ -28,6 +28,7 @@ import Procedure from '@/models/Procedure';
 import ClinicalRecord from '@/models/ClinicalRecord';
 import Doctor from '@/models/Doctor';
 import TreatmentType from '@/models/TreatmentType';
+import TreatmentPlan from '@/models/TreatmentPlan';
 import { getActiveClinics } from '@/models/Clinic';
 import { clinicLabel } from '@/lib/branding';
 import { logAudit } from '@/lib/audit';
@@ -123,6 +124,94 @@ export async function getPatientAttendanceAction(
   }
   if (!OBJECT_ID.test(patientId)) return null;
   return loadAttendance(patientId);
+}
+
+// -----------------------------------------------------------------------------
+// 9.ª ronda (ponto 16, Victor, 17 e 18/11): "ao marcar, aparece o orçamento
+// aprovado do paciente, para a receção conseguir marcar o que vai ser feito".
+// Planos aprovados ou em curso, só com os atos AINDA POR FAZER. Sem valores:
+// para marcar interessa o quê, em que dente, em que fase e com que médico.
+// -----------------------------------------------------------------------------
+export type ApprovedBudget = {
+  planId: string;
+  title: string;
+  doctorId: string;
+  doctorName: string;
+  approvedLabel: string | null;
+  doneCount: number;
+  pending: {
+    key: string;
+    treatmentTypeId: string;
+    name: string;
+    teeth: string;
+    phase: number;
+  }[];
+};
+
+export async function getPatientApprovedBudgetsAction(
+  patientId: string,
+): Promise<ApprovedBudget[]> {
+  try {
+    await requireStaff();
+  } catch {
+    return [];
+  }
+  if (!OBJECT_ID.test(patientId)) return [];
+  const plans = await TreatmentPlan.find({
+    patientId,
+    status: { $in: ['approved', 'in-progress'] },
+  })
+    .select('title doctorId approvedAt items')
+    .sort({ approvedAt: -1 })
+    .limit(5)
+    .lean();
+  if (plans.length === 0) return [];
+
+  const procIds = plans.flatMap(p =>
+    (p.items ?? []).flatMap(i => (i.procedureId ? [String(i.procedureId)] : [])),
+  );
+  const [procs, doctors] = await Promise.all([
+    procIds.length > 0
+      ? Procedure.find({ _id: { $in: procIds } }).select('status').lean()
+      : [],
+    Doctor.find({ _id: { $in: plans.map(p => p.doctorId) } })
+      .select('name')
+      .lean(),
+  ]);
+  const procStatus = new Map(procs.map(p => [String(p._id), p.status as string]));
+  const doctorName = new Map(doctors.map(d => [String(d._id), d.name]));
+
+  return plans
+    .map(p => {
+      const items = p.items ?? [];
+      // Por fazer = ato do plano ainda 'planned' (ou sem ato gerado)
+      const pending = items.filter(i => {
+        const st = i.procedureId ? procStatus.get(String(i.procedureId)) : null;
+        return st == null || st === 'planned';
+      });
+      const done = items.filter(i => {
+        const st = i.procedureId ? procStatus.get(String(i.procedureId)) : null;
+        return st === 'completed' || st === 'invoiced';
+      });
+      return {
+        planId: String(p._id),
+        title: p.title,
+        doctorId: String(p.doctorId),
+        doctorName: doctorName.get(String(p.doctorId)) ?? '—',
+        approvedLabel: p.approvedAt ? dateFmt.format(p.approvedAt as Date) : null,
+        doneCount: done.length,
+        pending: pending
+          .map(i => ({
+            key: String(i._id),
+            treatmentTypeId: String(i.treatmentTypeId),
+            name: i.nameSnapshot,
+            teeth: (i.toothNumbers ?? []).join(', '),
+            phase: i.phase ?? 1,
+          }))
+          .sort((a, b) => a.phase - b.phase),
+      };
+    })
+    .filter(p => p.pending.length > 0);
 }
 
 export type PatientQuickView = {

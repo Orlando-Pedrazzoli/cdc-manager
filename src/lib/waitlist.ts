@@ -69,3 +69,61 @@ export function waitlistCandidates<T extends WaitlistEntryLite>(
         a.appointmentStartMin - b.appointmentStartMin,
     );
 }
+
+// -----------------------------------------------------------------------------
+// 9.ª ronda (ponto 17, Victor, 17 e 18/11): pedidos para "o médico X no dia
+// X" — a agenda desse dia ainda não tem horário, ou está cheia. "Quando
+// surgir o horário, aparece um alerta da lista de espera."
+// -----------------------------------------------------------------------------
+export interface MinInterval {
+  start: number;
+  end: number;
+}
+
+/** Vaga mínima (minutos) para o alerta: um lugar da grelha da agenda */
+export const DAY_REQUEST_MIN_GAP = 15;
+
+/**
+ * Primeiro intervalo livre com pelo menos `minGap` minutos dentro do horário
+ * de trabalho, descontando o que já está ocupado. `fromMin` corta o que já
+ * passou (pedidos para hoje). null = sem horário ou sem vaga.
+ */
+export function firstFreeGap(
+  working: MinInterval[],
+  busy: MinInterval[],
+  minGap: number = DAY_REQUEST_MIN_GAP,
+  fromMin = 0,
+): MinInterval | null {
+  const taken = [...busy].sort((a, b) => a.start - b.start);
+  for (const w of [...working].sort((a, b) => a.start - b.start)) {
+    let cursor = Math.max(w.start, fromMin);
+    for (const b of taken) {
+      if (b.end <= cursor) continue;
+      if (b.start >= w.end) break;
+      if (b.start - cursor >= minGap) return { start: cursor, end: b.start };
+      cursor = Math.max(cursor, b.end);
+    }
+    if (w.end - cursor >= minGap) return { start: cursor, end: w.end };
+  }
+  return null;
+}
+
+/** Estado de um pedido para um dia: sem horário, cheio ou com vaga */
+export type DayRequestState = 'no-schedule' | 'full' | 'free';
+
+export function dayRequestState(
+  working: MinInterval[],
+  busy: MinInterval[],
+  fromMin = 0,
+): DayRequestState {
+  if (working.length === 0) return 'no-schedule';
+  return firstFreeGap(working, busy, DAY_REQUEST_MIN_GAP, fromMin)
+    ? 'free'
+    : 'full';
+}
+
+export const DAY_REQUEST_STATE_LABEL: Record<DayRequestState, string> = {
+  'no-schedule': 'Dia ainda sem horário',
+  full: 'Agenda cheia',
+  free: 'Já há vaga',
+};

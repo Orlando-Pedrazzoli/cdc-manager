@@ -6,6 +6,7 @@
 // =============================================================================
 
 import Doctor from '@/models/Doctor';
+import { getPatientAccessAlerts } from '@/lib/patient-access-data';
 import Employee from '@/models/Employee';
 import ExpiryItem from '@/models/ExpiryItem';
 import {
@@ -95,7 +96,13 @@ export async function getManagementAlerts(
       .lean(),
     loadExpiryItems(),
   ]);
+  // 9.ª ronda/08 (leitura protegida: sem ela os outros avisos saem na mesma)
+  const accessAlerts = await getPatientAccessAlerts(now).catch(err => {
+    console.error('[avisos] acessos a fichas indisponíveis', err);
+    return [] as ManagementAlert[];
+  });
   return sortAlerts([
+    ...accessAlerts,
     ...birthdayAlerts(
       [
         ...doctors.map(d => ({

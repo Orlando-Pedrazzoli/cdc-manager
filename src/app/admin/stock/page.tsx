@@ -8,6 +8,7 @@
 // clínica (central + gabinetes…). O detalhe por local vive em /locais.
 // =============================================================================
 
+import { postClinicSlug } from '@/lib/post-clinic';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import Product from '@/models/Product';
@@ -42,6 +43,8 @@ export default async function StockPage() {
     name: c.name,
   }));
   const clinicSlugById = new Map(clinics.map(c => [c.id, c.slug]));
+  // 9.ª ronda/03: os movimentos abrem na unidade deste posto
+  const postSlug = await postClinicSlug();
   const warehouseClinicSlug = new Map(
     warehouses.map(w => [
       String(w._id),
@@ -108,7 +111,12 @@ export default async function StockPage() {
       </div>
       <StockNav active='/admin/stock' />
 
-      <StockTable products={rows} clinics={clinics} families={families} />
+      <StockTable
+        products={rows}
+        clinics={clinics}
+        families={families}
+        defaultClinicId={clinics.find(c => c.slug === postSlug)?.id}
+      />
     </div>
   );
 }

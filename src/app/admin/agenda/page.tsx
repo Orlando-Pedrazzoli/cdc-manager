@@ -19,6 +19,8 @@
 //                    anti-no-show: não-resposta ao email ≠ confirmação.
 // =============================================================================
 
+import { defaultClinicForPost } from '@/lib/post-clinic';
+import { consultWindow } from '@/lib/consult-window';
 import Link from 'next/link';
 import {
   ChevronLeft,
@@ -30,7 +32,7 @@ import {
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { getActiveClinics } from '@/models/Clinic';
-import { clinicBadge, clinicLabel, defaultClinic } from '@/lib/branding';
+import { clinicBadge, clinicLabel } from '@/lib/branding';
 import Doctor from '@/models/Doctor';
 import Appointment, {
   BLOCKING_STATUS,
@@ -77,7 +79,12 @@ import { loadCounterNotices } from '@/lib/attendance-data';
 import { WaitlistBox } from '@/components/agenda/WaitlistBox';
 import { AgendaSideLayout } from '@/components/agenda/AgendaSideLayout';
 import { CalendarDoctorSelect } from '@/components/agenda/CalendarDoctorSelect';
-import { loadActiveWaitlist, waitlistForDay } from '@/lib/waitlist-data';
+import {
+  loadActiveWaitlist,
+  loadDayRequests,
+  waitlistForDay,
+} from '@/lib/waitlist-data';
+import { DayRequestsBox } from '@/components/agenda/DayRequestsBox';
 import { doctorColor } from '@/lib/doctor-colors';
 import { getOrganizationSettings } from '@/lib/org-settings';
 import {
@@ -203,7 +210,7 @@ export default async function AgendaPage({
         .catch(() => false)));
   const clinics = await getActiveClinics();
   const clinic =
-    clinics.find(c => c.slug === sp.clinic) ?? defaultClinic(clinics);
+    clinics.find(c => c.slug === sp.clinic) ?? (await defaultClinicForPost(clinics));
   if (!clinic) {
     return <p>Nenhuma clínica configurada — correr o seed.</p>;
   }
@@ -411,7 +418,7 @@ export default async function AgendaPage({
 
   const appts = await Appointment.find(apptQuery)
     .select(
-      'doctorId patientId treatmentTypeId startAt endAt status channel confirmedVia isUrgent createdByUserId createdAt note cancelledByUserId cancelledAt cancelledBy cancelReason rescheduledToId removedFromGridAt removedFromGridByUserId referralSource referralDetail closedAt closedByUserId',
+      'doctorId patientId treatmentTypeId startAt endAt startedAt status channel confirmedVia isUrgent createdByUserId createdAt note cancelledByUserId cancelledAt cancelledBy cancelReason rescheduledToId removedFromGridAt removedFromGridByUserId referralSource referralDetail closedAt closedByUserId',
     )
     .sort({ startAt: 1 })
     .lean();
@@ -538,6 +545,15 @@ export default async function AgendaPage({
     console.error('[agenda] lista de espera indisponível', err);
     return [];
   });
+  // 9.ª ronda/17: pedidos para "médico X no dia X", com o estado desse dia
+  const dayRequests = await loadDayRequests(
+    clinic,
+    todayLisbon(),
+    utcToLisbonMin(new Date()).min,
+  ).catch(err => {
+    console.error('[agenda] pedidos para um dia indisponíveis', err);
+    return [];
+  });
   const waitlistByAppointment = new Map(
     waitlistAll.map(w => [
       w.appointmentId,
@@ -614,8 +630,15 @@ export default async function AgendaPage({
       provisional: !!p?.provisional,
       cancelledOnGrid: cancelledOnGrid.has(String(a._id)),
       cancelledBy: (a.cancelledBy as string | null) ?? null,
-      startMs: a.startAt.getTime(),
-      endMs: a.endAt.getTime(),
+      // Barra de tempo: conta do início real quando a consulta começa fora
+      // do horário marcado (9.ª ronda, ponto 15)
+      ...consultWindow(
+        a.startAt.getTime(),
+        a.endAt.getTime(),
+        a.status === 'in-progress' && a.startedAt
+          ? new Date(a.startedAt).getTime()
+          : null,
+      ),
       referralLabel: a.referralSource
         ? [
             REFERRAL_SOURCE_LABEL[a.referralSource as ReferralSource] ??
@@ -1375,6 +1398,24 @@ export default async function AgendaPage({
               phone: w.phone,
               appointmentLabel: w.appointmentLabel,
               appointmentHref: `/admin/agenda?clinic=${clinic.slug}&date=${w.appointmentDay}&marcacao=${w.appointmentId}`,
+            }))}
+          />
+          {/* 9.ª ronda/17: pedidos para um médico num dia sem horário ou cheio */}
+          <DayRequestsBox
+            clinicId={clinicId}
+            date={date}
+            minDate={todayLisbon()}
+            doctors={allDoctors.map(d => ({ id: String(d._id), name: d.name }))}
+            entries={dayRequests.map(r => ({
+              id: r.id,
+              patientName: r.patientName,
+              phone: r.phone,
+              doctorName: r.doctorName,
+              dayLabel: r.dayLabel,
+              note: r.note,
+              state: r.state,
+              freeFrom: r.freeFrom,
+              dayHref: `/admin/agenda?clinic=${clinic.slug}&date=${r.dayIso}&medico=${r.doctorId}`,
             }))}
           />
         </AgendaSideLayout>

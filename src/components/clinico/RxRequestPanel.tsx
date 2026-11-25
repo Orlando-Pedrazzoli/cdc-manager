@@ -24,7 +24,8 @@ import {
 import { SignaturePad } from '@/components/clinico/SignaturePad';
 import { RxLaunchButtons } from '@/components/rx/RxLaunchButton';
 import {
-  RX_MODALITIES,
+  RX_MODALITIES_OFFERED,
+  rxModalityUsesTeeth,
   RX_MODALITY_LABEL,
   RX_STATUS_LABEL,
   RX_CONSENT_LEGAL_TEXT,
@@ -98,7 +99,7 @@ export function RxRequestPanel({
     FormData
   >(cancelRxRequestAction, undefined);
 
-  const needsTeeth = modality !== 'panoramica';
+  const needsTeeth = rxModalityUsesTeeth(modality);
   const error =
     (createState && 'error' in createState && createState.error) ||
     (cancelState && 'error' in cancelState && cancelState.error) ||
@@ -361,7 +362,7 @@ export function RxRequestPanel({
                 backgroundColor: '#FFFFFF',
               }}
             >
-              {RX_MODALITIES.map(mo => (
+              {RX_MODALITIES_OFFERED.map(mo => (
                 <option key={mo} value={mo}>
                   {RX_MODALITY_LABEL[mo]}
                 </option>

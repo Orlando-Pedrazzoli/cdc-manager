@@ -15,6 +15,7 @@
 // primeiros MAX_CARDS pacientes (eram ~950 cartões de uma vez).
 // =============================================================================
 
+import { defaultClinicForPost } from '@/lib/post-clinic';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import Link from 'next/link';
@@ -26,7 +27,7 @@ import LabCase from '@/models/LabCase';
 import Supplier from '@/models/Supplier';
 import { patientSearchOr } from '@/lib/patient-search';
 import { getActiveClinics } from '@/models/Clinic';
-import { clinicLabel, defaultClinic } from '@/lib/branding';
+import { clinicLabel } from '@/lib/branding';
 import { lisbonToUtc, todayLisbon } from '@/lib/availability';
 import { formatCents } from '@/lib/commissions';
 import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/domain';
@@ -138,7 +139,7 @@ export default async function CobrancaPage({
   await dbConnect();
   const clinics = await getActiveClinics();
   const clinic =
-    clinics.find(c => c.slug === clinicParam) ?? defaultClinic(clinics);
+    clinics.find(c => c.slug === clinicParam) ?? (await defaultClinicForPost(clinics));
   if (!clinic) return null;
 
   const today = todayLisbon();

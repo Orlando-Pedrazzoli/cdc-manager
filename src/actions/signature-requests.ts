@@ -36,6 +36,7 @@ import SignatureRequest, {
 } from '@/models/SignatureRequest';
 import { getOrganization } from '@/models/Organization';
 import { gdprConsentText } from '@/lib/domain';
+import { isTimeLockedKind } from '@/lib/data/document-templates';
 import { clinicBadge } from '@/lib/branding';
 import {
   finalizeGdprConsent,
@@ -238,7 +239,7 @@ export async function createTemplateSignatureRequestAction(input: {
         .select('+kioskToken')
         .lean(),
       DocumentTemplate.findById(input.templateId)
-        .select('active allowStaff title')
+        .select('active allowStaff title kind')
         .lean(),
     ]);
     if (!patient || patient.status !== 'active')
@@ -250,6 +251,12 @@ export async function createTemplateSignatureRequestAction(input: {
     if (!t || !t.active) return { error: 'Modelo indisponível.' };
     if (staff.role !== 'doctor' && !t.allowStaff)
       return { error: 'Este modelo só pode ser emitido pelo médico.' };
+    // 9.ª ronda/20: o texto destes comprovativos é feito no servidor com as
+    // horas registadas; pelo tablet viajaria o texto do browser
+    if (isTimeLockedKind(t.kind))
+      return {
+        error: 'Os comprovativos de presença emitem-se diretamente, sem tablet.',
+      };
 
     const req = await SignatureRequest.create({
       clinicId: clinic._id,

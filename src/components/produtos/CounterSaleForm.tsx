@@ -24,12 +24,17 @@ import { Input, Select } from '@/components/ui/Input';
 export function CounterSaleForm({
   clinics,
   products,
+  defaultClinicId,
 }: {
+  /** 9.ª ronda/03: unidade deste posto */
+  defaultClinicId?: string;
   clinics: { id: string; label: string }[];
   products: { id: string; name: string; priceCents: number; vatRate: number }[];
 }) {
   const router = useRouter();
-  const [clinicId, setClinicId] = useState(clinics[0]?.id ?? '');
+  const [clinicId, setClinicId] = useState(
+    clinics.find(c => c.id === defaultClinicId)?.id ?? clinics[0]?.id ?? '',
+  );
   const [qty, setQty] = useState<Record<string, number>>({});
   const [method, setMethod] = useState<PaymentMethod | ''>('');
   const [note, setNote] = useState('');

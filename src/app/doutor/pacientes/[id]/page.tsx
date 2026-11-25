@@ -7,8 +7,12 @@
 //   historico           — notas clínicas cronológicas (append-only) com
 //                         médico e consulta de origem
 //
-// RBAC de dados: o médico só abre fichas de pacientes com quem tem
-// consultas — caso contrário "não encontrado" (sem vazar existência).
+// 9.ª ronda (pontos 07 e 08, Victor, 17 e 18/11): o médico abre a ficha
+// CLÍNICA de qualquer paciente. Com consultas com o paciente trabalha como
+// sempre; sem consultas, a ficha abre SÓ PARA LEITURA (as actions de escrita
+// continuam a exigir a relação). Todas as aberturas ficam no registo de
+// acessos. Nunca se mostram contactos, morada, NIF, documento de
+// identificação, faturação nem o n.º da apólice — só o nome da seguradora.
 // O banner de alergias/medicação repete-se aqui no topo — presença
 // PERMANENTE em qualquer ecrã clínico do paciente.
 //
@@ -40,7 +44,12 @@ import { IssueDocumentToolbar } from '@/components/documentos/IssueDocumentToolb
 import { DoctorAnamnesisPanel } from '@/components/clinico/DoctorAnamnesisPanel';
 import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
 import { anamnesisStatus, type QuestionnaireData } from '@/lib/anamnesis';
-import { processLabel } from '@/lib/domain';
+import { processLabel, SEX_LABEL, type Sex } from '@/lib/domain';
+import { AnamnesisReadView } from '@/components/clinico/AnamnesisReadView';
+import {
+  doctorHasRelation,
+  logDoctorPatientView,
+} from '@/lib/patient-access-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -106,7 +115,7 @@ export default async function DoctorPatientPage({
 }) {
   const { id } = await params;
   const { tab } = await searchParams;
-  const activeTab =
+  const requestedTab =
     tab === 'historico'
       ? 'historico'
       : tab === 'documentos'
@@ -121,9 +130,12 @@ export default async function DoctorPatientPage({
 
   await dbConnect();
 
-  // RBAC: relação médico↔paciente obrigatória
-  const hasRelation = await Appointment.exists({ doctorId, patientId: id });
-  if (!hasRelation) return <NotFound />;
+  // Com relação: ficha de trabalho. Sem relação: consulta só de leitura.
+  const hasRelation = await doctorHasRelation(doctorId, id);
+  const consultOnly = !hasRelation;
+  // Laboratórios é trabalho do médico do paciente: fora da consulta
+  const activeTab =
+    consultOnly && requestedTab === 'laboratorios' ? 'anamnese' : requestedTab;
 
   // Documentos só no separador de documentos (não anulados; URLs assinadas
   // geradas server-side após o RBAC acima)
@@ -157,11 +169,32 @@ export default async function DoctorPatientPage({
     }));
   }
 
-  const [patient, record] = await Promise.all([
-    Patient.findById(id).select('name processNumber phone birthDate').lean(),
+  const [patient, record, upcoming] = await Promise.all([
+    // Só dados clínicos e de identificação mínima (sem contactos nem NIF)
+    Patient.findById(id)
+      .select('name processNumber birthDate sex insurance.company status')
+      .lean(),
     ClinicalRecord.findOne({ patientId: id }).lean(),
+    // Próximas consultas: só data, hora e a observação da marcação
+    Appointment.find({
+      patientId: id,
+      startAt: { $gte: new Date() },
+      status: { $in: ['pending', 'confirmed', 'checked-in'] },
+    })
+      .sort({ startAt: 1 })
+      .limit(5)
+      .select('startAt note')
+      .lean(),
   ]);
-  if (!patient) return <NotFound />;
+  if (!patient || patient.status === 'anonymized') return <NotFound />;
+
+  // 9.ª ronda/08: quem abriu a ficha e quando
+  await logDoctorPatientView({
+    userId: session.user.id,
+    patientId: id,
+    hasRelation,
+    where: 'ficha',
+  });
 
   const age = ageFromBirthDate(patient.birthDate ?? null);
   const allergies = record?.allergies ?? [];
@@ -261,9 +294,49 @@ export default async function DoctorPatientPage({
           )}
         </h1>
         <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6A7186' }}>
-          {patient.phone ?? 'Sem telefone'}
+          {[
+            patient.birthDate
+              ? `Nasc. ${lisbonDateTime(patient.birthDate).slice(0, 10)}`
+              : null,
+            patient.sex ? SEX_LABEL[patient.sex as Sex] : null,
+            patient.insurance?.company
+              ? `Seguradora / acordo: ${patient.insurance.company}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' · ') || 'Sem data de nascimento na ficha'}
         </p>
+        {upcoming.length > 0 && (
+          <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#3D4257' }}>
+            <strong>Próximas consultas:</strong>{' '}
+            {upcoming
+              .map(
+                a =>
+                  `${lisbonDateTime(a.startAt)}${a.note ? ` (${a.note})` : ''}`,
+              )
+              .join(' · ')}
+          </p>
+        )}
       </div>
+
+      {/* 9.ª ronda/07: consulta de um paciente que não é do médico */}
+      {consultOnly && (
+        <div
+          role='note'
+          style={{
+            backgroundColor: '#EEF2FF',
+            border: '1px solid #C7D2F5',
+            borderRadius: '12px',
+            padding: '10px 18px',
+            fontSize: '13px',
+            color: '#2743A6',
+          }}
+        >
+          <strong>Só leitura.</strong> Não tem consultas com este paciente:
+          pode consultar a ficha clínica, mas não alterá-la. Este acesso fica
+          registado.
+        </div>
+      )}
 
       {/* Banner permanente de segurança clínica */}
       {(allergies.length > 0 || medications.length > 0) && (
@@ -305,7 +378,7 @@ export default async function DoctorPatientPage({
           borderBottom: '1px solid #E4E8F2',
         }}
       >
-        {TABS.map(t => {
+        {TABS.filter(t => !(consultOnly && t.key === 'laboratorios')).map(t => {
           const active = t.key === activeTab;
           const href =
             t.key === 'odontograma'
@@ -333,7 +406,76 @@ export default async function DoctorPatientPage({
         })}
       </div>
 
-      {activeTab === 'anamnese' ? (
+      {activeTab === 'anamnese' && consultOnly ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <AnamnesisStatusBanner
+            questionnaire={record?.questionnaire ?? null}
+            showOk
+          />
+          {/* Resumo clínico e respostas da anamnese, sem edição e sem as
+              observações privadas do médico do paciente */}
+          <div
+            style={{
+              backgroundColor: '#FFFFFF',
+              border: '1px solid #EEF1F8',
+              borderRadius: '14px',
+              padding: '16px 18px',
+              fontSize: '14px',
+              color: '#1C2233',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+            }}
+          >
+            <p style={{ margin: 0 }}>
+              <strong>Alergias:</strong>{' '}
+              {allergies.length > 0 ? allergies.join(' · ') : 'nenhuma registada'}
+            </p>
+            <p style={{ margin: 0 }}>
+              <strong>Medicação atual:</strong>{' '}
+              {medications.length > 0
+                ? medications.join(' · ')
+                : 'nenhuma registada'}
+            </p>
+            <p style={{ margin: 0 }}>
+              <strong>Condições sistémicas:</strong>{' '}
+              {anamnesis.systemicConditions.length > 0
+                ? anamnesis.systemicConditions
+                    .map(c => (c.detail ? `${c.condition} (${c.detail})` : c.condition))
+                    .join(' · ')
+                : 'nenhuma registada'}
+            </p>
+            <p style={{ margin: 0 }}>
+              <strong>Fumador:</strong>{' '}
+              {anamnesis.smoker == null ? 'sem registo' : anamnesis.smoker ? 'sim' : 'não'}
+            </p>
+            {anamnesis.anamnesisNotes && (
+              <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                <strong>Notas da anamnese:</strong> {anamnesis.anamnesisNotes}
+              </p>
+            )}
+            {anamnesis.updatedAtLabel && (
+              <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
+                {anamnesis.updatedAtLabel}
+              </p>
+            )}
+          </div>
+          {record?.questionnaire?.data ? (
+            <div
+              style={{
+                backgroundColor: '#FFFFFF',
+                border: '1px solid #EEF1F8',
+                borderRadius: '14px',
+                padding: '16px 18px',
+              }}
+            >
+              <AnamnesisReadView
+                data={record.questionnaire.data as QuestionnaireData}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : activeTab === 'anamnese' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <AnamnesisStatusBanner
             questionnaire={record?.questionnaire ?? null}
@@ -366,8 +508,11 @@ export default async function DoctorPatientPage({
           <DocumentsTab
             patientId={id}
             documents={documents}
+            readOnly={consultOnly}
             toolbar={
-              <IssueDocumentToolbar patientId={id} role={'doctor'} size='sm' />
+              consultOnly ? undefined : (
+                <IssueDocumentToolbar patientId={id} role={'doctor'} size='sm' />
+              )
             }
           />
         </div>

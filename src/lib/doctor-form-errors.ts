@@ -25,6 +25,7 @@ import {
 
 export const DOCTOR_FIELDS = [
   'name',
+  'fullName',
   'licenseNumber',
   'birthDate',
   'commissionRate',
@@ -38,7 +39,8 @@ export type DoctorField = (typeof DOCTOR_FIELDS)[number];
 /** Nome do campo como aparece no ecrã (resumo dos erros) */
 export const DOCTOR_FIELD_LABEL: Record<DoctorField, string> = {
   name: 'Nome',
-  licenseNumber: 'Cédula profissional',
+  fullName: 'Nome completo',
+  licenseNumber: 'N.º da OMD (cédula profissional)',
   birthDate: 'Data de nascimento',
   commissionRate: 'Comissão base',
   monthlyGoalCents: 'Objetivo mensal',

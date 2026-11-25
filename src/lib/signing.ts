@@ -24,6 +24,7 @@ import { getOrganization } from '@/models/Organization';
 import { gdprConsentText } from '@/lib/domain';
 import { logAudit } from '@/lib/audit';
 import { renderDocumentPdf } from '@/lib/document-pdf';
+import { documentLogoDataUrl } from '@/lib/document-logo';
 import { longDatePt, shortDatePt } from '@/lib/document-merge';
 import {
   patientDocumentKey,
@@ -148,7 +149,7 @@ export async function finalizeIssuedDocument(params: {
   const [patient, doctor, clinics] = await Promise.all([
     Patient.findById(params.patientId).select('name').lean(),
     params.doctorId && OID.test(params.doctorId)
-      ? Doctor.findById(params.doctorId).select('name licenseNumber').lean()
+      ? Doctor.findById(params.doctorId).select('name fullName licenseNumber').lean()
       : null,
     getActiveClinics(),
   ]);
@@ -158,6 +159,7 @@ export async function finalizeIssuedDocument(params: {
 
   const now = new Date();
   const pdf = await renderDocumentPdf({
+    logoDataUrl: await documentLogoDataUrl(),
     clinic: {
       name: clinic?.name ?? 'Centro Dentário Colombo',
       legalName: clinic?.legalName ?? null,
@@ -168,7 +170,7 @@ export async function finalizeIssuedDocument(params: {
     },
     title,
     body,
-    doctorName: doctor?.name ?? null,
+    doctorName: doctor ? doctor.fullName || doctor.name : null,
     doctorLicense: doctor?.licenseNumber ?? null,
     issuedAtLabel: `${clinic?.address?.split(',').pop()?.trim() || 'Lisboa'}, ${longDatePt(now)}`,
     patientSignatureDataUrl: params.signatureDataUrl,

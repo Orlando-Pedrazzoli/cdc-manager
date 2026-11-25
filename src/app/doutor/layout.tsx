@@ -16,6 +16,7 @@ import { requireActiveSession } from '@/lib/require-active-session';
 import { logoutAction } from '@/actions/auth';
 import { ClockWeather } from '@/components/layout/ClockWeather';
 import { AppShell } from '@/components/layout/AppShell';
+import { DoctorWaitingAlert } from '@/components/layout/DoctorWaitingAlert';
 import { getOrganization } from '@/models/Organization';
 
 export default async function DoctorLayout({
@@ -169,6 +170,8 @@ export default async function DoctorLayout({
       drawerFooter={drawerFooter}
     >
       {children}
+      {/* 9.ª ronda/10: aviso luminoso de paciente lançado pela receção */}
+      <DoctorWaitingAlert />
     </AppShell>
   );
 }

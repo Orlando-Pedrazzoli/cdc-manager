@@ -356,9 +356,13 @@ export function DocumentsTab({
   patientId,
   documents,
   toolbar,
+  readOnly = false,
 }: {
   patientId: string;
   documents: DocumentItem[];
+  /** 9.ª ronda/07: consulta de médico sem consultas com o paciente — só
+   *  ver; sem carregar, transferir nem anular */
+  readOnly?: boolean;
   /** Fase 5A: botão "Emitir documento" (server component) ao lado de Carregar */
   toolbar?: React.ReactNode;
 }) {
@@ -397,10 +401,12 @@ export function DocumentsTab({
         </p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {toolbar}
-          <Button size='sm' onClick={() => setUploadOpen(true)}>
-            <UploadCloud size={15} />
-            Carregar
-          </Button>
+          {!readOnly && (
+            <Button size='sm' onClick={() => setUploadOpen(true)}>
+              <UploadCloud size={15} />
+              Carregar
+            </Button>
+          )}
         </div>
       </div>
 
@@ -533,6 +539,8 @@ export function DocumentsTab({
                       Ver
                     </a>
                   )}
+                  {!readOnly && (
+                    <>
                   <button
                     type='button'
                     onClick={() => download(doc)}
@@ -574,6 +582,8 @@ export function DocumentsTab({
                     <Ban size={14} />
                     Anular
                   </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

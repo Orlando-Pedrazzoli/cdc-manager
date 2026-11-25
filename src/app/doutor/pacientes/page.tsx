@@ -2,13 +2,16 @@
 // =============================================================================
 // CDC Manager — Médico: Os meus pacientes
 // -----------------------------------------------------------------------------
-// Server Component. RBAC de dados: o médico vê APENAS pacientes com quem
-// TEM OU TEVE consultas (deriva das Appointments com o seu doctorId) — a
-// base global de 86k fichas não é navegável daqui; é a materialização do
-// requisito "cada médico vê apenas os seus dados".
+// Server Component. A lista mostra os pacientes com quem o médico TEM OU
+// TEVE consultas (deriva das Appointments com o seu doctorId).
 //
-// Pesquisa por nome (todas as palavras, mesmo padrão da listagem admin)
-// via URL param ?q= — server-only, partilhável.
+// 9.ª ronda (ponto 07, Victor, 17 e 18/11): "pode tirar a trava para o médico
+// pesquisar pacientes: os médicos trocam muitos pacientes". A PESQUISA
+// (?q=, por nome ou n.º de processo) passa a procurar também nos outros
+// pacientes da clínica; essas fichas abrem só para leitura e o acesso fica
+// registado. Continua a NÃO haver lista geral: sem pesquisar, só aparecem
+// os pacientes do médico. Contactos (telemóvel, e-mail) não são mostrados
+// nem servem para pesquisar.
 // =============================================================================
 
 import Link from 'next/link';
@@ -18,7 +21,11 @@ import { dbConnect } from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Appointment from '@/models/Appointment';
 import Patient from '@/models/Patient';
-import { patientSearchOr } from '@/lib/patient-search';
+import {
+  DOCTOR_SEARCH_LIMIT,
+  DOCTOR_SEARCH_MIN_CHARS,
+  doctorPatientSearchOr,
+} from '@/lib/patient-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,16 +74,30 @@ export default async function DoctorPatientsPage({
     _id: { $in: grouped.map(g => g._id) },
   };
   const search = (q ?? '').trim();
-  if (search) {
-    // Filtro único do projeto (nome, processo, telemóvel, NIF, utente,
-    // nascimento) — apontamento 02 da 2.ª reunião
-    const or = patientSearchOr(search);
-    if (or.length > 0) filter.$or = or;
-  }
+  // Só nome ou n.º de processo (lib/patient-access.ts)
+  const or = search ? doctorPatientSearchOr(search) : [];
+  if (or.length > 0) filter.$or = or;
+  const searchTooShort = search.length > 0 && or.length === 0;
 
-  const patients = await Patient.find(filter)
-    .select('name processNumber phone')
-    .lean();
+  const [patients, others] = await Promise.all([
+    Patient.find(filter).select('name processNumber birthDate').lean(),
+    // Outros pacientes da clínica: só com pesquisa, e poucos de cada vez
+    or.length > 0
+      ? Patient.find({
+          status: 'active',
+          _id: { $nin: grouped.map(g => g._id) },
+          $or: or,
+        })
+          .sort({ name: 1 })
+          .limit(DOCTOR_SEARCH_LIMIT + 1)
+          .select('name processNumber birthDate')
+          .lean()
+      : Promise.resolve([]),
+  ]);
+  const moreOthers = others.length > DOCTOR_SEARCH_LIMIT;
+  const otherPatients = others.slice(0, DOCTOR_SEARCH_LIMIT);
+  const birth = (d: Date | null | undefined) =>
+    d ? `Nasc. ${lisbonDate(d)}` : 'Sem data de nascimento';
 
   // Reordenar pela última consulta (o find não preserva a ordem do $in)
   patients.sort(
@@ -129,7 +150,7 @@ export default async function DoctorPatientsPage({
             <input
               name='q'
               defaultValue={search}
-              placeholder='Pesquisar por nome…'
+              placeholder='Nome ou n.º de processo…'
               style={{
                 border: '1px solid #D8DEEF',
                 borderRadius: '10px',
@@ -175,9 +196,11 @@ export default async function DoctorPatientsPage({
               color: '#6A7186',
             }}
           >
-            {search
-              ? 'Nenhum paciente seu corresponde à pesquisa.'
-              : 'Ainda não tem consultas com pacientes.'}
+            {searchTooShort
+              ? `Escreva pelo menos ${DOCTOR_SEARCH_MIN_CHARS} letras do nome, ou o n.º de processo.`
+              : search
+                ? 'Nenhum paciente seu corresponde à pesquisa.'
+                : 'Ainda não tem consultas com pacientes.'}
           </p>
         ) : (
           patients.map(p => {
@@ -223,7 +246,7 @@ export default async function DoctorPatientsPage({
                       color: '#6A7186',
                     }}
                   >
-                    {p.phone ?? 'Sem telefone'}
+                    {birth(p.birthDate)}
                   </p>
                 </div>
                 <span
@@ -241,6 +264,83 @@ export default async function DoctorPatientsPage({
           })
         )}
       </div>
+
+      {/* 9.ª ronda/07: outros pacientes da clínica — só com pesquisa */}
+      {or.length > 0 && (
+        <div>
+          <h2
+            style={{
+              margin: '4px 0 2px',
+              fontSize: '15px',
+              fontWeight: 700,
+              color: '#1B2A6B',
+            }}
+          >
+            Outros pacientes da clínica
+          </h2>
+          <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#6A7186' }}>
+            Sem consultas consigo: a ficha abre só para leitura e o acesso fica
+            registado.
+          </p>
+          <div
+            style={{
+              backgroundColor: '#FFFFFF',
+              border: '1px solid #EEF1F8',
+              borderRadius: '14px',
+              overflow: 'hidden',
+            }}
+          >
+            {otherPatients.length === 0 ? (
+              <p
+                style={{
+                  margin: 0,
+                  padding: '20px',
+                  fontSize: '14px',
+                  color: '#6A7186',
+                }}
+              >
+                Nenhum outro paciente corresponde à pesquisa.
+              </p>
+            ) : (
+              otherPatients.map(p => (
+                <Link
+                  key={String(p._id)}
+                  href={`/doutor/pacientes/${String(p._id)}`}
+                  style={{
+                    display: 'block',
+                    padding: '12px 20px',
+                    borderBottom: '1px solid #F4F6FB',
+                    textDecoration: 'none',
+                  }}
+                >
+                  <span
+                    style={{ fontSize: '14px', fontWeight: 600, color: '#1B2A6B' }}
+                  >
+                    {p.name}
+                  </span>
+                  <span
+                    style={{ marginLeft: 8, fontSize: '12px', color: '#6A7186' }}
+                  >
+                    Proc. {String(p.processNumber ?? '—')} · {birth(p.birthDate)}
+                  </span>
+                </Link>
+              ))
+            )}
+            {moreOthers && (
+              <p
+                style={{
+                  margin: 0,
+                  padding: '10px 20px',
+                  fontSize: '12px',
+                  color: '#6A7186',
+                }}
+              >
+                Há mais resultados: escreva mais do nome para afinar.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -12,6 +12,7 @@
 // As vendas NÃO emitem fatura: ficam "por faturar" até se anotar o documento.
 // =============================================================================
 
+import { defaultClinicForPost } from '@/lib/post-clinic';
 import { dbConnect } from '@/lib/mongodb';
 import { requireActiveSession } from '@/lib/require-active-session';
 import {
@@ -79,6 +80,8 @@ export default async function ProdutosPage() {
   if (!me) return null;
   const myClinics = clinics.filter(c => canOperateClinic(me, String(c._id)));
   const clinicIds = myClinics.map(c => c._id);
+  // 9.ª ronda/03: a venda abre na unidade deste posto
+  const postClinic = await defaultClinicForPost(myClinics);
 
   const saleDocs = await ProductSale.find({
     clinicId: { $in: clinicIds },
@@ -190,6 +193,9 @@ export default async function ProdutosPage() {
               label: clinicLabel(c),
             }))}
             products={products.filter(p => p.active)}
+            defaultClinicId={
+              postClinic ? String(postClinic._id) : undefined
+            }
           />
         )}
       </div>

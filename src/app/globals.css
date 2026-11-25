@@ -739,3 +739,80 @@ body {
     transition: none;
   }
 }
+
+/* =============================================================================
+   Médico — aviso luminoso de paciente lançado (9.ª ronda, ponto 10)
+   Botão fixo, visível em qualquer página da área do médico e em qualquer
+   largura. O brilho pulsa para chamar a atenção de quem trabalha de costas
+   para o ecrã; com "reduzir movimento" fica aceso sem pulsar.
+   ============================================================================= */
+@keyframes cdcDoctorAlert {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(217, 131, 0, 0.75),
+      0 8px 24px rgba(20, 27, 51, 0.25);
+  }
+  50% {
+    box-shadow:
+      0 0 0 16px rgba(217, 131, 0, 0),
+      0 8px 24px rgba(20, 27, 51, 0.25);
+  }
+}
+.cdc-doctor-alert {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 40px);
+  padding: 14px 20px;
+  border-radius: 999px;
+  background-color: #d98300;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+  animation: cdcDoctorAlert 1.4s ease-out infinite;
+}
+.cdc-doctor-alert span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 1023px) {
+  /* acima da barra de separadores do telemóvel */
+  .cdc-doctor-alert {
+    bottom: 84px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cdc-doctor-alert {
+    animation: none;
+    box-shadow:
+      0 0 0 4px rgba(217, 131, 0, 0.45),
+      0 8px 24px rgba(20, 27, 51, 0.25);
+  }
+}
+
+/* =============================================================================
+   Médico — "Os meus dias de trabalho" (9.ª ronda, ponto 05)
+   Duas semanas, uma por linha (7 colunas). Em ecrãs estreitos passa a uma
+   faixa que rola na horizontal, um dia de cada vez.
+   ============================================================================= */
+.cdc-workdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+@media (max-width: 899px) {
+  .cdc-workdays {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 132px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+}

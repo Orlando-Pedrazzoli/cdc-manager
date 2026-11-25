@@ -101,7 +101,7 @@ const RxRequestSchema = new Schema(
       enum: RX_MODALITIES,
       required: true,
     },
-    // Dentes-alvo (periapical/bitewing); panorâmica não usa
+    // Dentes-alvo: só periapical e bitewing (rxModalityUsesTeeth)
     toothNumbers: {
       type: [
         {

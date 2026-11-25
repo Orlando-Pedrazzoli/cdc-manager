@@ -20,7 +20,9 @@ export type ManagementAlertKind =
   | 'birthday'
   | 'doctor-document'
   | 'partner'
-  | 'contract';
+  | 'contract'
+  // 9.ª ronda/08: médico com muitas fichas abertas fora da agenda dele
+  | 'patient-access';
 
 export type ManagementAlertLevel = 'info' | 'warning' | 'urgent';
 
