@@ -66,6 +66,9 @@ export function WalkInModal({
 
   const [treatmentId, setTreatmentId] = useState('');
   const [doctorId, setDoctorId] = useState('');
+  // Respostas de 25/11 (C4): o médico já tem alguém neste horário — a
+  // urgência só é registada depois de a receção confirmar
+  const [overlap, setOverlap] = useState<string | null>(null);
 
   // Efeitos do resultado (toast, fechar, refresh, reset) corridos no
   // próprio callback da action — sem useEffect a observar `state`
@@ -75,9 +78,11 @@ export function WalkInModal({
   >(async (prev, formData) => {
     const result = await createWalkInAction(prev, formData);
     if (result && 'error' in result) {
-      toast.error(result.error);
+      if (result.overlapWarning) setOverlap(result.overlapWarning);
+      else toast.error(result.error);
       return result;
     }
+    setOverlap(null);
     toast.success('Urgência registada — paciente em sala de espera.');
     router.refresh();
     onClose();
@@ -100,11 +105,12 @@ export function WalkInModal({
       >
         <input type='hidden' name='clinicId' value={clinicId} />
         <input type='hidden' name='patientId' value={patient?.id ?? ''} />
+        <input type='hidden' name='overlapOk' value={overlap ? '1' : ''} />
 
         <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
           A marcação é criada <strong>agora</strong>, já com o paciente na sala
-          de espera. Não valida disponibilidade — o encaixe é decisão da
-          receção.
+          de espera. Se o médico já tiver alguém nesse horário, o sistema
+          avisa e pede confirmação — o encaixe é decisão da receção.
         </p>
 
         {/* Paciente */}
@@ -165,7 +171,10 @@ export function WalkInModal({
           name='doctorId'
           label='Médico'
           value={doctorId}
-          onChange={e => setDoctorId(e.target.value)}
+          onChange={e => {
+            setDoctorId(e.target.value);
+            setOverlap(null);
+          }}
           help='Opcional — fica em "Sem médico" até ser atribuída'
         >
           <option value=''>— Sem médico atribuído —</option>
@@ -184,6 +193,23 @@ export function WalkInModal({
           placeholder='ex.: dor aguda no 36 desde ontem'
         />
 
+        {overlap && (
+          <div
+            role='alert'
+            style={{
+              border: '1px solid #F2C94C',
+              backgroundColor: '#FFF8E1',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              fontSize: '13px',
+              color: '#5C4400',
+            }}
+          >
+            <strong>Atenção — marcação sobreposta.</strong> {overlap} Pode escolher
+            outro médico, ou confirmar para registar a urgência mesmo assim.
+          </div>
+        )}
+
         <div
           style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}
         >
@@ -197,7 +223,7 @@ export function WalkInModal({
             disabled={!patient || !treatmentId}
           >
             <Siren size={15} style={{ marginRight: 6 }} />
-            Registar urgência
+            {overlap ? 'Registar mesmo assim' : 'Registar urgência'}
           </Button>
         </div>
       </form>

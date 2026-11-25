@@ -23,6 +23,8 @@ export interface OrganizationSettings {
   /** 7.ª ronda/A1: textos das mensagens (null = texto por omissão) */
   messageTemplates: { birthday: string | null; noShow: string | null };
   network: NetworkRestriction;
+  /** Respostas de 25/11 (F3): ecrãs em maiúsculas (só apresentação) */
+  uppercaseDisplay: boolean;
 }
 
 /** Sem cache — para o login (authorize corre fora de um render) */
@@ -30,7 +32,7 @@ export async function readOrganizationSettings(): Promise<OrganizationSettings> 
   try {
     await dbConnect();
     const org = await Organization.findOne()
-      .select('monthlyPromo networkRestriction messageTemplates')
+      .select('monthlyPromo networkRestriction messageTemplates uppercaseDisplay')
       .lean();
     return {
       monthlyPromo: org?.monthlyPromo?.trim() || null,
@@ -45,6 +47,7 @@ export async function readOrganizationSettings(): Promise<OrganizationSettings> 
             roles: org.networkRestriction.roles ?? [],
           }
         : NO_RESTRICTION,
+      uppercaseDisplay: !!org?.uppercaseDisplay,
     };
   } catch (err) {
     console.error('[org-settings] leitura falhou — a usar defaults:', err);
@@ -52,6 +55,7 @@ export async function readOrganizationSettings(): Promise<OrganizationSettings> 
       monthlyPromo: null,
       messageTemplates: { birthday: null, noShow: null },
       network: NO_RESTRICTION,
+      uppercaseDisplay: false,
     };
   }
 }

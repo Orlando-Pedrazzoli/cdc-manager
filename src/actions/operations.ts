@@ -122,6 +122,39 @@ export async function updateMessageTemplatesAction(
   return { success: true, message: 'Textos das mensagens guardados.' };
 }
 
+// -----------------------------------------------------------------------------
+// Respostas de 25/11 (F3): ecrãs em maiúsculas. Só apresentação.
+// -----------------------------------------------------------------------------
+export async function updateUppercaseDisplayAction(
+  _prev: OperationsActionState,
+  formData: FormData,
+): Promise<OperationsActionState> {
+  const adminId = await requireAdminId();
+  if (!adminId) return { error: 'Sem permissões.' };
+  const enabled = formData.get('uppercaseDisplay') === 'on';
+
+  const org = await organizationDoc();
+  org.uppercaseDisplay = enabled;
+  await org.save();
+  await logAudit({
+    userId: adminId,
+    action: 'update',
+    entityType: 'Organization',
+    entityId: String(org._id),
+    summary: enabled
+      ? 'Ecrãs em maiúsculas: ligado'
+      : 'Ecrãs em maiúsculas: desligado',
+    changedFields: ['uppercaseDisplay'],
+  });
+  revalidatePath('/', 'layout');
+  return {
+    success: true,
+    message: enabled
+      ? 'Ligado. Os ecrãs passam a mostrar tudo em maiúsculas.'
+      : 'Desligado. Os ecrãs voltam a mostrar o texto como foi escrito.',
+  };
+}
+
 export async function updateNetworkRestrictionAction(
   _prev: OperationsActionState,
   formData: FormData,

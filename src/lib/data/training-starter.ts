@@ -226,4 +226,54 @@ O paciente não entra no CDC Manager. O contacto com ele faz-se de três formas:
 A REVER PELA GESTÃO
 Este texto descreve o que existe hoje. Completem-no com as regras da clínica sobre o que dizer ao paciente em cada caso.`,
   },
+  // Respostas de 25/11 (C2, Victor): "Podes escrever. Depois fazemos a
+  // revisão." No fim da lista, para não mudar a ordem dos que já existem.
+  {
+    slug: 'medicos-05-documento-livre',
+    audience: 'doctor',
+    title: '5. Como editar um encaminhamento ou documento livre',
+    keywords: 'encaminhamento documento livre editar editável declaração relatório modelo',
+    body: `PARA QUE SERVE
+Fazer um encaminhamento, uma declaração ou outro documento com texto escrito por si, para um paciente em concreto, sem mexer no modelo da clínica.
+
+PASSO A PASSO
+1. Abra a ficha do paciente e carregue em "Emitir documento".
+2. Em "Modelo", escolha o que mais se aproxima do que precisa (por exemplo o encaminhamento ou o relatório médico). Os modelos estão agrupados por pasta.
+3. Carregue em "Preencher e rever". O sistema preenche sozinho os dados do paciente, do médico e da clínica.
+4. Escolha o separador "Editável". Passa a poder mudar o título e todo o texto: acrescentar o motivo do encaminhamento, o colega ou a especialidade a quem se dirige, tirar parágrafos que não se aplicam.
+5. Confirme o texto e carregue em "Gerar PDF e guardar". O documento fica guardado na ficha do paciente, em Documentos, e pode ser impresso.
+
+O QUE CONVÉM SABER
+· "Modelo padrão" é o texto fixo da clínica; "Editável" vale só para este documento. O modelo não é alterado.
+· Se aparecer o aviso de campos sem valor (ficam como "________"), complete-os no texto, ou corrija a ficha do paciente e volte a preparar.
+· O título do documento sai no cabeçalho; não precisa de o repetir no texto.
+· Depois de emitido, o documento não se edita. Se houver um erro, emita um novo e peça à gestão para anular o anterior.
+· Os comprovativos de presença (do paciente e do acompanhante) não têm "Editável": usam sempre as horas registadas no sistema.
+· A assinatura do médico sai impressa quando a gestão a carregou na ficha do profissional; sem ela, o documento sai com a linha para assinar à mão.`,
+  },
+  // Respostas de 25/11 (C2, Victor): "Podes escrever. Depois fazemos a
+  // revisão." No fim da lista, para não mudar a ordem dos que já existem.
+  {
+    slug: 'rececao-08-documento-livre',
+    audience: 'reception',
+    title: '8. Como editar um encaminhamento ou documento livre',
+    keywords: 'encaminhamento documento livre editar editável declaração relatório modelo',
+    body: `PARA QUE SERVE
+Fazer um encaminhamento, uma declaração ou outro documento com texto escrito por si, para um paciente em concreto, sem mexer no modelo da clínica.
+
+PASSO A PASSO
+1. Abra a ficha do paciente e carregue em "Emitir documento".
+2. Em "Modelo", escolha o que mais se aproxima do que precisa (por exemplo o encaminhamento ou o relatório médico). Os modelos estão agrupados por pasta.
+3. Carregue em "Preencher e rever". O sistema preenche sozinho os dados do paciente, do médico e da clínica.
+4. Escolha o separador "Editável". Passa a poder mudar o título e todo o texto: acrescentar o motivo do encaminhamento, o colega ou a especialidade a quem se dirige, tirar parágrafos que não se aplicam.
+5. Confirme o texto e carregue em "Gerar PDF e guardar". O documento fica guardado na ficha do paciente, em Documentos, e pode ser impresso.
+
+O QUE CONVÉM SABER
+· "Modelo padrão" é o texto fixo da clínica; "Editável" vale só para este documento. O modelo não é alterado.
+· Se aparecer o aviso de campos sem valor (ficam como "________"), complete-os no texto, ou corrija a ficha do paciente e volte a preparar.
+· O título do documento sai no cabeçalho; não precisa de o repetir no texto.
+· Depois de emitido, o documento não se edita. Se houver um erro, emita um novo e peça à gestão para anular o anterior.
+· Os comprovativos de presença (do paciente e do acompanhante) não têm "Editável": usam sempre as horas registadas no sistema.
+· A assinatura do médico sai impressa quando a gestão a carregou na ficha do profissional; sem ela, o documento sai com a linha para assinar à mão.`,
+  },
 ];

@@ -2,14 +2,19 @@
 // =============================================================================
 // CDC Manager — Janela de tempo da barra da consulta
 // -----------------------------------------------------------------------------
-// 9.ª ronda (ponto 15, Victor, 17 e 18/11): "mesmo que o atendimento seja
-// fora do horário da agenda, a barra de tempo deve correr (em casos de
-// urgência, ou de pacientes atendidos antes da hora)".
+// Victor, 25/11/2026 (resposta A3, substitui a regra da 9.ª ronda/15):
+// "A barra começa a correr quando o médico puxa o paciente e termina no
+// horário previsto do agendamento. A partir daí começa a contar tempo de
+// atraso. Assim consigo medir quanto tempo de atraso o médico teve."
 //
-// Regra: se a consulta começou DENTRO do horário marcado, a barra continua a
-// contar sobre esse horário (mostra quando o lugar na agenda acaba). Se
-// começou FORA dele — antes da hora ou depois do fim —, a barra conta a
-// duração marcada a partir do início real.
+// Regra: a barra vai do INÍCIO REAL (quando o médico chama o paciente) até
+// ao FIM MARCADO. Não estica: uma consulta que começa tarde tem menos barra,
+// e depois do fim marcado o que se vê é o atraso a contar.
+//   · ainda não começou              → horário marcado (início → fim)
+//   · começou antes do fim marcado   → início real → fim marcado
+//   · começou no fim marcado ou depois (ex.: urgência atendida muito tarde)
+//                                    → barra já esgotada; o atraso conta
+//                                      desde o fim marcado
 //
 // Função pura, sem dependências: usada em páginas de servidor e nos testes.
 // =============================================================================
@@ -20,7 +25,6 @@ export function consultWindow(
   startedMs: number | null | undefined,
 ): { startMs: number; endMs: number } {
   if (startedMs == null || !Number.isFinite(startedMs)) return { startMs, endMs };
-  if (startedMs >= startMs && startedMs < endMs) return { startMs, endMs };
-  const duration = Math.max(0, endMs - startMs);
-  return { startMs: startedMs, endMs: startedMs + duration };
+  if (startedMs < endMs) return { startMs: startedMs, endMs };
+  return { startMs: Math.min(startMs, endMs), endMs };
 }

@@ -25,6 +25,7 @@ import { gdprConsentText } from '@/lib/domain';
 import { logAudit } from '@/lib/audit';
 import { renderDocumentPdf } from '@/lib/document-pdf';
 import { documentLogoDataUrl } from '@/lib/document-logo';
+import { doctorSignatureDataUrl } from '@/lib/document-signature';
 import { longDatePt, shortDatePt } from '@/lib/document-merge';
 import {
   patientDocumentKey,
@@ -149,7 +150,9 @@ export async function finalizeIssuedDocument(params: {
   const [patient, doctor, clinics] = await Promise.all([
     Patient.findById(params.patientId).select('name').lean(),
     params.doctorId && OID.test(params.doctorId)
-      ? Doctor.findById(params.doctorId).select('name fullName licenseNumber').lean()
+      ? Doctor.findById(params.doctorId)
+          .select('name fullName licenseNumber signatureUpdatedAt')
+          .lean()
       : null,
     getActiveClinics(),
   ]);
@@ -172,6 +175,9 @@ export async function finalizeIssuedDocument(params: {
     body,
     doctorName: doctor ? doctor.fullName || doctor.name : null,
     doctorLicense: doctor?.licenseNumber ?? null,
+    // Respostas de 25/11 (A8): assinatura do médico em imagem
+    doctorSignatureDataUrl:
+      doctor?.signatureUpdatedAt ? await doctorSignatureDataUrl(String(doctor._id)) : null,
     issuedAtLabel: `${clinic?.address?.split(',').pop()?.trim() || 'Lisboa'}, ${longDatePt(now)}`,
     patientSignatureDataUrl: params.signatureDataUrl,
     patientSignatureLabel:

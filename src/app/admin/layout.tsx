@@ -21,6 +21,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { ClockWeather } from '@/components/layout/ClockWeather';
 import { QuickPatientSearch } from '@/components/layout/QuickPatientSearch';
 import { getOrganization } from '@/models/Organization';
+import { UPPERCASE_DISPLAY_CSS } from '@/lib/uppercase-display';
 
 const ROLE_LABEL: Record<string, string> = {
   admin: 'Administração',
@@ -183,6 +184,10 @@ export default async function AdminLayout({
       topbar={topbar}
       drawerFooter={drawerFooter}
     >
+      {/* Respostas de 25/11 (F3): ecrãs em maiúsculas, só apresentação */}
+      {org.uppercaseDisplay && (
+        <style dangerouslySetInnerHTML={{ __html: UPPERCASE_DISPLAY_CSS }} />
+      )}
       {children}
     </AppShell>
   );

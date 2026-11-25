@@ -13,6 +13,7 @@ import {
   updateMessageTemplatesAction,
   updateMonthlyPromoAction,
   updateNetworkRestrictionAction,
+  updateUppercaseDisplayAction,
   type OperationsActionState,
 } from '@/actions/operations';
 import { Button } from '@/components/ui/Button';
@@ -73,6 +74,7 @@ export function OperationsPanel({
   messageTemplates,
   network,
   currentIp,
+  uppercaseDisplay,
 }: {
   monthlyPromo: string | null;
   /** 7.ª ronda/A1: textos guardados (null = texto por omissão) */
@@ -80,7 +82,13 @@ export function OperationsPanel({
   network: { enabled: boolean; allowedIps: string[]; roles: string[] };
   /** IP público deste computador, visto pelo servidor */
   currentIp: string | null;
+  /** Respostas de 25/11 (F3): ecrãs em maiúsculas (só apresentação) */
+  uppercaseDisplay: boolean;
 }) {
+  const [upperState, upperAction, upperPending] = useActionState<
+    OperationsActionState,
+    FormData
+  >(updateUppercaseDisplayAction, undefined);
   const [promoState, promoAction, promoPending] = useActionState<
     OperationsActionState,
     FormData
@@ -167,6 +175,47 @@ export function OperationsPanel({
           <div>
             <Button type='submit' loading={msgPending}>
               Guardar textos
+            </Button>
+          </div>
+        </form>
+      </div>
+
+      {/* --- Ecrãs em maiúsculas (respostas de 25/11, F3) ------------------- */}
+      <div style={card}>
+        <h2 style={h2}>Ecrãs em maiúsculas</h2>
+        <p style={lead}>
+          Com esta opção ligada, a gestão, a receção e os médicos veem os nomes
+          e os textos em maiúsculas, e o que se escreve nos campos aparece logo
+          em maiúsculas, sem Caps Lock. Muda só a apresentação nos ecrãs: o que
+          fica gravado, os documentos em PDF e os e-mails saem como foram
+          escritos. Utilizador, senha, e-mail e os textos longos (notas,
+          modelos de documentos) não são alterados.
+        </p>
+        <form
+          action={upperAction}
+          style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+        >
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              fontSize: '14px',
+              fontWeight: 600,
+              color: '#1C2233',
+            }}
+          >
+            <input
+              type='checkbox'
+              name='uppercaseDisplay'
+              defaultChecked={uppercaseDisplay}
+            />
+            Mostrar os ecrãs em maiúsculas
+          </label>
+          <Feedback state={upperState} />
+          <div>
+            <Button type='submit' loading={upperPending}>
+              Guardar
             </Button>
           </div>
         </form>

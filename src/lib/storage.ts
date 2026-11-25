@@ -118,6 +118,13 @@ export function stockProductKey(productId: string): string {
   return `${ROOT()}/stock/${productId}`;
 }
 
+/** Imagem da assinatura do médico, impressa nos documentos (respostas de
+ *  25/11, A8). Nunca é servida diretamente: só entra nos PDFs e na
+ *  pré-visualização da ficha do médico (gestão). */
+export function doctorSignatureKey(doctorId: string): string {
+  return `${ROOT()}/medicos-assinatura/${doctorId}`;
+}
+
 /** Logótipo da organização (servido por rota da app, não pelo R2 diretamente) */
 export function organizationLogoKey(): string {
   return `${ROOT()}/organizacao/logo`;

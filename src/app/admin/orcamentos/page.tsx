@@ -26,6 +26,7 @@ import {
   budgetConversion,
   budgetNumberLabel,
   budgetTicketStats,
+  budgetIndicatorsByDoctor,
 } from '@/lib/budgets';
 import { formatCents } from '@/lib/commissions';
 import { patientNameWithProcess } from '@/lib/domain';
@@ -274,6 +275,16 @@ export default async function OrcamentosPage({
     })),
   );
 
+  // Victor, 25/11 (A11): os mesmos três indicadores, por médico
+  const indicatorsByDoctor = budgetIndicatorsByDoctor(
+    monthRows.map(r => ({
+      doctorId: String(r.plan.doctorId),
+      valueCents: r.valueCents,
+      accepted: !!r.plan.approvedAt,
+      doneCents: r.doneCents,
+    })),
+  );
+
   const totalPresented = stats.reduce((s, r) => s + r.presentedN, 0);
   const totalAccepted = stats.reduce((s, r) => s + r.acceptedN, 0);
   const withoutAny = stats.filter(r => r.presentedN === 0).length;
@@ -491,77 +502,110 @@ export default async function OrcamentosPage({
         </section>
       )}
 
-      {/* 9.ª ronda/22: ticket médio e conversão por orçamento */}
+      {/* 9.ª ronda/22 + respostas de 25/11 (A11): os três indicadores */}
       {isAdmin && (
         <section style={card}>
           <h2 style={h2}>
-            Ticket médio e conversão — {MONTHS[m - 1]} de {y}
+            Conversão e ticket médio — {MONTHS[m - 1]} de {y}
           </h2>
           <p style={lead}>
-            Orçamentos apresentados no mês. &quot;Realizado&quot; é o valor dos
-            tratamentos do orçamento já feitos até hoje; a conversão de cada
-            orçamento é o realizado a dividir pelo valor do orçamento.
+            Orçamentos apresentados no mês; cada orçamento conta uma só vez.
+            &quot;Feito&quot; é o valor dos tratamentos do orçamento já
+            realizados até hoje (num orçamento feito em parte, conta só essa
+            parte). Os valores atualizam-se sozinhos à medida que os tratamentos
+            são feitos.
           </p>
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
               gap: 10,
-              marginBottom: 14,
+              marginBottom: 10,
             }}
           >
             {(
               [
                 [
-                  'Ticket médio apresentado',
-                  ticket.avgPresentedCents,
-                  `${ticket.presentedN} orçamento${ticket.presentedN === 1 ? '' : 's'}`,
+                  'Taxa de conversão',
+                  ticket.conversionN == null ? '—' : `${ticket.conversionN}%`,
+                  `${ticket.startedN} de ${ticket.presentedN} orçamento${ticket.presentedN === 1 ? '' : 's'} com tratamento feito`,
                 ],
                 [
-                  'Ticket médio aceite',
-                  ticket.avgAcceptedCents,
-                  `${ticket.acceptedN} aceite${ticket.acceptedN === 1 ? '' : 's'}`,
+                  'Conversão financeira',
+                  ticket.conversionCents == null ? '—' : `${ticket.conversionCents}%`,
+                  `${formatCents(ticket.doneCents)} feitos de ${formatCents(ticket.presentedCents)} apresentados`,
                 ],
                 [
-                  'Ticket médio do tratamento feito',
-                  ticket.avgDoneCents,
-                  `${ticket.startedN} com tratamento feito`,
+                  'Ticket médio',
+                  ticket.avgDoneCents == null ? '—' : formatCents(ticket.avgDoneCents),
+                  `valor feito ÷ ${ticket.startedN} orçamento${ticket.startedN === 1 ? '' : 's'} convertido${ticket.startedN === 1 ? '' : 's'}`,
                 ],
               ] as const
-            ).map(([label, cents, sub]) => (
+            ).map(([label, big, sub]) => (
               <div
                 key={label}
                 style={{
-                  border: '1px solid #EEF1F8',
+                  border: '1px solid #D8DEEF',
                   borderRadius: '12px',
                   padding: '12px 14px',
-                  backgroundColor: '#FBFCFF',
+                  backgroundColor: '#F4F6FD',
                 }}
               >
-                <div style={{ fontSize: '12px', color: '#6A7186' }}>{label}</div>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#1B2A6B' }}>
-                  {cents == null ? '—' : formatCents(cents)}
-                </div>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#1B2A6B' }}>{label}</div>
+                <div style={{ fontSize: '22px', fontWeight: 800, color: '#1B2A6B' }}>{big}</div>
                 <div style={{ fontSize: '12px', color: '#6A7186' }}>{sub}</div>
               </div>
             ))}
-            <div
-              style={{
-                border: '1px solid #EEF1F8',
-                borderRadius: '12px',
-                padding: '12px 14px',
-                backgroundColor: '#FBFCFF',
-              }}
-            >
-              <div style={{ fontSize: '12px', color: '#6A7186' }}>Conversão em valor</div>
-              <div style={{ fontSize: '20px', fontWeight: 800, color: '#1B2A6B' }}>
-                {ticket.conversionCents == null ? '—' : `${ticket.conversionCents}%`}
-              </div>
-              <div style={{ fontSize: '12px', color: '#6A7186' }}>
-                {formatCents(ticket.doneCents)} de {formatCents(ticket.presentedCents)}
-              </div>
-            </div>
           </div>
+          <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#6A7186' }}>
+            Para referência: ticket médio apresentado{' '}
+            <strong>
+              {ticket.avgPresentedCents == null ? '—' : formatCents(ticket.avgPresentedCents)}
+            </strong>{' '}
+            ({ticket.presentedN}) · ticket médio aceite{' '}
+            <strong>
+              {ticket.avgAcceptedCents == null ? '—' : formatCents(ticket.avgAcceptedCents)}
+            </strong>{' '}
+            ({ticket.acceptedN} aceite{ticket.acceptedN === 1 ? '' : 's'}).
+          </p>
+          {indicatorsByDoctor.length > 0 && (
+            <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={th}>Médico</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Apresentados</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Convertidos</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Taxa de conversão</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Valor apresentado</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Valor feito</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Conversão financeira</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Ticket médio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {indicatorsByDoctor.map(r => (
+                    <tr key={r.doctorId}>
+                      <td style={{ ...td, fontWeight: 600 }}>{doctorName.get(r.doctorId) ?? '—'}</td>
+                      <td style={num}>{r.presentedN}</td>
+                      <td style={num}>{r.startedN}</td>
+                      <td style={{ ...num, fontWeight: 700 }}>
+                        {r.conversionN == null ? '—' : `${r.conversionN}%`}
+                      </td>
+                      <td style={num}>{formatCents(r.presentedCents)}</td>
+                      <td style={num}>{formatCents(r.doneCents)}</td>
+                      <td style={{ ...num, fontWeight: 700 }}>
+                        {r.conversionCents == null ? '—' : `${r.conversionCents}%`}
+                      </td>
+                      <td style={{ ...num, fontWeight: 700 }}>
+                        {r.avgDoneCents == null ? '—' : formatCents(r.avgDoneCents)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           {monthRows.length === 0 ? (
             <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
               Nenhum orçamento apresentado neste mês.

@@ -44,6 +44,8 @@ import { CommissionEditor } from '@/components/medicos/CommissionEditor';
 import DoctorStatusToggle from '@/components/medicos/DoctorStatusToggle';
 import DoctorInvitePanel from '@/components/medicos/DoctorInvitePanel';
 import DoctorPasswordResetPanel from '@/components/medicos/DoctorPasswordResetPanel';
+import DoctorSignaturePanel from '@/components/medicos/DoctorSignaturePanel';
+import { doctorSignatureDataUrl } from '@/lib/document-signature';
 import { DateJump } from '@/components/agenda/DateJump';
 import { doctorColor } from '@/lib/doctor-colors';
 
@@ -562,7 +564,7 @@ export default async function DoctorPage({
         {/* conta sem email: mostra o utilizador, nunca o endereço interno */}
         {account?.username ? (
           <span style={{ fontSize: '13px', color: '#6A7186' }}>
-            utilizador: {account.username}
+            utilizador: <span data-keep-case>{account.username}</span>
           </span>
         ) : (
           account?.email && (
@@ -590,6 +592,26 @@ export default async function DoctorPage({
           doctorId={id}
           username={account.username}
           mustChangePassword={!!account.mustChangePassword}
+        />
+      )}
+
+      {/* Respostas de 25/11 (A8): assinatura em imagem para os documentos */}
+      {isAdmin && (
+        <DoctorSignaturePanel
+          doctorId={id}
+          signatureDataUrl={
+            doctor.signatureUpdatedAt ? await doctorSignatureDataUrl(id) : null
+          }
+          updatedAtLabel={
+            doctor.signatureUpdatedAt
+              ? new Intl.DateTimeFormat('pt-PT', {
+                  timeZone: 'Europe/Lisbon',
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                }).format(doctor.signatureUpdatedAt)
+              : null
+          }
         />
       )}
 

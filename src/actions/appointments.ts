@@ -37,7 +37,9 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import Warehouse from '@/models/Warehouse';
+import { overlapWarningText } from '@/lib/appointment-overlap';
 import Appointment, {
+  BLOCKING_STATUS,
   STAFF_BOOKING_CHANNELS,
   type AppointmentStatus,
 } from '@/models/Appointment';
@@ -80,7 +82,12 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 // Tipos de estado
 // -----------------------------------------------------------------------------
 export type AppointmentFormState =
-  | { error: string }
+  | {
+      error: string;
+      /** Respostas de 25/11 (C4): a urgência cai em cima de outra marcação
+       *  do médico — a receção tem de confirmar para registar */
+      overlapWarning?: string;
+    }
   | {
       success: true;
       appointmentId: string;
@@ -1227,6 +1234,8 @@ const walkInSchema = z.object({
     v => (typeof v === 'string' && v.trim() === '' ? null : v),
     z.string().trim().max(500).nullable(),
   ),
+  // Respostas de 25/11 (C4): a receção já viu o aviso de sobreposição
+  overlapOk: z.preprocess(v => v === '1' || v === 'on' || v === true, z.boolean()),
 });
 
 export async function createWalkInAction(
@@ -1275,6 +1284,46 @@ export async function createWalkInAction(
     : 30;
   const endAt = new Date(now.getTime() + effectiveMin * 60_000);
 
+  // Respostas de 25/11 (C4): "impedir marcações no mesmo horário para o mesmo
+  // médico". As marcações normais já são recusadas; a urgência avisa e só
+  // avança com a confirmação da receção (fica no registo de auditoria).
+  let overlapNote = '';
+  if (data.doctorId && doctor) {
+    const busy = await Appointment.find({
+      doctorId: data.doctorId,
+      status: { $in: BLOCKING_STATUS },
+      startAt: { $lt: endAt },
+      endAt: { $gt: now },
+    })
+      .select('startAt endAt patientId')
+      .sort({ startAt: 1 })
+      .limit(6)
+      .lean();
+    if (busy.length > 0) {
+      if (!data.overlapOk) {
+        const names = await Patient.find({ _id: { $in: busy.map(b => b.patientId) } })
+          .select('name')
+          .lean();
+        const nameById = new Map(names.map(p => [String(p._id), p.name]));
+        const hhmm = new Intl.DateTimeFormat('pt-PT', {
+          timeZone: 'Europe/Lisbon',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        const text = overlapWarningText(
+          doctor.name,
+          busy.map(b => ({
+            startLabel: hhmm.format(b.startAt),
+            endLabel: hhmm.format(b.endAt),
+            patientName: nameById.get(String(b.patientId)) ?? null,
+          })),
+        );
+        return { error: text, overlapWarning: text };
+      }
+      overlapNote = ` · sobreposta a ${busy.length} marcação${busy.length === 1 ? '' : 'ões'} do médico, confirmado pela receção`;
+    }
+  }
+
   // Token de confirmação como nas outras criações: mantém o documento
   // uniforme (link /confirmar/[token] resolve para "já confirmada") e evita
   // colisões no índice único de confirmToken.
@@ -1308,7 +1357,7 @@ export async function createWalkInAction(
       entityId: String(created._id),
       patientId: data.patientId,
       clinicId: data.clinicId,
-      summary: `URGÊNCIA (sem marcação): ${patient.name} — ${treatment.name}${doctor ? ` · ${doctor.name}` : ' · sem médico'}`,
+      summary: `URGÊNCIA (sem marcação): ${patient.name} — ${treatment.name}${doctor ? ` · ${doctor.name}` : ' · sem médico'}${overlapNote}`,
     });
 
     revalidatePath('/admin/agenda');
