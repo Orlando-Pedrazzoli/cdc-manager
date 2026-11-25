@@ -816,3 +816,26 @@ body {
     padding-bottom: 4px;
   }
 }
+
+/* =============================================================================
+   Agenda — nomes dos médicos sempre à vista (Orlando, 25/11/2026)
+   A linha dos médicos é uma faixa própria, presa por baixo da barra superior
+   enquanto a página rola. Não tem scroll próprio: o AgendaGrid copia para
+   ela o scroll horizontal do corpo (.cdc-agenda-scroll). Fica por cima dos
+   cartões e da coluna das horas (z-index 4) e por baixo da barra superior
+   (30) e das janelas.
+   ============================================================================= */
+.cdc-agenda-head {
+  position: sticky;
+  top: var(--cdc-topbar-h, 0px);
+  z-index: 6;
+  overflow: hidden;
+  background-color: #ffffff;
+  border-bottom: 1px solid #dfe4f0;
+  box-shadow: 0 4px 8px -6px rgba(20, 27, 51, 0.35);
+}
+.cdc-agenda-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 0 0 12px 12px;
+}

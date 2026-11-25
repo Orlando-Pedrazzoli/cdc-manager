@@ -54,6 +54,7 @@
 
 import {
   useCallback,
+  useRef,
   useState,
   useSyncExternalStore,
   type CSSProperties,
@@ -421,6 +422,8 @@ export function AgendaGrid({
   const measureBody = useCallback((el: HTMLDivElement | null) => {
     if (el) setBodyTop(Math.round(el.getBoundingClientRect().top + window.scrollY));
   }, []);
+  // Faixa dos nomes dos médicos: acompanha o scroll horizontal do corpo
+  const headRef = useRef<HTMLDivElement>(null);
   const [cancelMode, setCancelMode] = useState(false);
   // 8.ª ronda/10: "Paciente quer outro horário"
   const [waitMode, setWaitMode] = useState(false);
@@ -620,6 +623,17 @@ export function AgendaGrid({
     router.refresh();
   };
 
+  // A mesma grelha de colunas na faixa dos nomes e no corpo, para as
+  // colunas ficarem alinhadas (--cdc-col-min vem do globals.css)
+  const gridStyle: CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: `56px repeat(${columns.length}, minmax(var(--cdc-col-min, 180px), 1fr))`,
+    minWidth: `calc(56px + ${columns.length} * var(--cdc-col-min, 180px))`,
+    ...(compact
+      ? ({ '--cdc-col-min': COMPACT_COL_MIN } as CSSProperties)
+      : {}),
+  };
+
   if (columns.length === 0) {
     return (
       <div
@@ -640,12 +654,14 @@ export function AgendaGrid({
 
   return (
     <>
+      {/* Sem overflow neste contentor: é o que deixa a linha dos médicos
+          ficar presa ao topo da janela (um contentor com overflow prendia-a
+          a si próprio). O scroll horizontal vive só no corpo da grelha. */}
       <div
         style={{
           backgroundColor: '#FFFFFF',
           border: '1px solid #EEF1F8',
           borderRadius: '12px',
-          overflowX: 'auto',
         }}
       >
         {/* 7.ª ronda/A2: legenda das cores por estado */}
@@ -742,18 +758,12 @@ export function AgendaGrid({
             )}
           </div>
         )}
-        <div
-          className='cdc-agenda-grid'
-          style={{
-            display: 'grid',
-            // --cdc-col-min vem do globals.css: 180px desktop, 150px mobile
-            gridTemplateColumns: `56px repeat(${columns.length}, minmax(var(--cdc-col-min, 180px), 1fr))`,
-            minWidth: `calc(56px + ${columns.length} * var(--cdc-col-min, 180px))`,
-            ...(compact
-              ? ({ '--cdc-col-min': COMPACT_COL_MIN } as CSSProperties)
-              : {}),
-          }}
-        >
+        {/* Nomes dos médicos sempre à vista (Orlando, 25/11/2026): a linha
+            fica presa por baixo da barra superior enquanto se rola a agenda
+            para baixo. É uma faixa própria, com a MESMA grelha de colunas do
+            corpo; o scroll para o lado do corpo é copiado para ela. */}
+        <div ref={headRef} className='cdc-agenda-head'>
+        <div className='cdc-agenda-grid' style={gridStyle}>
           {/* Cabeçalhos — canto e coluna das horas fixos à esquerda para o
               scroll horizontal com muitos médicos não perder a referência */}
           <div
@@ -819,7 +829,18 @@ export function AgendaGrid({
               )}
             </div>
           ))}
+        </div>
+        </div>
 
+        <div
+          className='cdc-agenda-scroll'
+          onScroll={e => {
+            if (headRef.current) {
+              headRef.current.scrollLeft = e.currentTarget.scrollLeft;
+            }
+          }}
+        >
+        <div className='cdc-agenda-grid' style={gridStyle}>
           {/* Coluna das horas (sticky) */}
           <div
             ref={measureBody}
@@ -1185,6 +1206,7 @@ export function AgendaGrid({
               </div>
             );
           })}
+        </div>
         </div>
       </div>
 
