@@ -15,6 +15,7 @@
 // vermelho permanente — o requisito de segurança clínica nº 1.
 // =============================================================================
 
+import { logDoctorPatientView } from '@/lib/patient-access-data';
 import Link from 'next/link';
 import { ArrowLeft, TriangleAlert } from 'lucide-react';
 import { auth } from '@/lib/auth';
@@ -144,6 +145,13 @@ export default async function ConsultationPage({
   const appt = await Appointment.findById(id).lean();
   // Não pertence ao médico → mesma resposta que inexistente (não vazar)
   if (!appt || String(appt.doctorId) !== doctorId) return <NotFound />;
+  // 9.ª ronda/08: abrir a consulta é abrir a ficha do paciente
+  await logDoctorPatientView({
+    userId: session.user.id,
+    patientId: String(appt.patientId),
+    hasRelation: true,
+    where: 'consulta',
+  });
 
   const [
     patient,
@@ -156,7 +164,7 @@ export default async function ConsultationPage({
     lastCompleted,
   ] = await Promise.all([
     Patient.findById(appt.patientId)
-      .select('name processNumber phone birthDate kodakFolder')
+      .select('name processNumber birthDate kodakFolder')
       .lean(),
     getClinicById(String(appt.clinicId)),
     TreatmentType.find({ active: true })

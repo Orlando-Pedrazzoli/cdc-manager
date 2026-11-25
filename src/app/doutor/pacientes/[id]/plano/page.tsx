@@ -9,6 +9,7 @@
 // RBAC: relação médico↔paciente, como no resto da ficha.
 // =============================================================================
 
+import { logDoctorPatientView } from '@/lib/patient-access-data';
 import Link from 'next/link';
 import { ArrowLeft, FilePlus2 } from 'lucide-react';
 import { auth } from '@/lib/auth';
@@ -105,6 +106,13 @@ export default async function PatientPlansPage({
   await dbConnect();
   const hasRelation = await Appointment.exists({ doctorId, patientId: id });
   if (!hasRelation) return <NotFound />;
+  // 9.ª ronda/08: registo de acessos
+  await logDoctorPatientView({
+    userId: session.user.id,
+    patientId: id,
+    hasRelation: true,
+    where: 'planos',
+  });
 
   const [patient, plans, treatments, clinics] = await Promise.all([
     Patient.findById(id).select('name processNumber').lean(),

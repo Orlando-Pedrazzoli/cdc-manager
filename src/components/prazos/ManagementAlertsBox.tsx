@@ -15,6 +15,7 @@ const KIND_LABEL: Record<ManagementAlertKind, string> = {
   'doctor-document': 'Documento',
   partner: 'Renovação',
   contract: 'Contrato',
+  'patient-access': 'Acesso a fichas',
 };
 
 const LEVEL_STYLE = {

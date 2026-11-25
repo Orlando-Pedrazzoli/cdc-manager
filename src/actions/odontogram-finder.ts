@@ -17,6 +17,7 @@
 import Patient from '@/models/Patient';
 import { getVerifiedSession } from '@/lib/get-verified-session';
 import { patientSearchOr } from '@/lib/patient-search';
+import { doctorPatientSearchOr } from '@/lib/patient-access';
 
 export interface OdontogramFinderHit {
   id: string;
@@ -39,7 +40,12 @@ export async function findPatientsForOdontogramAction(
   // getVerifiedSession liga à BD e revalida conta, perfil e rede
   const session = await getVerifiedSession(['admin', 'receptionist', 'doctor']);
   if (!session) return [];
-  const or = patientSearchOr(typeof q === 'string' ? q : '');
+  const term = typeof q === 'string' ? q : '';
+  // 9.ª ronda/07: o médico não pesquisa por telemóvel, NIF nem n.º de utente
+  const or =
+    session.user.role === 'doctor'
+      ? doctorPatientSearchOr(term)
+      : patientSearchOr(term);
   if (or.length === 0) return [];
 
   const patients = await Patient.find({ status: 'active', $or: or })

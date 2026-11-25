@@ -20,6 +20,11 @@ import { daysFrom, mondayOf, rangesLabel } from '../../src/lib/doctor-work-days'
 import { stripTitleLine } from '../../src/lib/document-merge';
 import { dayRequestState, firstFreeGap } from '../../src/lib/waitlist';
 import {
+  PATIENT_ACCESS_ALERT_THRESHOLD,
+  doctorPatientSearchOr,
+  patientAccessAlerts,
+} from '../../src/lib/patient-access';
+import {
   budgetConversion,
   budgetNumberLabel,
   budgetTicketStats,
@@ -236,6 +241,50 @@ test('orçamentos: etiqueta do número', () => {
   assert.equal(budgetNumberLabel(12), 'n.º 12');
   assert.equal(budgetNumberLabel(null), 's/ n.º');
   assert.equal(budgetNumberLabel(undefined), 's/ n.º');
+});
+
+test('médico: pesquisa só por nome ou n.º de processo', () => {
+  assert.deepEqual(doctorPatientSearchOr('1234'), [{ processNumber: 1234 }]);
+  // telemóvel e NIF não servem para pesquisar
+  assert.deepEqual(doctorPatientSearchOr('912345678'), []);
+  assert.deepEqual(doctorPatientSearchOr('123456789'), []);
+  // menos de 3 letras não chega
+  assert.deepEqual(doctorPatientSearchOr('an'), []);
+  assert.deepEqual(doctorPatientSearchOr('  '), []);
+  assert.deepEqual(doctorPatientSearchOr('ana'), [
+    { name: { $regex: 'ana', $options: 'i' } },
+  ]);
+  assert.deepEqual(doctorPatientSearchOr('ana silva'), [
+    {
+      $and: [
+        { name: { $regex: 'ana', $options: 'i' } },
+        { name: { $regex: 'silva', $options: 'i' } },
+      ],
+    },
+  ]);
+  // carateres de regex no termo são neutralizados
+  assert.deepEqual(doctorPatientSearchOr('a.b*c'), [
+    { name: { $regex: 'a\\.b\\*c', $options: 'i' } },
+  ]);
+});
+
+test('acessos: aviso à gestão só a partir do limite de fichas fora da agenda', () => {
+  const t = PATIENT_ACCESS_ALERT_THRESHOLD;
+  const alerts = patientAccessAlerts(
+    [
+      { doctorId: 'a', doctorName: 'Dr. A', patients: t - 1 },
+      { doctorId: 'b', doctorName: 'Dra. B', patients: t },
+      { doctorId: null, doctorName: 'Dr. C', patients: t * 2 },
+    ],
+    '2026-11-25',
+  );
+  assert.equal(alerts.length, 2);
+  assert.equal(alerts[0].subject, 'Dra. B');
+  assert.equal(alerts[0].level, 'warning');
+  assert.equal(alerts[0].kind, 'patient-access');
+  assert.ok(alerts[0].href?.includes('medico=b'));
+  assert.equal(alerts[1].level, 'urgent');
+  assert.ok(alerts[1].text.includes(String(t * 2)));
 });
 
 console.log(`\n${n} testes OK`);

@@ -8,11 +8,11 @@
 // RBAC: relação médico↔paciente obrigatória (como na ficha).
 // =============================================================================
 
+import { logDoctorPatientView } from '@/lib/patient-access-data';
 import Link from 'next/link';
 import { ArrowLeft, History } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
-import { logAudit } from '@/lib/audit';
 import Appointment from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
@@ -96,15 +96,14 @@ export default async function OdontogramPage({
       .lean(),
   ]);
   if (!patient) return <NotFound />;
-  if (consultOnly) {
-    await logAudit({
-      userId: session.user.id,
-      action: 'view',
-      entityType: 'Odontogram',
-      patientId: id,
-      summary: 'Odontograma consultado (só leitura) por médico sem consultas com o paciente',
-    });
-  }
+  // 9.ª ronda/08: todas as aberturas ficam no registo de acessos (as de
+  // médico sem consultas com o paciente ficam marcadas "fora da agenda")
+  await logDoctorPatientView({
+    userId: session.user.id,
+    patientId: id,
+    hasRelation: !consultOnly,
+    where: 'odontograma',
+  });
 
   const latestVersion = versions[0]?.version ?? 0;
   const requested = Number(v);

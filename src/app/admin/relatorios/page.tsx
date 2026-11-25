@@ -367,6 +367,17 @@ export default async function RelatoriosPage({
               >
                 Ocupação por médico
               </Link>
+              {/* 9.ª ronda/08: quem abriu cada ficha e quando */}
+              <Link
+                href='/admin/relatorios/acessos'
+                style={{
+                  ...navBtn,
+                  padding: '7px 12px',
+                  fontSize: '12px',
+                }}
+              >
+                Acessos às fichas
+              </Link>
               <Link
                 href={`/admin/relatorios/comissoes?mes=${mes}`}
                 style={{
