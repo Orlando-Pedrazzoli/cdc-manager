@@ -117,11 +117,12 @@ export default async function OrcamentosPage({
   const now = new Date();
   const nowMs = now.getTime();
   // Muitos "Orçamento livre (Dentoral)" vieram a 0,00 €: a lista de chamadas
-  // pode escondê-los. Por omissão mostram-se todos (falta decidir com o Victor).
-  const hideZero = sp.semvalor === '0';
+  // esconde-os por omissão (Victor, 25/11, G3: "Esconder"). ?semvalor=1 volta
+  // a mostrá-los.
+  const hideZero = sp.semvalor !== '1';
   const href = (o: { m?: string; dias?: number; hideZero?: boolean }) =>
     `/admin/orcamentos?m=${o.m ?? month}&dias=${o.dias ?? pendingDays}${
-      (o.hideZero ?? hideZero) ? '&semvalor=0' : ''
+      (o.hideZero ?? hideZero) ? '' : '&semvalor=1'
     }`;
 
   // Só orçamentos entregues nos últimos 12 meses entram nas listas de chamadas
@@ -339,7 +340,7 @@ export default async function OrcamentosPage({
                 marginLeft: 8,
               }}
             >
-              {hideZero ? 'A esconder os de 0,00 €' : 'Esconder os de 0,00 €'}
+              {hideZero ? 'Mostrar os de 0,00 €' : 'Esconder os de 0,00 €'}
             </Link>
           </div>
         </div>

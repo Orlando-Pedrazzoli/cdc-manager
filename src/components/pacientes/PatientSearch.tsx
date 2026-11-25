@@ -73,7 +73,7 @@ export function PatientSearch({
           type='text'
           value={q}
           onChange={e => setQ(e.target.value)}
-          placeholder='Nome, telemóvel, NIF, nº de utente, nascimento ou nº de processo…'
+          placeholder='Nome, telemóvel, NIF, nº de utente, nascimento ou n.º do paciente…'
           aria-label='Pesquisar pacientes'
           className='outline-none focus:ring-2'
           style={{

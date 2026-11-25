@@ -151,7 +151,7 @@ export default async function PatientsPage({
       <Table>
         <THead>
           <TR>
-            <TH width={90}>Nº Proc.</TH>
+            <TH width={90}>N.º Pac.</TH>
             <TH>Nome</TH>
             <TH width={110}>Nascimento</TH>
             <TH width={150}>Telefone</TH>

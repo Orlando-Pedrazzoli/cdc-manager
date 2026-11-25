@@ -1048,7 +1048,7 @@ export default async function AgendaPage({
           >
             <PhoneCall size={16} color='#9A6700' style={{ flexShrink: 0 }} />
             <strong style={{ fontSize: '14px', color: '#9A6700' }}>
-              Por confirmar nas próximas 24h — ligar ao paciente (
+              Pendentes nas próximas 24h — ligar ao paciente (
               {unconfirmed.length})
             </strong>
             <span

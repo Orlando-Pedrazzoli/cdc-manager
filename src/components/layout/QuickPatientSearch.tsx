@@ -174,7 +174,7 @@ export function QuickPatientSearch() {
           onFocus={() => {
             if (results.length > 0) setOpen(true);
           }}
-          placeholder='Paciente — nome, telemóvel, NIF, utente, nascimento ou processo'
+          placeholder='Paciente — nome, telemóvel, NIF, utente, nascimento ou n.º do paciente'
           title='Pesquise o paciente; em cada resultado, "Consultas" mostra as próximas marcações'
           style={{
             flex: 1,

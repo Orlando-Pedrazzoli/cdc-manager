@@ -49,7 +49,7 @@ Ver as marcações de cada médico e marcar, remarcar ou cancelar consultas.
 
 VER O DIA
 · No topo escolhe-se a clínica e o dia. Cada coluna é um médico que trabalha nesse dia.
-· As cores mostram o estado: amarelo por confirmar, verde confirmada, roxo chegou, turquesa em consulta, cinzento por fechar, azul concluída, laranja falta, vermelho cancelada.
+· As cores mostram o estado: amarelo pendente, verde confirmada, roxo chegou, turquesa em consulta, cinzento por fechar, azul concluída, laranja falta, vermelho cancelada.
 · "Vista compacta" encolhe a agenda para caber o dia inteiro no ecrã.
 
 MARCAR

@@ -193,7 +193,7 @@ export async function RecallContactLog({
     'Colaborador',
     'Resultado',
     'Paciente',
-    'N.º processo',
+    'N.º do paciente',
     'Telemóvel',
     'Ato do recall',
     'Nota',

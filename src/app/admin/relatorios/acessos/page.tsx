@@ -146,17 +146,17 @@ export default async function AcessosPage({
           Quem abriu cada ficha e quando. &quot;Fora da agenda&quot; quer dizer
           que o médico não tem consultas com esse paciente (a ficha abre só
           para leitura). A partir de {PATIENT_ACCESS_ALERT_THRESHOLD} fichas
-          fora da agenda num dia, a gestão recebe um aviso.
+          fora da agenda no mesmo mês, a gestão recebe um aviso.
         </p>
       </div>
 
       <section style={card}>
         <h2 style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: 700, color: '#1C2233' }}>
-          Hoje, fora da agenda
+          Este mês, fora da agenda
         </h2>
         {today.length === 0 ? (
           <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
-            Nenhum médico abriu hoje fichas de pacientes com quem não tem consultas.
+            Nenhum médico abriu este mês fichas de pacientes com quem não tem consultas.
           </p>
         ) : (
           <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -167,7 +167,7 @@ export default async function AcessosPage({
                 return (
                   <li key={`${t.doctorId}-${t.doctorName}`} style={{ fontSize: '14px', color: over ? '#8A1C13' : '#1C2233', fontWeight: over ? 700 : 400 }}>
                     {t.doctorId ? (
-                      <Link href={href({ medico: t.doctorId, fora: true, dias: 1 })} style={{ color: 'inherit' }}>
+                      <Link href={href({ medico: t.doctorId, fora: true, dias: 30 })} style={{ color: 'inherit' }}>
                         {t.doctorName}
                       </Link>
                     ) : (

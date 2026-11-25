@@ -246,7 +246,7 @@ export function IssueDocumentButton({
                 label='Consulta a que se refere'
                 value={appointmentId}
                 onChange={e => setAppointmentId(e.target.value)}
-                help='Preenche a data e as horas de entrada e de saída registadas no sistema'
+                help='Preenche a data e as horas registadas no sistema: entrada = "Chegou", saída = "Tudo OK". Sem as duas, o comprovativo de presença não é emitido'
               >
                 <option value=''>— Hoje, sem consulta associada —</option>
                 {appointments.map(a => (
@@ -331,9 +331,9 @@ export function IssueDocumentButton({
                   fontSize: '12.5px',
                 }}
               >
-                {prepared.recordedTimes
-                  ? 'As horas de entrada e de saída são as registadas no sistema. Este comprovativo não pode ser editado.'
-                  : 'Esta consulta não tem a entrada e a saída registadas no sistema: o comprovativo usa o horário marcado. Não pode ser editado.'}
+                Entrada = hora a que a receção marcou &quot;Chegou&quot;; saída =
+                hora a que o atendimento foi fechado com &quot;Tudo OK&quot;. Este
+                comprovativo não pode ser editado.
               </p>
             )}
             {/* 8.ª ronda/06: Padrão (texto fixo) ou Editável */}

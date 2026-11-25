@@ -415,7 +415,7 @@ export async function createAppointmentAction(
     const dup = await findPatientByPhone(data.newPhone as string);
     if (dup) {
       return {
-        error: `Já existe uma ficha com este telemóvel: ${dup.name} (${dup.processNumber != null ? `processo nº ${dup.processNumber}` : 'pré-marcação, ainda sem n.º'}). Escolha-a na pesquisa ou marque "É outra pessoa" para criar uma nova.`,
+        error: `Já existe uma ficha com este telemóvel: ${dup.name} (${dup.processNumber != null ? `paciente n.º ${dup.processNumber}` : 'pré-marcação, ainda sem n.º'}). Escolha-a na pesquisa ou marque "É outra pessoa" para criar uma nova.`,
       };
     }
   }

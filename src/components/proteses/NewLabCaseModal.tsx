@@ -180,7 +180,7 @@ export function NewLabCaseModal({
               setPatient(null);
               setPatientQuery(e.target.value);
             }}
-            placeholder='Nome, telemóvel, NIF, utente, nascimento ou nº de processo…'
+            placeholder='Nome, telemóvel, NIF, utente, nascimento ou n.º do paciente…'
             autoComplete='off'
           />
           {!lockedPatient && patientResults.length > 0 && !patient && (

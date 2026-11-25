@@ -85,7 +85,7 @@ test('bloqueio: o motivo é obrigatório, limpo e com tamanho máximo', () => {
 // --- A2/A3: cores por estado -------------------------------------------------
 test('cores: semáforo pedido pelo Victor', () => {
   assert.equal(agendaColor('cancelled').key, 'cancelled');
-  assert.equal(agendaColor('pending').label, 'Por confirmar');
+  assert.equal(agendaColor('pending').label, 'Pendente');
   assert.equal(agendaColor('confirmed').label, 'Confirmada');
   assert.equal(agendaColor('no-show').label, 'Falta');
   // vermelho, amarelo, verde, laranja: quatro cores diferentes

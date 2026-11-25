@@ -129,7 +129,7 @@ export const PLACEHOLDERS: { key: string; label: string }[] = [
   { key: 'paciente.nif', label: 'NIF do paciente' },
   { key: 'paciente.utente', label: 'Nº de utente' },
   { key: 'paciente.nascimento', label: 'Data de nascimento' },
-  { key: 'paciente.processo', label: 'Nº de processo' },
+  { key: 'paciente.processo', label: 'N.º do paciente' },
   { key: 'medico.nome', label: 'Nome completo do médico' },
   { key: 'medico.cedula', label: 'N.º da OMD do médico' },
   { key: 'clinica.nome', label: 'Nome da clínica' },
@@ -193,7 +193,7 @@ Para os devidos efeitos se certifica que {{acompanhante.nome}} acompanhou o(a) p
     body: `RELATÓRIO MÉDICO
 
 Paciente: {{paciente.nome}}
-Data de nascimento: {{paciente.nascimento}} · NIF: {{paciente.nif}} · Processo n.º {{paciente.processo}}
+Data de nascimento: {{paciente.nascimento}} · NIF: {{paciente.nif}} · N.º do paciente: {{paciente.processo}}
 
 Motivo da consulta:
 

@@ -150,7 +150,7 @@ export default async function DoctorPatientsPage({
             <input
               name='q'
               defaultValue={search}
-              placeholder='Nome ou n.º de processo…'
+              placeholder='Nome ou n.º do paciente…'
               style={{
                 border: '1px solid #D8DEEF',
                 borderRadius: '10px',
@@ -197,7 +197,7 @@ export default async function DoctorPatientsPage({
             }}
           >
             {searchTooShort
-              ? `Escreva pelo menos ${DOCTOR_SEARCH_MIN_CHARS} letras do nome, ou o n.º de processo.`
+              ? `Escreva pelo menos ${DOCTOR_SEARCH_MIN_CHARS} letras do nome, ou o n.º do paciente.`
               : search
                 ? 'Nenhum paciente seu corresponde à pesquisa.'
                 : 'Ainda não tem consultas com pacientes.'}

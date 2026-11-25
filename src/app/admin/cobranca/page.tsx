@@ -358,7 +358,7 @@ export default async function CobrancaPage({
             type='search'
             name='paciente'
             defaultValue={fPaciente}
-            placeholder='Nome, n.º processo, telemóvel, NIF'
+            placeholder='Nome, n.º do paciente, telemóvel, NIF'
             style={filterField}
           />
         </label>

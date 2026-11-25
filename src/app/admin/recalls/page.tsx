@@ -363,7 +363,7 @@ export default async function RecallsPage({
   const queueHeaders = [
     'Secção',
     'Paciente',
-    'N.º processo',
+    'N.º do paciente',
     'Telemóvel',
     'Ato do recall',
     'Médico',

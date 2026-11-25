@@ -100,7 +100,7 @@ export function CollectCard({
         }}
       >
         <span style={{ fontSize: '13px', color: C.muted }}>
-          Amanhã por confirmar:{' '}
+          Amanhã pendentes:{' '}
           <strong style={{ color: pendingTomorrow > 0 ? C.warn : C.good }}>
             {pendingTomorrow}
           </strong>

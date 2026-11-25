@@ -238,7 +238,7 @@ export async function createPatientAction(
     }).select('processNumber name');
     if (dupNif) {
       return {
-        error: `Já existe um paciente com este NIF: ${dupNif.name} (processo nº ${processLabel(dupNif.processNumber)}).`,
+        error: `Já existe um paciente com este NIF: ${dupNif.name} (paciente n.º ${processLabel(dupNif.processNumber)}).`,
       };
     }
   }
@@ -250,7 +250,7 @@ export async function createPatientAction(
       status: { $ne: 'anonymized' },
     }).select('processNumber name');
     if (dupPhone) {
-      warning = `Atenção: o telefone já existe na ficha de ${dupPhone.name} (processo nº ${processLabel(dupPhone.processNumber)}).`;
+      warning = `Atenção: o telefone já existe na ficha de ${dupPhone.name} (paciente n.º ${processLabel(dupPhone.processNumber)}).`;
     }
   }
 
@@ -321,7 +321,7 @@ export async function createPatientAction(
     entityType: 'Patient',
     entityId: patient._id.toString(),
     patientId: patient._id.toString(),
-    summary: `Paciente criado (processo nº ${patient.processNumber})`,
+    summary: `Paciente criado (n.º ${patient.processNumber})`,
   });
 
   // Convite do portal, se pedido
@@ -424,7 +424,7 @@ export async function updatePatientAction(
     }).select('processNumber name');
     if (dupNif) {
       return {
-        error: `Já existe um paciente com este NIF: ${dupNif.name} (processo nº ${processLabel(dupNif.processNumber)}).`,
+        error: `Já existe um paciente com este NIF: ${dupNif.name} (paciente n.º ${processLabel(dupNif.processNumber)}).`,
       };
     }
   }
@@ -552,7 +552,7 @@ export async function updatePatientAction(
         if (isDuplicateKeyError(err) && attempt < 2) continue;
         console.error('[patients] atribuição do nº de processo falhou:', err);
         return {
-          error: 'Não foi possível atribuir o n.º de processo. Tente novamente.',
+          error: 'Não foi possível atribuir o n.º do paciente. Tente novamente.',
         };
       }
     }
@@ -567,7 +567,7 @@ export async function updatePatientAction(
     patientId,
     summary:
       completing && processNumber != null
-        ? `Ficha completada (processo nº ${processNumber})`
+        ? `Ficha completada (paciente n.º ${processNumber})`
         : 'Ficha de paciente atualizada',
     changedFields: changed,
   });

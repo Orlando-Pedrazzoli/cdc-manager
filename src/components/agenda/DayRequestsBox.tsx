@@ -247,7 +247,7 @@ export function DayRequestsBox({
                     setPatient(null);
                     setPatientQuery(e.target.value);
                   }}
-                  placeholder='Nome, telemóvel ou n.º de processo…'
+                  placeholder='Nome, telemóvel ou n.º do paciente…'
                   autoComplete='off'
                 />
                 {patient && (

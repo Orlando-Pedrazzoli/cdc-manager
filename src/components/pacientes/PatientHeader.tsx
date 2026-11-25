@@ -343,10 +343,10 @@ export function PatientHeader({ patient }: { patient: PatientHeaderData }) {
           <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>
             {patient.processNumber != null ? (
               <>
-                Processo nº <strong>{patient.processNumber}</strong>
+                Paciente n.º <strong>{patient.processNumber}</strong>
               </>
             ) : (
-              <strong>Sem n.º de processo (pré-marcação)</strong>
+              <strong>Sem n.º do paciente (pré-marcação)</strong>
             )}
             {age !== null ? ` · ${age} anos` : ''}
             {patient.portalStatus === 'active'

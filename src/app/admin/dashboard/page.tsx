@@ -639,7 +639,7 @@ export default async function AdminDashboardPage() {
     'in-progress': { label: 'Em curso', tone: 'good' },
     'checked-in': { label: 'Em espera', tone: 'warn' },
     confirmed: { label: 'Confirmada', tone: 'info' },
-    pending: { label: 'Por confirmar', tone: 'neutral' },
+    pending: { label: 'Pendente', tone: 'neutral' },
   };
   const minutesLisbon = (dt: Date) =>
     Math.round((dt.getTime() - dayStart.getTime()) / 60_000);
@@ -836,7 +836,7 @@ export default async function AdminDashboardPage() {
       value: String(todayTotal),
       sub:
         todayTotal > 0
-          ? `${todayDone} concluída${todayDone === 1 ? '' : 's'} · ${todayToConfirm} por confirmar`
+          ? `${todayDone} concluída${todayDone === 1 ? '' : 's'} · ${todayToConfirm} pendente${todayToConfirm === 1 ? '' : 's'}`
           : 'Sem marcações',
       href: '/admin/agenda',
     },
@@ -866,7 +866,7 @@ export default async function AdminDashboardPage() {
       href: '/admin/cobranca',
     },
     {
-      label: 'Amanhã por confirmar',
+      label: 'Amanhã pendentes',
       value: String(pendingTomorrow),
       sub: pendingTomorrow > 0 ? 'Ligar a confirmar' : 'Amanhã confirmado',
       href: `/admin/agenda?date=${tomorrowStr}`,
