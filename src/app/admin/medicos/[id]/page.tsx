@@ -43,6 +43,7 @@ import {
 import { CommissionEditor } from '@/components/medicos/CommissionEditor';
 import DoctorStatusToggle from '@/components/medicos/DoctorStatusToggle';
 import DoctorInvitePanel from '@/components/medicos/DoctorInvitePanel';
+import DoctorPasswordResetPanel from '@/components/medicos/DoctorPasswordResetPanel';
 import { DateJump } from '@/components/agenda/DateJump';
 import { doctorColor } from '@/lib/doctor-colors';
 
@@ -145,7 +146,7 @@ export default async function DoctorPage({
     Doctor.findById(id).lean(),
     getActiveClinics(),
     User.findOne({ doctorId: id, role: 'doctor' })
-      .select('status email')
+      .select('status email username mustChangePassword')
       .lean(),
   ]);
   if (!doctor) notFound();
@@ -558,10 +559,17 @@ export default async function DoctorPage({
         ) : (
           <Badge variant='neutral'>Sem conta</Badge>
         )}
-        {account?.email && (
+        {/* conta sem email: mostra o utilizador, nunca o endereço interno */}
+        {account?.username ? (
           <span style={{ fontSize: '13px', color: '#6A7186' }}>
-            {account.email}
+            utilizador: {account.username}
           </span>
+        ) : (
+          account?.email && (
+            <span style={{ fontSize: '13px', color: '#6A7186' }}>
+              {account.email}
+            </span>
+          )
         )}
       </div>
 
@@ -570,8 +578,18 @@ export default async function DoctorPage({
       {doctor.active && (!account || account.status === 'invited') && (
         <DoctorInvitePanel
           doctorId={id}
+          doctorName={doctor.name}
           hasPendingInvite={account?.status === 'invited'}
           currentEmail={account?.email ?? null}
+        />
+      )}
+
+      {/* 9.ª ronda: conta sem email → só a gestão repõe a senha */}
+      {isAdmin && account?.status === 'active' && account.username && (
+        <DoctorPasswordResetPanel
+          doctorId={id}
+          username={account.username}
+          mustChangePassword={!!account.mustChangePassword}
         />
       )}
 

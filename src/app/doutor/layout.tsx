@@ -12,6 +12,8 @@
 // =============================================================================
 
 import type { ReactNode } from 'react';
+import { redirect } from 'next/navigation';
+import User from '@/models/User';
 import { requireActiveSession } from '@/lib/require-active-session';
 import { logoutAction } from '@/actions/auth';
 import { ClockWeather } from '@/components/layout/ClockWeather';
@@ -28,6 +30,13 @@ export default async function DoctorLayout({
     requireActiveSession(['doctor'] as const),
     getOrganization(),
   ]);
+  // 9.ª ronda (25/11/2026): conta criada pela gestão com senha inicial →
+  // o médico escolhe a sua antes de entrar na área clínica
+  const pending = await User.exists({
+    _id: session.user.id,
+    mustChangePassword: true,
+  });
+  if (pending) redirect('/primeira-senha');
   const name = session?.user?.name ?? '';
 
   const brand = {

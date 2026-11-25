@@ -39,7 +39,11 @@ import {
 } from '@/lib/activation';
 import { sendPasswordResetEmail } from '@/lib/resend';
 import { logAudit } from '@/lib/audit';
-import { isPlaceholderEmail, loginIdentifier } from '@/lib/username';
+import {
+  isPlaceholderEmail,
+  loginIdentifier,
+  passwordProblem,
+} from '@/lib/username';
 
 export type AuthFormState = { error: string } | undefined;
 
@@ -119,8 +123,10 @@ export async function loginAction(
         ident.kind === 'email'
           ? { email: ident.value }
           : { username: ident.value },
-      ).select('role')
+      ).select('role mustChangePassword')
     : null;
+  // Senha inicial dada pela gestão: primeiro escolhe a sua
+  if (user?.mustChangePassword) redirect('/primeira-senha');
   redirect(user ? (HOME_BY_ROLE[user.role] ?? '/login') : '/login');
 }
 
@@ -479,7 +485,10 @@ export async function changeOwnPasswordAction(
   }
 
   const passwordHash = await bcrypt.hash(newPassword, 12);
-  await User.updateOne({ _id: user._id }, { $set: { passwordHash } });
+  await User.updateOne(
+    { _id: user._id },
+    { $set: { passwordHash, mustChangePassword: false } },
+  );
 
   await logAudit({
     userId: user._id.toString(),
@@ -491,4 +500,75 @@ export async function changeOwnPasswordAction(
   });
 
   return { success: true };
+}
+
+// -----------------------------------------------------------------------------
+// PRIMEIRA SENHA (9.ª ronda, 25/11/2026)
+// -----------------------------------------------------------------------------
+// Contas criadas pela gestão só com nome de utilizador (médicos que não
+// querem ligar o email pessoal à clínica) nascem com uma senha inicial
+// entregue em mão. No primeiro acesso — e sempre que a gestão a repõe — o
+// próprio troca-a aqui antes de entrar na sua área: a gestão deixa de a
+// conhecer. Pede a senha recebida (prova de identidade), exige a regra das
+// contas da equipa e leva-o à sua área.
+// -----------------------------------------------------------------------------
+export type FirstPasswordState = { error: string } | undefined;
+
+export async function firstPasswordAction(
+  _prev: FirstPasswordState,
+  formData: FormData,
+): Promise<FirstPasswordState> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: 'Sessão inválida. Volte a entrar.' };
+
+  const currentPassword = String(formData.get('currentPassword') ?? '');
+  const newPassword = String(formData.get('newPassword') ?? '');
+  const confirm = String(formData.get('confirm') ?? '');
+  if (!currentPassword) return { error: 'Indique a senha que recebeu.' };
+  const problem = passwordProblem(newPassword);
+  if (problem) return { error: problem };
+  if (newPassword !== confirm) return { error: 'As senhas não coincidem.' };
+  if (newPassword === currentPassword) {
+    return { error: 'A nova senha tem de ser diferente da que recebeu.' };
+  }
+
+  await dbConnect();
+  const user = await User.findById(session.user.id).select(
+    '+passwordHash role status mustChangePassword',
+  );
+  if (!user || user.status !== 'active' || !user.passwordHash) {
+    return { error: 'Conta não encontrada ou inativa.' };
+  }
+  if (!user.mustChangePassword) redirect(HOME_BY_ROLE[user.role] ?? '/login');
+
+  if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+    await logAudit({
+      userId: user._id.toString(),
+      action: 'login-failed',
+      entityType: 'User',
+      entityId: user._id.toString(),
+      summary: 'Primeira senha recusada: senha recebida incorreta',
+    });
+    return { error: 'A senha que recebeu está incorreta.' };
+  }
+
+  await User.updateOne(
+    { _id: user._id },
+    {
+      $set: {
+        passwordHash: await bcrypt.hash(newPassword, 12),
+        mustChangePassword: false,
+      },
+    },
+  );
+  await logAudit({
+    userId: user._id.toString(),
+    action: 'update',
+    entityType: 'User',
+    entityId: user._id.toString(),
+    summary: 'Senha inicial trocada pelo próprio no primeiro acesso',
+    changedFields: ['passwordHash'],
+  });
+
+  redirect(HOME_BY_ROLE[user.role] ?? '/login');
 }
