@@ -17,6 +17,7 @@
 // RBAC: layout /admin (admin + receção). force-dynamic (fila viva).
 // =============================================================================
 
+import { defaultClinicForPost } from '@/lib/post-clinic';
 import Link from 'next/link';
 import { dbConnect } from '@/lib/mongodb';
 import AutoRefresh from '@/components/ui/AutoRefresh';
@@ -58,7 +59,9 @@ export default async function RxQueuePage({
 
   const clinics = await getActiveClinics();
   const selected =
-    clinics.find(c => c.slug === sp.clinic) ?? clinics[0] ?? null;
+    clinics.find(c => c.slug === sp.clinic) ??
+    (await defaultClinicForPost(clinics)) ??
+    null;
 
   if (!selected) {
     return (

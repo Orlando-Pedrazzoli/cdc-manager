@@ -16,6 +16,7 @@
 // 'pending' (paidAt null) e anuladas.
 // =============================================================================
 
+import { defaultClinicForPost } from '@/lib/post-clinic';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import Link from 'next/link';
@@ -24,7 +25,6 @@ import Patient from '@/models/Patient';
 import User from '@/models/User';
 import AuditLog from '@/models/AuditLog';
 import { getActiveClinics } from '@/models/Clinic';
-import { defaultClinic } from '@/lib/branding';
 import { lisbonToUtc } from '@/lib/availability';
 import { formatCents } from '@/lib/commissions';
 import { INVOICE_STATUS_LABEL } from '@/lib/labels';
@@ -117,7 +117,7 @@ export default async function FaturacaoPage({
   await dbConnect();
   const clinics = await getActiveClinics();
   const clinic =
-    clinics.find(c => c.slug === clinicParam) ?? defaultClinic(clinics);
+    clinics.find(c => c.slug === clinicParam) ?? (await defaultClinicForPost(clinics));
   if (!clinic) return null;
 
   // Documentos do mês na clínica (índice {clinicId, status, paidAt} cobre

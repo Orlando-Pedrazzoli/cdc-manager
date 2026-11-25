@@ -404,11 +404,13 @@ function MovementModal({
   kind,
   product,
   clinics,
+  defaultClinicId,
   onClose,
 }: {
   kind: 'entry' | 'exit';
   product: StockProductRow;
   clinics: StockClinic[];
+  defaultClinicId?: string;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -450,7 +452,13 @@ function MovementModal({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ display: 'flex', gap: '12px' }}>
             <div style={{ flex: 1 }}>
-              <Select id='mov-clinic' name='clinicId' label='Clínica' required>
+              <Select
+                id='mov-clinic'
+                name='clinicId'
+                label='Clínica'
+                required
+                defaultValue={defaultClinicId}
+              >
                 {clinics.map(c => (
                   <option key={c.id} value={c.id}>
                     {c.name} (saldo: {product.balances[c.slug] ?? 0})
@@ -686,10 +694,13 @@ export function StockTable({
   products,
   clinics,
   families,
+  defaultClinicId,
 }: {
   products: StockProductRow[];
   clinics: StockClinic[];
   families: string[];
+  /** 9.ª ronda/03: unidade deste posto */
+  defaultClinicId?: string;
 }) {
   const [search, setSearch] = useState('');
   const [family, setFamily] = useState('');
@@ -1051,6 +1062,7 @@ export function StockTable({
           kind={modal.kind}
           product={modal.product}
           clinics={clinics}
+          defaultClinicId={defaultClinicId}
           onClose={() => setModal(null)}
         />
       )}

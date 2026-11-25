@@ -15,6 +15,8 @@
 
 'use client';
 
+import { stripTitleLine } from '@/lib/document-merge';
+import { isTimeLockedKind } from '@/lib/data/document-templates';
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
@@ -84,6 +86,12 @@ export function IssueDocumentButton({
   const tpl = templates.find(t => t.id === templateId) ?? null;
   const needs = (k: string) => tpl?.needs.includes(k) ?? false;
 
+  const usesAppointment =
+    needs('consulta.inicio') ||
+    needs('consulta.fim') ||
+    needs('consulta.data') ||
+    isTimeLockedKind(tpl?.kind);
+  const extra = { dias, 'acompanhante.nome': acompanhante, tratamento };
   const prepare = async () => {
     if (!templateId) return;
     setBusy(true);
@@ -91,13 +99,8 @@ export function IssueDocumentButton({
       templateId,
       patientId,
       clinicId,
-      appointmentId:
-        needs('consulta.inicio') ||
-        needs('consulta.fim') ||
-        needs('consulta.data')
-          ? appointmentId || null
-          : null,
-      extra: { dias, 'acompanhante.nome': acompanhante, tratamento },
+      appointmentId: usesAppointment ? appointmentId || null : null,
+      extra,
     });
     setBusy(false);
     if (r.error || !r.doc) {
@@ -106,21 +109,13 @@ export function IssueDocumentButton({
     }
     setPrepared(r.doc);
     setTitle(r.doc.title);
-    // O título do modelo já vai no cabeçalho do PDF; se a 1.ª linha do
-    // texto for esse mesmo título em maiúsculas, retira-se para não repetir
-    const lines = r.doc.body.split('\n');
-    const first = lines[0]?.trim() ?? '';
-    const cleanBody =
-      first &&
-      first === first.toUpperCase() &&
-      first.length < 80 &&
-      lines[1]?.trim() === ''
-        ? lines.slice(2).join('\n')
-        : r.doc.body;
+    // O título do modelo já vai no cabeçalho do PDF (não repetir)
+    const cleanBody = stripTitleLine(r.doc.body);
     setBody(cleanBody);
     setStandard({ title: r.doc.title, body: cleanBody });
     // Campos em falta na ficha têm de ser completados à mão → Editável
-    setMode(r.doc.missing.length > 0 ? 'editavel' : 'padrao');
+    // (os comprovativos de presença nunca são editáveis — 9.ª ronda/20)
+    setMode(r.doc.missing.length > 0 && !r.doc.locked ? 'editavel' : 'padrao');
     setSignature(null);
   };
 
@@ -135,6 +130,9 @@ export function IssueDocumentButton({
       body,
       signatureDataUrl: signature,
       visibleToPatient: visible,
+      // 9.ª ronda/20: o servidor refaz o texto dos comprovativos de presença
+      appointmentId: usesAppointment ? appointmentId || null : null,
+      extra,
     });
     setBusy(false);
     if (r.error) {
@@ -243,14 +241,12 @@ export function IssueDocumentButton({
                 </optgroup>
               ))}
             </Select>
-            {(needs('consulta.data') ||
-              needs('consulta.inicio') ||
-              needs('consulta.fim')) && (
+            {usesAppointment && (
               <Select
                 label='Consulta a que se refere'
                 value={appointmentId}
                 onChange={e => setAppointmentId(e.target.value)}
-                help='Preenche data, hora de início e de fim'
+                help='Preenche a data e as horas de entrada e de saída registadas no sistema'
               >
                 <option value=''>— Hoje, sem consulta associada —</option>
                 {appointments.map(a => (
@@ -316,10 +312,32 @@ export function IssueDocumentButton({
                 }}
               >
                 Campos sem valor na ficha (ficaram como &quot;________&quot;):{' '}
-                {prepared.missing.join(', ')}. Complete no texto.
+                {prepared.missing.join(', ')}.{' '}
+                {prepared.locked
+                  ? 'Corrija na ficha do paciente e volte a preparar.'
+                  : 'Complete no texto.'}
+              </p>
+            )}
+            {/* 9.ª ronda/20: comprovativo de presença — horas do sistema */}
+            {prepared.locked && (
+              <p
+                role='note'
+                style={{
+                  margin: 0,
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  backgroundColor: prepared.recordedTimes ? '#EEF1F8' : '#FFF4E5',
+                  color: prepared.recordedTimes ? '#1B2A6B' : '#9A6700',
+                  fontSize: '12.5px',
+                }}
+              >
+                {prepared.recordedTimes
+                  ? 'As horas de entrada e de saída são as registadas no sistema. Este comprovativo não pode ser editado.'
+                  : 'Esta consulta não tem a entrada e a saída registadas no sistema: o comprovativo usa o horário marcado. Não pode ser editado.'}
               </p>
             )}
             {/* 8.ª ronda/06: Padrão (texto fixo) ou Editável */}
+            {!prepared.locked && (
             <div
               role='tablist'
               aria-label='Modo do documento'
@@ -362,6 +380,7 @@ export function IssueDocumentButton({
                     : 'Pode alterar o título e o texto só para este documento.'}
               </span>
             </div>
+            )}
             {mode === 'padrao' ? (
               <div>
                 <p style={{ margin: '0 0 6px', fontSize: '14px', fontWeight: 700, color: '#1B2A6B' }}>

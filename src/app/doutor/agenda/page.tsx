@@ -12,6 +12,7 @@
 import Link from 'next/link';
 import { ConsultProgress } from '@/components/agenda/ConsultProgress';
 import { consultWindow } from '@/lib/consult-window';
+import AutoRefresh from '@/components/ui/AutoRefresh';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
@@ -21,7 +22,14 @@ import TreatmentType from '@/models/TreatmentType';
 import { getActiveClinics } from '@/models/Clinic';
 import { clinicBadgeMap } from '@/lib/branding';
 import { agendaColor } from '@/lib/agenda-colors';
-import { lisbonToUtc, todayLisbon, minToHhmm } from '@/lib/availability';
+import {
+  lisbonToUtc,
+  todayLisbon,
+  minToHhmm,
+  workingRangesForDate,
+} from '@/lib/availability';
+import Doctor from '@/models/Doctor';
+import { daysFrom, mondayOf, rangesLabel } from '@/lib/doctor-work-days';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,7 +73,13 @@ export default async function DoctorAgendaPage({
 
   await dbConnect();
 
-  const [appointments, clinics] = await Promise.all([
+  // 9.ª ronda/05: duas semanas (Seg–Dom) a partir da semana do dia escolhido,
+  // com os dias de trabalho do médico — mesmo sem marcações
+  const stripDays = daysFrom(mondayOf(date), 14);
+  const stripStart = lisbonToUtc(stripDays[0], 0);
+  const stripEnd = lisbonToUtc(stripDays[stripDays.length - 1], 24 * 60);
+
+  const [appointments, clinics, doctorDoc, stripAppts] = await Promise.all([
     Appointment.find({
       doctorId,
       startAt: { $gte: lisbonToUtc(date, 0), $lt: lisbonToUtc(date, 24 * 60) },
@@ -73,7 +87,56 @@ export default async function DoctorAgendaPage({
       .sort({ startAt: 1 })
       .lean(),
     getActiveClinics(),
+    Doctor.findById(doctorId).select('clinicSchedules exceptions'),
+    Appointment.find({
+      doctorId,
+      status: { $nin: ['cancelled', 'no-show'] },
+      startAt: { $gte: stripStart, $lt: stripEnd },
+    })
+      .select('startAt')
+      .lean(),
   ]);
+
+  const lisbonDay = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Lisbon',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const countByDay = new Map<string, number>();
+  for (const a of stripAppts) {
+    const k = lisbonDay.format(a.startAt);
+    countByDay.set(k, (countByDay.get(k) ?? 0) + 1);
+  }
+  const workOf = (d: string) =>
+    doctorDoc
+      ? clinics
+          .map(c => ({
+            clinic: c.name,
+            slug: c.slug,
+            ranges: workingRangesForDate(doctorDoc, c, d),
+          }))
+          .filter(w => w.ranges.length > 0)
+      : [];
+  const strip = stripDays.map(d => {
+    const work = workOf(d);
+    return {
+      date: d,
+      work,
+      count: countByDay.get(d) ?? 0,
+      weekday: new Intl.DateTimeFormat('pt-PT', {
+        weekday: 'short',
+        timeZone: 'UTC',
+      })
+        .format(new Date(`${d}T12:00:00Z`))
+        .replace('.', ''),
+      dayNum: Number(d.slice(8, 10)),
+    };
+  });
+  const workToday = workOf(date);
+  const workTodayLabel = workToday
+    .map(w => `${w.clinic} ${rangesLabel(w.ranges)}`)
+    .join(' · ');
 
   const clinicById = new Map(
     clinics.map(c => [String(c._id), { slug: c.slug, name: c.name }]),
@@ -121,6 +184,8 @@ export default async function DoctorAgendaPage({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* 9.ª ronda/10: o estado ("Chegou") atualiza sozinho, como em "O meu dia" */}
+      {isToday && <AutoRefresh intervalMs={20_000} />}
       <div
         style={{
           display: 'flex',
@@ -144,6 +209,19 @@ export default async function DoctorAgendaPage({
           <p style={{ margin: '4px 0 0', fontSize: '14px', color: '#6A7186' }}>
             {dateLabel}
             {isToday ? ' · hoje' : ''}
+          </p>
+          {/* 9.ª ronda/05: o horário de trabalho do dia, com ou sem marcações */}
+          <p
+            style={{
+              margin: '2px 0 0',
+              fontSize: '13px',
+              fontWeight: 600,
+              color: workToday.length > 0 ? '#0F7B4D' : '#8A91A6',
+            }}
+          >
+            {workToday.length > 0
+              ? `Dia de trabalho: ${workTodayLabel}`
+              : 'Sem horário de trabalho neste dia'}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '6px' }}>
@@ -174,6 +252,87 @@ export default async function DoctorAgendaPage({
         </div>
       </div>
 
+      {/* 9.ª ronda/05: os meus dias de trabalho nas próximas duas semanas */}
+      <nav
+        aria-label='Os meus dias de trabalho'
+        className='cdc-workdays'
+      >
+        {strip.map(d => {
+          const selected = d.date === date;
+          const working = d.work.length > 0;
+          return (
+            <Link
+              key={d.date}
+              href={`/doutor/agenda?data=${d.date}`}
+              aria-current={selected ? 'date' : undefined}
+              title={
+                working
+                  ? d.work
+                      .map(w => `${w.clinic} ${rangesLabel(w.ranges)}`)
+                      .join(' · ')
+                  : 'Sem horário de trabalho'
+              }
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+                padding: '8px 10px',
+                borderRadius: '10px',
+                border: selected
+                  ? '2px solid #2743A6'
+                  : d.date === today
+                    ? '2px solid #B9C3E0'
+                    : '1px solid #EEF1F8',
+                backgroundColor: working ? '#F1F8F4' : '#F7F8FB',
+                color: working ? '#1B2A6B' : '#9AA1B4',
+                textDecoration: 'none',
+                minWidth: 0,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {d.weekday} {d.dayNum}
+              </span>
+              {working ? (
+                d.work.map(w => (
+                  <span
+                    key={w.slug}
+                    style={{
+                      fontSize: '11px',
+                      lineHeight: 1.3,
+                      color: '#3D4257',
+                    }}
+                  >
+                    <strong>{w.clinic}</strong> {rangesLabel(w.ranges)}
+                  </span>
+                ))
+              ) : (
+                <span style={{ fontSize: '11px' }}>Folga</span>
+              )}
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: d.count > 0 ? '#2743A6' : '#9AA1B4',
+                }}
+              >
+                {d.count === 0
+                  ? 'Sem marcações'
+                  : d.count === 1
+                    ? '1 marcação'
+                    : `${d.count} marcações`}
+              </span>
+            </Link>
+          );
+        })}
+      </nav>
+
       <div
         style={{
           backgroundColor: '#FFFFFF',
@@ -191,7 +350,9 @@ export default async function DoctorAgendaPage({
               color: '#6A7186',
             }}
           >
-            Sem consultas neste dia.
+            {workToday.length > 0
+              ? `Ainda sem consultas marcadas. Horário de trabalho: ${workTodayLabel}.`
+              : 'Sem consultas neste dia.'}
           </p>
         ) : (
           appointments.map(a => {

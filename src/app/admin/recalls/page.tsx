@@ -12,6 +12,7 @@
 // contacto. Telefone visível — o convite na v1 é humano (WhatsApp manual).
 // =============================================================================
 
+import { defaultClinicForPost } from '@/lib/post-clinic';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import Link from 'next/link';
@@ -20,7 +21,6 @@ import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
 import TreatmentType from '@/models/TreatmentType';
 import { getActiveClinics } from '@/models/Clinic';
-import { defaultClinic } from '@/lib/branding';
 import { RECALL_STATUS_LABEL } from '@/lib/labels';
 import { RecallActions } from '@/components/recalls/RecallActions';
 import { RecallContactLog } from '@/components/recalls/RecallContactLog';
@@ -269,7 +269,7 @@ export default async function RecallsPage({
 
   const clinics = await getActiveClinics();
   const clinic =
-    clinics.find(c => c.slug === clinicParam) ?? defaultClinic(clinics);
+    clinics.find(c => c.slug === clinicParam) ?? (await defaultClinicForPost(clinics));
   if (!clinic) return null;
 
   // 2. Fila da clínica (índice {clinicId, status, dueAt})

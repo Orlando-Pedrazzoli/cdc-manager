@@ -19,6 +19,7 @@
 //                    anti-no-show: não-resposta ao email ≠ confirmação.
 // =============================================================================
 
+import { defaultClinicForPost } from '@/lib/post-clinic';
 import { consultWindow } from '@/lib/consult-window';
 import Link from 'next/link';
 import {
@@ -31,7 +32,7 @@ import {
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { getActiveClinics } from '@/models/Clinic';
-import { clinicBadge, clinicLabel, defaultClinic } from '@/lib/branding';
+import { clinicBadge, clinicLabel } from '@/lib/branding';
 import Doctor from '@/models/Doctor';
 import Appointment, {
   BLOCKING_STATUS,
@@ -204,7 +205,7 @@ export default async function AgendaPage({
         .catch(() => false)));
   const clinics = await getActiveClinics();
   const clinic =
-    clinics.find(c => c.slug === sp.clinic) ?? defaultClinic(clinics);
+    clinics.find(c => c.slug === sp.clinic) ?? (await defaultClinicForPost(clinics));
   if (!clinic) {
     return <p>Nenhuma clínica configurada — correr o seed.</p>;
   }

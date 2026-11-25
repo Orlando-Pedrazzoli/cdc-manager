@@ -51,7 +51,9 @@ import {
   getWorkingDoctorsAction,
 } from '@/actions/agenda';
 import {
+  getPatientApprovedBudgetsAction,
   getPatientAttendanceAction,
+  type ApprovedBudget,
   type PatientAttendance,
 } from '@/actions/patient-quick';
 import {
@@ -191,6 +193,26 @@ export function NewAppointmentModal({
   }, [open, patientId]);
   const faltas =
     attendance && attendance.patientId === patientId ? attendance.data : null;
+
+  // 9.ª ronda/16: orçamento aprovado do paciente, com o que falta fazer
+  const [budgets, setBudgets] = useState<{
+    patientId: string;
+    list: ApprovedBudget[];
+  } | null>(null);
+  useEffect(() => {
+    if (!open || !patientId) return;
+    let cancelled = false;
+    getPatientApprovedBudgetsAction(patientId)
+      .then(list => {
+        if (!cancelled) setBudgets({ patientId, list });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [open, patientId]);
+  const approvedBudgets =
+    budgets && budgets.patientId === patientId ? budgets.list : [];
 
   // 5.ª ronda/10: médicos escalados no DIA ESCOLHIDO. Enquanto o pedido não
   // chega (ou se falhar) usa-se a lista do dia aberto na agenda, que é a
@@ -571,6 +593,92 @@ export function NewAppointmentModal({
               Atenção: {faltas.warning}
               {faltas.lastNoShowLabel ? ` (última falta a ${faltas.lastNoShowLabel})` : ''}.
             </p>
+          )}
+          {/* 9.ª ronda/16: orçamento aprovado — o que falta marcar */}
+          {patient && approvedBudgets.length > 0 && (
+            <div
+              role='note'
+              style={{
+                margin: '8px 0 0',
+                padding: '10px 12px',
+                borderRadius: '10px',
+                backgroundColor: '#EEF7F1',
+                border: '1px solid #9CCFB2',
+                color: '#14432B',
+                fontSize: '13px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+              }}
+            >
+              {approvedBudgets.map(b => (
+                <div key={b.planId}>
+                  <strong>Orçamento aprovado: {b.title}</strong>
+                  <span style={{ color: '#3D6B52' }}>
+                    {' '}
+                    · {b.doctorName}
+                    {b.approvedLabel ? ` · aprovado a ${b.approvedLabel}` : ''}
+                    {b.doneCount > 0 ? ` · ${b.doneCount} já feito(s)` : ''}
+                  </span>
+                  <ul
+                    style={{
+                      margin: '6px 0 0',
+                      padding: 0,
+                      listStyle: 'none',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
+                    }}
+                  >
+                    {b.pending.map(i => {
+                      const inCatalog = treatments.some(
+                        t => t.id === i.treatmentTypeId,
+                      );
+                      // O médico do orçamento só fica escolhido se trabalhar
+                      // no dia da marcação (senão fica "atribuir depois")
+                      const chosen = treatmentId === i.treatmentTypeId;
+                      return (
+                        <li
+                          key={i.key}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <span style={{ flex: 1, minWidth: 160 }}>
+                            Fase {i.phase} · {i.name}
+                            {i.teeth ? ` · dente(s) ${i.teeth}` : ''}
+                          </span>
+                          {inCatalog && (
+                            <button
+                              type='button'
+                              onClick={() => {
+                                setTreatmentId(i.treatmentTypeId);
+                                setDoctorId(b.doctorId);
+                              }}
+                              style={{
+                                border: '1px solid #1F7A4C',
+                                borderRadius: '8px',
+                                padding: '4px 10px',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                backgroundColor: chosen ? '#1F7A4C' : '#FFFFFF',
+                                color: chosen ? '#FFFFFF' : '#1F7A4C',
+                              }}
+                            >
+                              {chosen ? 'Escolhido' : 'Marcar este'}
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
           )}
           {/* 7.ª ronda/B4: paciente bloqueado pela gestão — não se marca */}
           {faltas?.blockReason && (

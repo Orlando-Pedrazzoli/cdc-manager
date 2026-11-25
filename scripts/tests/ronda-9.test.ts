@@ -16,6 +16,12 @@ import {
 import { consultWindow } from '../../src/lib/consult-window';
 import { createRxRequestSchema } from '../../src/lib/validations/rx';
 import { createDoctorSchema } from '../../src/lib/validations/doctor';
+import { daysFrom, mondayOf, rangesLabel } from '../../src/lib/doctor-work-days';
+import { stripTitleLine } from '../../src/lib/document-merge';
+import {
+  TIME_LOCKED_KINDS,
+  isTimeLockedKind,
+} from '../../src/lib/data/document-templates';
 
 let n = 0;
 function test(name: string, fn: () => void) {
@@ -109,6 +115,44 @@ test('médico: nome completo é opcional e tem tamanho mínimo', () => {
   assert.equal(shape.parse(undefined), undefined);
   assert.equal(shape.parse('  Ana Maria Borges Silva '), 'Ana Maria Borges Silva');
   assert.ok(!shape.safeParse('Ana').success);
+});
+
+test('dias de trabalho: semana começa à segunda e a faixa tem 14 dias', () => {
+  assert.equal(mondayOf('2026-11-25'), '2026-11-23'); // quarta → segunda
+  assert.equal(mondayOf('2026-11-23'), '2026-11-23');
+  assert.equal(mondayOf('2026-11-29'), '2026-11-23'); // domingo
+  const days = daysFrom('2026-11-23', 14);
+  assert.equal(days.length, 14);
+  assert.equal(days[0], '2026-11-23');
+  assert.equal(days[13], '2026-12-06'); // atravessa o mês
+});
+
+test('dias de trabalho: horário por extenso, ordenado', () => {
+  assert.equal(
+    rangesLabel([
+      { start: 14 * 60, end: 18 * 60 },
+      { start: 9 * 60, end: 13 * 60 },
+    ]),
+    '09:00–13:00 · 14:00–18:00',
+  );
+  assert.equal(rangesLabel([]), '');
+});
+
+test('comprovativos de presença: tipos sem edição', () => {
+  assert.deepEqual([...TIME_LOCKED_KINDS], ['presenca', 'acompanhante']);
+  assert.ok(isTimeLockedKind('presenca'));
+  assert.ok(!isTimeLockedKind('atestado'));
+  assert.ok(!isTimeLockedKind(undefined));
+});
+
+test('documentos: o título repetido na 1.ª linha é retirado', () => {
+  assert.equal(
+    stripTitleLine('CERTIFICADO DE PRESENÇA\n\nPara os devidos efeitos.'),
+    'Para os devidos efeitos.',
+  );
+  // sem linha em branco a seguir, ou sem maiúsculas: fica como está
+  assert.equal(stripTitleLine('TÍTULO\ntexto'), 'TÍTULO\ntexto');
+  assert.equal(stripTitleLine('Para os devidos efeitos.'), 'Para os devidos efeitos.');
 });
 
 console.log(`\n${n} testes OK`);

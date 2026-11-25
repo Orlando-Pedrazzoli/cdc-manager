@@ -2,6 +2,9 @@
 // =============================================================================
 // CDC Manager — Geração de PDF A4 de documentos clínicos (Fase 5A)
 // -----------------------------------------------------------------------------
+// 9.ª ronda (ponto 01): cabeçalho padronizado com o logo; a morada deixou
+// de sair no cabeçalho ("não é preciso a morada: só a data e o campo para
+// assinatura").
 // @react-pdf/renderer no servidor: cabeçalho da clínica, título, corpo
 // (texto já com placeholders substituídos e editado pelo médico), rodapé
 // com médico + cédula, linha de assinatura e, se existir, a assinatura do
@@ -37,6 +40,8 @@ export interface DocPdfInput {
   patientSignatureDataUrl?: string | null;
   patientSignatureLabel?: string | null; // "O paciente" / "O representante legal"
   footerNote?: string | null;
+  /** Logo do cabeçalho (data URL PNG/JPEG); sem logo fica só o nome */
+  logoDataUrl?: string | null;
 }
 
 const s = StyleSheet.create({
@@ -51,12 +56,13 @@ const s = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
     borderBottomWidth: 1.5,
     borderBottomColor: '#1B2A6B',
     paddingBottom: 10,
     marginBottom: 22,
   },
+  logo: { width: 44, height: 44, objectFit: 'contain', marginRight: 12 },
   clinicName: { fontSize: 15, fontFamily: 'Helvetica-Bold', color: '#1B2A6B' },
   clinicMeta: { fontSize: 8.5, color: '#6A7186', marginTop: 2 },
   title: {
@@ -133,13 +139,16 @@ export function DocPdf({ input }: { input: DocPdfInput }) {
   const meta = [
     c.legalName,
     c.nipc ? `NIPC ${c.nipc}` : null,
-    c.address,
     [c.phone, c.email].filter(Boolean).join(' · ') || null,
   ].filter(Boolean);
   return (
     <Document title={input.title} author={c.name} language='pt-PT'>
       <Page size='A4' style={s.page}>
         <View style={s.header} fixed>
+          {input.logoDataUrl && (
+            // eslint-disable-next-line jsx-a11y/alt-text
+            <Image src={input.logoDataUrl} style={s.logo} />
+          )}
           <View>
             <Text style={s.clinicName}>{c.name}</Text>
             {meta.map((m, i) => (
@@ -160,7 +169,9 @@ export function DocPdf({ input }: { input: DocPdfInput }) {
               <Text style={s.sigLabel}>
                 {input.doctorLicense
                   ? `Médico(a) dentista · OMD n.º ${input.doctorLicense}`
-                  : 'Médico(a) dentista'}
+                  : input.doctorName
+                    ? 'Médico(a) dentista'
+                    : 'Pela clínica'}
               </Text>
             </View>
           </View>

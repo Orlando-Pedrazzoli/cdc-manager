@@ -61,3 +61,20 @@ export function timePt(d: Date): string {
     timeZone: 'Europe/Lisbon',
   }).format(d);
 }
+
+/**
+ * O título do modelo já vai no cabeçalho do PDF: se a 1.ª linha do texto for
+ * esse título em maiúsculas (seguida de linha em branco), retira-se para não
+ * repetir. Usado no ecrã de emissão e, nos comprovativos de presença, também
+ * no servidor (o texto é refeito lá — 9.ª ronda, ponto 20).
+ */
+export function stripTitleLine(body: string): string {
+  const lines = body.split('\n');
+  const first = lines[0]?.trim() ?? '';
+  return first &&
+    first === first.toUpperCase() &&
+    first.length < 80 &&
+    lines[1]?.trim() === ''
+    ? lines.slice(2).join('\n')
+    : body;
+}
