@@ -9,6 +9,7 @@
 // proxy — este layout assume sessão válida e só a apresenta.
 // =============================================================================
 
+import { dbConnect } from '@/lib/mongodb';
 import { getActiveClinics } from '@/models/Clinic';
 import { clinicLabel } from '@/lib/branding';
 import { pickPostClinic, postClinicSlug } from '@/lib/post-clinic';
@@ -31,12 +32,16 @@ export default async function AdminLayout({
 }: {
   children: ReactNode;
 }) {
-  const [session, org, clinics, postSlug] = await Promise.all([
+  const [session, org, postSlug] = await Promise.all([
     requireActiveSession(['admin', 'receptionist'] as const),
     getOrganization(),
-    getActiveClinics(),
     postClinicSlug(),
   ]);
+  // A ligação à base tem de estar feita ANTES de ler as clínicas: com
+  // `bufferCommands = false`, uma leitura lançada em paralelo com a sessão
+  // falha no arranque a frio ("before initial connection is complete").
+  await dbConnect();
+  const clinics = await getActiveClinics();
   // 9.ª ronda/03: unidade deste posto (pré-define o campo "Clínica")
   const postClinic = pickPostClinic(clinics, postSlug);
   const brand = {
