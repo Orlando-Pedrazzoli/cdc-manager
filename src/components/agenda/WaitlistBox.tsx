@@ -9,11 +9,16 @@
 // horário e encaixa no dia aberto, e as vagas que se abriram nesse dia
 // (canceladas e faltas). A receção liga ao paciente e abre a marcação dele
 // para remarcar.
+//
+// 25/11/2026: na barra lateral a caixa abre e fecha. Vem aberta quando há
+// alguém que encaixa no dia (é uma sugestão para agir) e fechada, só com o
+// número, quando não há ninguém.
 // =============================================================================
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ChevronRight } from 'lucide-react';
 import { closeWaitlistAction } from '@/actions/waitlist';
 import {
   WAITLIST_PREFERENCE_LABEL,
@@ -74,92 +79,116 @@ export function WaitlistBox({
         overflow: 'hidden',
       }}
     >
-      <div
-        style={{
-          padding: '11px 14px',
-          borderBottom: '1px solid #EEF1F8',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'baseline',
-          gap: 8,
-        }}
-      >
-        <strong style={{ fontSize: '13px', color: '#1B2A6B' }}>
-          Lista de espera ({entries.length})
-        </strong>
-        <span style={{ fontSize: '11px', color: '#6A7186' }}>
+      <details className='cdc-fold' open={entries.length > 0}>
+        <summary
+          style={{
+            padding: '11px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <ChevronRight size={14} color='#1B2A6B' className='cdc-fold-chevron' />
+          <strong style={{ fontSize: '13px', color: '#1B2A6B' }}>Lista de espera</strong>
+          <span
+            style={{
+              marginLeft: 'auto',
+              minWidth: 22,
+              padding: '1px 8px',
+              borderRadius: '999px',
+              textAlign: 'center',
+              fontSize: '12px',
+              fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+              backgroundColor: entries.length > 0 ? '#E4F5EA' : '#E6E9F1',
+              color: entries.length > 0 ? '#125C32' : '#4A5169',
+            }}
+            title='Pedidos que encaixam neste dia'
+          >
+            {entries.length}
+          </span>
+        </summary>
+        <p
+          style={{
+            margin: 0,
+            padding: '6px 14px',
+            borderTop: '1px solid #EEF1F8',
+            fontSize: '11px',
+            color: '#6A7186',
+          }}
+        >
           {totalActive} pedido{totalActive === 1 ? '' : 's'} na clínica
-        </span>
-      </div>
-      {entries.length === 0 ? (
-        <p style={{ margin: 0, padding: '12px 14px', fontSize: '12px', color: '#6A7186' }}>
-          Ninguém pediu uma vaga que encaixe em {dateLabel}. Para pôr um
-          paciente na lista, abra a marcação dele e use &quot;Paciente quer
-          outro horário&quot;.
         </p>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {[...byDoctor.entries()].map(([doctor, list]) => {
-            const freed = freedByDoctor[doctor] ?? [];
-            return (
-              <div key={doctor} style={{ padding: '10px 14px', borderBottom: '1px solid #F3F5FA' }}>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: '#1C2233' }}>{doctor}</div>
-                {freed.length > 0 && (
-                  <div
-                    style={{
-                      margin: '5px 0 2px',
-                      padding: '5px 8px',
-                      borderRadius: '8px',
-                      backgroundColor: '#E4F5EA',
-                      color: '#125C32',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                    }}
-                  >
-                    Vaga{freed.length === 1 ? '' : 's'} neste dia: {freed.join(' · ')}
-                  </div>
-                )}
-                <ul style={{ listStyle: 'none', margin: '6px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {list.map(e => (
-                    <li key={e.id} style={{ fontSize: '12px', color: '#3D4257' }}>
-                      <div style={{ fontWeight: 600, color: '#141B33' }}>{e.patientName}</div>
-                      <div>
-                        {WAITLIST_PREFERENCE_LABEL[e.preference]} · tem marcação a {e.appointmentLabel}
-                        {e.phone ? ` · ${e.phone}` : ''}
-                      </div>
-                      {e.note && <div style={{ color: '#6A7186' }}>{e.note}</div>}
-                      <div style={{ display: 'flex', gap: 12, marginTop: 3 }}>
-                        <Link href={e.appointmentHref} style={{ fontWeight: 600, color: '#2743A6' }}>
-                          Abrir a marcação para remarcar →
-                        </Link>
-                        <button
-                          type='button'
-                          disabled={pending}
-                          onClick={() => remove(e.id)}
-                          style={{
-                            border: 'none',
-                            background: 'none',
-                            padding: 0,
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            color: '#B3261E',
-                            cursor: pending ? 'wait' : 'pointer',
-                          }}
-                        >
-                          Tirar da lista
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {error && (
-        <p style={{ margin: 0, padding: '8px 14px', fontSize: '12px', color: '#B3261E' }}>{error}</p>
-      )}
+        {entries.length === 0 ? (
+          <p style={{ margin: 0, padding: '6px 14px 12px', fontSize: '12px', color: '#6A7186' }}>
+            Ninguém pediu uma vaga que encaixe em {dateLabel}. Para pôr um
+            paciente na lista, abra a marcação dele e use &quot;Paciente quer
+            outro horário&quot;.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {[...byDoctor.entries()].map(([doctor, list]) => {
+              const freed = freedByDoctor[doctor] ?? [];
+              return (
+                <div key={doctor} style={{ padding: '10px 14px', borderBottom: '1px solid #F3F5FA' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#1C2233' }}>{doctor}</div>
+                  {freed.length > 0 && (
+                    <div
+                      style={{
+                        margin: '5px 0 2px',
+                        padding: '5px 8px',
+                        borderRadius: '8px',
+                        backgroundColor: '#E4F5EA',
+                        color: '#125C32',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Vaga{freed.length === 1 ? '' : 's'} neste dia: {freed.join(' · ')}
+                    </div>
+                  )}
+                  <ul style={{ listStyle: 'none', margin: '6px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {list.map(e => (
+                      <li key={e.id} style={{ fontSize: '12px', color: '#3D4257' }}>
+                        <div style={{ fontWeight: 600, color: '#141B33' }}>{e.patientName}</div>
+                        <div>
+                          {WAITLIST_PREFERENCE_LABEL[e.preference]} · tem marcação a {e.appointmentLabel}
+                          {e.phone ? ` · ${e.phone}` : ''}
+                        </div>
+                        {e.note && <div style={{ color: '#6A7186' }}>{e.note}</div>}
+                        <div style={{ display: 'flex', gap: 12, marginTop: 3 }}>
+                          <Link href={e.appointmentHref} style={{ fontWeight: 600, color: '#2743A6' }}>
+                            Abrir a marcação para remarcar →
+                          </Link>
+                          <button
+                            type='button'
+                            disabled={pending}
+                            onClick={() => remove(e.id)}
+                            style={{
+                              border: 'none',
+                              background: 'none',
+                              padding: 0,
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              color: '#B3261E',
+                              cursor: pending ? 'wait' : 'pointer',
+                            }}
+                          >
+                            Tirar da lista
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {error && (
+          <p style={{ margin: 0, padding: '8px 14px', fontSize: '12px', color: '#B3261E' }}>{error}</p>
+        )}
+      </details>
     </section>
   );
 }

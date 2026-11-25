@@ -75,6 +75,8 @@ import {
 import { cancelledVisibleIds } from '@/lib/attendance';
 import { loadCounterNotices } from '@/lib/attendance-data';
 import { WaitlistBox } from '@/components/agenda/WaitlistBox';
+import { AgendaSideLayout } from '@/components/agenda/AgendaSideLayout';
+import { CalendarDoctorSelect } from '@/components/agenda/CalendarDoctorSelect';
 import { loadActiveWaitlist, waitlistForDay } from '@/lib/waitlist-data';
 import { doctorColor } from '@/lib/doctor-colors';
 import { getOrganizationSettings } from '@/lib/org-settings';
@@ -166,6 +168,7 @@ export default async function AgendaPage({
     view?: string;
     estado?: string;
     cal?: string; // YYYY-MM do calendário de ocupação (P4)
+    calmed?: string; // médico do calendário: id ou 'todos' (25/11/2026)
     marcacao?: string; // 8.ª ronda/05: marcação a abrir logo na grelha
   }>;
 }) {
@@ -266,6 +269,21 @@ export default async function AgendaPage({
 
   const doctorNameById = new Map(allDoctors.map(d => [String(d._id), d.name]));
 
+  // 25/11/2026: o calendário da barra lateral tem o seu próprio seletor de
+  // médico, independente das colunas da grelha — a receção procura um dia
+  // livre com um médico sem tirar os outros da agenda.
+  //   sem parâmetro  segue o filtro de médico da página (ou todos)
+  //   'todos'        todos, mesmo com a página filtrada por um médico
+  //   <id>           só esse médico
+  const calMedParam: string | null =
+    sp.calmed === 'todos'
+      ? 'todos'
+      : allDoctors.some(d => String(d._id) === sp.calmed)
+        ? (sp.calmed as string)
+        : null;
+  const calMedico =
+    calMedParam === 'todos' ? null : (calMedParam ?? medicoFilterLista);
+
   // ---------------------------------------------------------------------------
   // Builder de URLs: preserva clínica/data/vista/filtros; '__DATE__' é o
   // placeholder que o DateJump substitui no cliente
@@ -276,6 +294,7 @@ export default async function AgendaPage({
     view?: string;
     medico?: string | null;
     estado?: string | null;
+    calmed?: string | null;
   }) => {
     const c = over.clinic ?? clinic.slug;
     const d = over.date ?? date;
@@ -287,13 +306,24 @@ export default async function AgendaPage({
     // Mudar de clínica limpa o filtro de médico (médicos são por clínica)
     if (m && c === clinic.slug) url += `&medico=${m}`;
     if (e && v === 'lista') url += `&estado=${e}`;
+    // O médico do calendário acompanha a navegação entre dias (é para isso
+    // que serve); só existe na vista Dia e cai ao mudar de clínica —
+    // e ao mudar o filtro de médico da página, para o calendário o seguir
+    const cm =
+      over.calmed !== undefined
+        ? over.calmed
+        : over.medico !== undefined
+          ? null
+          : calMedParam;
+    if (cm && c === clinic.slug && v === 'dia') url += `&calmed=${cm}`;
     return url;
   };
 
   // ---------------------------------------------------------------------------
   // CALENDÁRIO DE OCUPAÇÃO (P4) — mês visível: minutos marcados / minutos de
-  // horário (médicos da clínica, ou só o filtrado). Marcações que bloqueiam
-  // slot (BLOCKING_STATUS) contam; canceladas/faltas não.
+  // horário (médicos da clínica, ou só o escolhido no seletor do calendário).
+  // Marcações que bloqueiam slot (BLOCKING_STATUS) contam; canceladas/faltas
+  // não.
   // ---------------------------------------------------------------------------
   const calMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.cal ?? '')
     ? (sp.cal as string)
@@ -303,14 +333,14 @@ export default async function AgendaPage({
   const calStart = lisbonToUtc(`${calMonth}-01`, 0);
   const calEndStr = `${cm === 12 ? cy + 1 : cy}-${String(cm === 12 ? 1 : cm + 1).padStart(2, '0')}-01`;
   const calEnd = lisbonToUtc(calEndStr, 0);
-  const calDoctors = medicoParam
-    ? allDoctors.filter(d => String(d._id) === medicoParam)
+  const calDoctors = calMedico
+    ? allDoctors.filter(d => String(d._id) === calMedico)
     : allDoctors;
   const calAppts = await Appointment.find({
     clinicId: clinic._id,
     status: { $in: BLOCKING_STATUS },
     startAt: { $gte: calStart, $lt: calEnd },
-    ...(medicoParam ? { doctorId: medicoParam } : {}),
+    ...(calMedico ? { doctorId: calMedico } : {}),
   })
     .select('startAt endAt')
     .lean();
@@ -973,30 +1003,56 @@ export default async function AgendaPage({
       </div>
 
       {/* PAINEL POR CONFIRMAR (24h) — escalonamento para chamada telefónica */}
+      {/* 25/11/2026: uma linha só, com o número; a lista abre ao clicar — com
+          dezenas de marcações por confirmar empurrava a grelha para fora do
+          ecrã */}
       {unconfirmed.length > 0 && (
-        <div
+        <details
+          className='cdc-fold'
           style={{
             border: '1px solid #F0C36D',
             backgroundColor: '#FFF9EC',
             borderRadius: '12px',
-            padding: '14px 16px',
+            padding: '10px 16px',
           }}
         >
-          <div
+          <summary
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              marginBottom: 8,
             }}
           >
-            <PhoneCall size={16} color='#9A6700' />
+            <PhoneCall size={16} color='#9A6700' style={{ flexShrink: 0 }} />
             <strong style={{ fontSize: '14px', color: '#9A6700' }}>
               Por confirmar nas próximas 24h — ligar ao paciente (
               {unconfirmed.length})
             </strong>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <span
+              style={{
+                marginLeft: 'auto',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                flexShrink: 0,
+                fontSize: '13px',
+                fontWeight: 700,
+                color: '#9A6700',
+              }}
+            >
+              <span className='cdc-fold-when-closed'>Ver lista</span>
+              <span className='cdc-fold-when-open'>Esconder</span>
+              <ChevronRight size={15} className='cdc-fold-chevron' />
+            </span>
+          </summary>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              marginTop: 10,
+            }}
+          >
             {unconfirmed.map(a => {
               const p = patientById.get(String(a.patientId));
               const s = utcToLisbonMin(a.startAt);
@@ -1074,7 +1130,7 @@ export default async function AgendaPage({
               );
             })}
           </div>
-        </div>
+        </details>
       )}
 
       {/* Médicos desta clínica sem horário definido — aviso de configuração */}
@@ -1233,15 +1289,11 @@ export default async function AgendaPage({
 
       {/* Corpo da vista */}
       {view === 'dia' ? (
-        <div
-          style={{
-            display: 'flex',
-            gap: '14px',
-            alignItems: 'flex-start',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ flex: '1 1 640px', minWidth: 0 }}>
+        // 25/11/2026 (Victor: "o calendário foi lá para baixo"): grelha à
+        // esquerda e barra lateral de largura fixa à direita, presa ao topo
+        <AgendaSideLayout
+          date={date}
+          main={
             <AgendaGrid
               key={openAppointmentId ?? 'grelha'}
               openAppointmentId={openAppointmentId}
@@ -1267,47 +1319,65 @@ export default async function AgendaPage({
                 promo: monthlyPromo,
               }}
             />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* P4: calendário com cores de ocupação */}
-            <OccupancyCalendar
-              month={calMonth}
-              days={occupancy}
-              selectedDate={date}
-              todayStr={todayStr}
-              makeDayHref={d => buildHref({ date: d })}
-              makeMonthHref={m => `${buildHref({})}&cal=${m}`}
-            />
-            {/* Registo de cancelamentos do dia (Victor, 11–12/11/2026) */}
-            <CancelledBox
-              entries={
-                medicoFilterDia
-                  ? cancelledEntries.filter(
-                      e => e.doctorName === doctorNameById.get(medicoFilterDia),
-                    )
-                  : cancelledEntries
-              }
-              dateLabel={dateLabel}
-              historyHref={`/admin/agenda/historico?clinic=${clinic.slug}`}
-            />
-            {/* 8.ª ronda/10: quem pediu outro horário e encaixa neste dia */}
-            <WaitlistBox
-              dateLabel={dateLabel}
-              totalActive={waitlistAll.length}
-              freedByDoctor={freedByDoctor}
-              entries={waitlistDay.map(w => ({
-                id: w.id,
-                doctorName: w.doctorName,
-                preference: w.preference,
-                note: w.note,
-                patientName: w.patientName,
-                phone: w.phone,
-                appointmentLabel: w.appointmentLabel,
-                appointmentHref: `/admin/agenda?clinic=${clinic.slug}&date=${w.appointmentDay}&marcacao=${w.appointmentId}`,
-              }))}
-            />
-          </div>
-        </div>
+          }
+        >
+          {/* P4: calendário com cores de ocupação, da clínica ou de um médico */}
+          <OccupancyCalendar
+            month={calMonth}
+            days={occupancy}
+            selectedDate={date}
+            todayStr={todayStr}
+            makeDayHref={d => buildHref({ date: d })}
+            makeMonthHref={m => `${buildHref({})}&cal=${m}`}
+            header={
+              <CalendarDoctorSelect
+                value={calMedico ?? ''}
+                options={[
+                  {
+                    value: '',
+                    label: 'Todos os médicos',
+                    // com a página filtrada por um médico, "todos" tem de
+                    // ficar escrito no endereço para valer
+                    href: `${buildHref({ calmed: medicoFilterLista ? 'todos' : null })}&cal=${calMonth}`,
+                  },
+                  ...allColumns.map(d => ({
+                    value: d.id,
+                    label: d.name,
+                    href: `${buildHref({ calmed: d.id })}&cal=${calMonth}`,
+                  })),
+                ]}
+              />
+            }
+          />
+          {/* Registo de cancelamentos do dia (Victor, 11–12/11/2026) */}
+          <CancelledBox
+            entries={
+              medicoFilterDia
+                ? cancelledEntries.filter(
+                    e => e.doctorName === doctorNameById.get(medicoFilterDia),
+                  )
+                : cancelledEntries
+            }
+            dateLabel={dateLabel}
+            historyHref={`/admin/agenda/historico?clinic=${clinic.slug}`}
+          />
+          {/* 8.ª ronda/10: quem pediu outro horário e encaixa neste dia */}
+          <WaitlistBox
+            dateLabel={dateLabel}
+            totalActive={waitlistAll.length}
+            freedByDoctor={freedByDoctor}
+            entries={waitlistDay.map(w => ({
+              id: w.id,
+              doctorName: w.doctorName,
+              preference: w.preference,
+              note: w.note,
+              patientName: w.patientName,
+              phone: w.phone,
+              appointmentLabel: w.appointmentLabel,
+              appointmentHref: `/admin/agenda?clinic=${clinic.slug}&date=${w.appointmentDay}&marcacao=${w.appointmentId}`,
+            }))}
+          />
+        </AgendaSideLayout>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {appts.length === 0 && (

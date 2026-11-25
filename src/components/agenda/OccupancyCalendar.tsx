@@ -10,6 +10,10 @@
 //   amarelo   50–85 %                     vermelho ≥ 85 %
 // Server component: os dados vêm calculados da página. Navegação de mês por
 // links (?cal=YYYY-MM); clicar num dia abre esse dia na agenda.
+//
+// 25/11/2026: vive na barra lateral direita da agenda (AgendaSideLayout) e
+// ocupa a largura dela; `header` recebe o seletor "Ocupação de" (todos ou um
+// médico).
 // =============================================================================
 
 import Link from 'next/link';
@@ -59,6 +63,7 @@ export function OccupancyCalendar({
   todayStr,
   makeDayHref,
   makeMonthHref,
+  header,
 }: {
   month: string;
   days: DayOccupancy[];
@@ -66,6 +71,8 @@ export function OccupancyCalendar({
   todayStr: string;
   makeDayHref: (date: string) => string;
   makeMonthHref: (month: string) => string;
+  /** Por cima do mês: o seletor de médico */
+  header?: React.ReactNode;
 }) {
   const [y, m] = month.split('-').map(Number);
   const first = new Date(Date.UTC(y, m - 1, 1));
@@ -105,10 +112,11 @@ export function OccupancyCalendar({
         border: '1px solid #EEF1F8',
         borderRadius: '12px',
         padding: '10px 12px',
-        width: 264,
-        flexShrink: 0,
+        width: '100%',
+        boxSizing: 'border-box',
       }}
     >
+      {header}
       <div
         style={{
           display: 'flex',
