@@ -113,6 +113,15 @@ const UserSchema = new Schema(
       trim: true,
       default: null,
     },
+    // 9.ª ronda (Victor, 25/11/2026): contas de médico criadas pela gestão
+    // só com nome de utilizador e senha (sem email). A senha inicial é
+    // entregue em mão; enquanto este campo for true, o médico é levado a
+    // /primeira-senha e só entra na sua área depois de escolher a dele.
+    // Volta a true quando a gestão repõe a senha.
+    mustChangePassword: {
+      type: Boolean,
+      default: false,
+    },
     // Rate limiting de login (protecção brute-force)
     failedLoginAttempts: {
       type: Number,

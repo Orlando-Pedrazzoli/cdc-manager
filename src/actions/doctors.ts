@@ -27,7 +27,15 @@ import User, { canOperateClinic } from '@/models/User';
 import Clinic from '@/models/Clinic';
 import Appointment, { BLOCKING_STATUS } from '@/models/Appointment';
 import TreatmentType from '@/models/TreatmentType';
+import bcrypt from 'bcryptjs';
+import ActivationCode from '@/models/ActivationCode';
 import { createActivationCode } from '@/lib/activation';
+import {
+  isValidUsername,
+  normalizeUsername,
+  passwordProblem,
+  placeholderEmail,
+} from '@/lib/username';
 import { sendActivationEmail } from '@/lib/resend';
 import { logAudit } from '@/lib/audit';
 import { workingRangesForDate, hhmmToMin, minToHhmm } from '@/lib/availability';
@@ -321,6 +329,155 @@ export async function inviteDoctorAccountAction(
     revalidatePath('/admin/medicos');
   }
   return result;
+}
+
+// -----------------------------------------------------------------------------
+// CONTA DO MÉDICO SEM EMAIL — nome de utilizador e senha (9.ª ronda, 25/11/2026)
+// -----------------------------------------------------------------------------
+// Victor: "alguns médicos não querem vincular o email pessoal com a clínica".
+// A gestão cria a conta já ativa, com um nome de utilizador e uma senha
+// inicial entregue em mão — o mesmo que já existe para a receção desde
+// 12/11 (lib/username.ts). Diferença: como o médico acede a dados clínicos,
+// a conta nasce com `mustChangePassword` e ele é obrigado a escolher a sua
+// senha no primeiro acesso (/primeira-senha); a gestão deixa de a conhecer.
+// Um convite por email ainda pendente é substituído por esta conta.
+// -----------------------------------------------------------------------------
+export async function createDoctorUsernameAccountAction(
+  doctorId: string,
+  usernameRaw: string,
+  password: string,
+): Promise<{ ok: true; username: string } | { error: string }> {
+  let admin;
+  try {
+    admin = await requireAdmin();
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  if (!/^[0-9a-fA-F]{24}$/.test(doctorId)) {
+    return { error: 'Profissional inválido.' };
+  }
+  const username = normalizeUsername(usernameRaw ?? '');
+  if (!isValidUsername(username)) {
+    return {
+      error:
+        'Nome de utilizador inválido: 3 a 30 caracteres, só letras, números, ponto, hífen ou sublinhado (ex.: ana.silva).',
+    };
+  }
+  const problem = passwordProblem(password ?? '');
+  if (problem) return { error: problem };
+
+  await dbConnect();
+  const doctor = await Doctor.findById(doctorId).select('name active').lean();
+  if (!doctor) return { error: 'Profissional não encontrado.' };
+  if (!doctor.active) {
+    return { error: 'Profissional inativo — reative-o antes de dar acesso.' };
+  }
+
+  const existing = await User.findOne({ doctorId, role: 'doctor' }).select(
+    'status',
+  );
+  if (existing && existing.status !== 'invited') {
+    return { error: 'Este profissional já tem uma conta de acesso.' };
+  }
+  const taken = await User.exists({
+    $or: [{ username }, { email: placeholderEmail(username) }],
+    ...(existing ? { _id: { $ne: existing._id } } : {}),
+  });
+  if (taken) {
+    return { error: `O nome de utilizador "${username}" já existe.` };
+  }
+
+  const account = {
+    name: doctor.name,
+    username,
+    email: placeholderEmail(username),
+    status: 'active' as const,
+    passwordHash: await bcrypt.hash(password, 12),
+    mustChangePassword: true,
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+  };
+  let userId: string;
+  if (existing) {
+    // convite por email que nunca foi ativado: a conta passa a ser esta
+    await User.updateOne({ _id: existing._id }, { $set: account });
+    await ActivationCode.deleteMany({ userId: existing._id, usedAt: null });
+    userId = String(existing._id);
+  } else {
+    const created = await User.create({ ...account, role: 'doctor', doctorId });
+    userId = String(created._id);
+  }
+
+  await logAudit({
+    userId: admin.id,
+    action: 'create',
+    entityType: 'User',
+    entityId: userId,
+    summary: `Conta do médico ${doctor.name} criada com nome de utilizador (${username}), sem email`,
+  });
+  revalidatePath(`/admin/medicos/${doctorId}`);
+  revalidatePath('/admin/medicos');
+  return { ok: true, username };
+}
+
+// -----------------------------------------------------------------------------
+// REPOR A SENHA DE UM MÉDICO SEM EMAIL (pela gestão)
+// -----------------------------------------------------------------------------
+// Só para contas com nome de utilizador: quem tem email recupera a senha
+// sozinho. A senha nova volta a ser provisória (troca obrigatória no próximo
+// acesso) e a conta é desbloqueada se estava bloqueada por tentativas.
+// -----------------------------------------------------------------------------
+export async function resetDoctorPasswordAction(
+  doctorId: string,
+  password: string,
+): Promise<{ ok: true } | { error: string }> {
+  let admin;
+  try {
+    admin = await requireAdmin();
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  if (!/^[0-9a-fA-F]{24}$/.test(doctorId)) {
+    return { error: 'Profissional inválido.' };
+  }
+  const problem = passwordProblem(password ?? '');
+  if (problem) return { error: problem };
+
+  await dbConnect();
+  const user = await User.findOne({ doctorId, role: 'doctor' }).select(
+    'name status username',
+  );
+  if (!user || !user.username) {
+    return {
+      error:
+        'Só é possível repor a senha de contas com nome de utilizador. Quem tem email recupera a senha em "Esqueci-me da password".',
+    };
+  }
+  if (user.status !== 'active') {
+    return { error: 'Conta desativada — reative o profissional primeiro.' };
+  }
+
+  await User.updateOne(
+    { _id: user._id },
+    {
+      $set: {
+        passwordHash: await bcrypt.hash(password, 12),
+        mustChangePassword: true,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      },
+    },
+  );
+  await logAudit({
+    userId: admin.id,
+    action: 'update',
+    entityType: 'User',
+    entityId: String(user._id),
+    summary: `Senha do médico ${user.name} reposta pela gestão (troca obrigatória no próximo acesso)`,
+    changedFields: ['passwordHash'],
+  });
+  revalidatePath(`/admin/medicos/${doctorId}`);
+  return { ok: true };
 }
 
 // -----------------------------------------------------------------------------
