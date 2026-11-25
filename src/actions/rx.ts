@@ -34,6 +34,8 @@ import {
 import {
   canTransitionRx,
   RX_MODALITY_LABEL,
+  RX_MODALITIES_OFFERED,
+  rxModalityUsesTeeth,
   RX_CONSENT_LEGAL_TEXT,
   type RxStatus,
 } from '@/lib/domain';
@@ -138,8 +140,12 @@ export async function createRxRequestAction(
     if (appt.status !== 'in-progress') {
       return { error: 'Inicie a consulta para pedir Raio-X.' };
     }
-    // Panorâmica não leva dentes-alvo (limpar em vez de recusar)
-    const teeth = modality === 'panoramica' ? [] : toothNumbers;
+    // Só os exames dirigidos a dentes levam dentes-alvo (limpar, não recusar)
+    const teeth = rxModalityUsesTeeth(modality) ? toothNumbers : [];
+    // 9.ª ronda (ponto 12): bitewing ficou só para o histórico
+    if (!RX_MODALITIES_OFFERED.includes(modality)) {
+      return { error: 'Tipo de Raio-X indisponível para pedidos novos.' };
+    }
 
     // --- B.6: consentimento POR EXPOSIÇÃO, assinado ANTES do pedido --------
     // 1) Assinatura sobe para o R2 (bucket privado, chave opaca)

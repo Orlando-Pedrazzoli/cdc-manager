@@ -541,17 +541,53 @@ Declaro que li e compreendi esta informação e que consinto no tratamento dos m
 // -----------------------------------------------------------------------------
 // Raio-X — pedidos do médico à sala de RX (módulo de imagiologia)
 // -----------------------------------------------------------------------------
-// Modalidades alinhadas com o equipamento real das clínicas (email PCM
-// 05/08/2026): sensores intraorais MyRay/RVG5200 (periapical, bitewing) e
-// panorâmica Kodak/Carestream.
-export const RX_MODALITIES = ['periapical', 'bitewing', 'panoramica'] as const;
+// 9.ª ronda (ponto 12, Victor, 17 e 18/11): a lista passa a ser a dos
+// tipos de Raio-X que a clínica faz (13). `bitewing` saiu da lista do
+// Victor: continua válido para os pedidos já registados, mas deixa de ser
+// oferecido em pedidos novos (ver RX_MODALITIES_OFFERED).
+export const RX_MODALITIES = [
+  'periapical',
+  'oclusal',
+  'seriografia',
+  'panoramica',
+  'telerradiografia-lateral',
+  'telerradiografia-frontal',
+  'axial',
+  'seios-maxilares',
+  'atm',
+  'transcraniana',
+  'transfacial',
+  'mao-punho',
+  'cbct',
+  'bitewing', // só histórico
+] as const;
 export type RxModality = (typeof RX_MODALITIES)[number];
 
 export const RX_MODALITY_LABEL: Record<RxModality, string> = {
-  periapical: 'Periapical',
+  periapical: 'Radiografia periapical (apical)',
+  oclusal: 'Radiografia oclusal',
+  seriografia: 'Seriografia',
+  panoramica: 'Radiografia panorâmica',
+  'telerradiografia-lateral': 'Telerradiografia lateral',
+  'telerradiografia-frontal': 'Telerradiografia frontal',
+  axial: 'Radiografia axial',
+  'seios-maxilares': 'Radiografia dos seios maxilares',
+  atm: 'Radiografia da ATM',
+  transcraniana: 'Radiografia transcraniana',
+  transfacial: 'Radiografia transfacial',
+  'mao-punho': 'Radiografia de mão e punho',
+  cbct: 'CBCT',
   bitewing: 'Bitewing (interproximal)',
-  panoramica: 'Panorâmica',
 };
+
+/** Tipos oferecidos ao médico num pedido novo, pela ordem do Victor. */
+export const RX_MODALITIES_OFFERED: readonly RxModality[] =
+  RX_MODALITIES.filter(m => m !== 'bitewing');
+
+/** Só os exames intraorais dirigidos a dentes levam dentes-alvo (FDI). */
+export function rxModalityUsesTeeth(modality: RxModality): boolean {
+  return modality === 'periapical' || modality === 'bitewing';
+}
 
 // Máquina de estados do pedido: o médico pede na consulta; o operador da
 // sala de RX inicia e conclui; o médico pode cancelar enquanto não iniciado.

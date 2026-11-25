@@ -170,6 +170,9 @@ const DoctorSchema = new Schema(
       trim: true,
       maxlength: 120,
     },
+    // 9.ª ronda (ponto 19): nome completo, como deve sair nos atestados e
+    // relatórios. Vazio = os documentos usam `name` (o nome das agendas).
+    fullName: { type: String, trim: true, maxlength: 160, default: null },
     // Cédula profissional (Ordem dos Médicos Dentistas) — aparece em documentos
     // 8.ª ronda/09 (Victor, 17/11/2026): aviso à gestão na semana do aniversário
     birthDate: { type: Date, default: null },

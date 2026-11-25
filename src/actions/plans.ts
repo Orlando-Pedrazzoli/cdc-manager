@@ -27,8 +27,6 @@ import { logAudit } from '@/lib/audit';
 import {
   resolveCommission,
   computeLineFinancials,
-  discountCentsOf,
-  type DiscountInput,
 } from '@/lib/commissions';
 import { spawnRecallForProcedure } from '@/lib/recalls';
 import {
@@ -90,7 +88,7 @@ export async function createPlanAction(
       clinicId: formData.get('clinicId'),
       title: formData.get('title'),
       items: formData.get('items'),
-      discountEuros: formData.get('discountEuros'),
+      discountEuros: null,
       notes: formData.get('notes'),
     });
     if (!parsed.success) {
@@ -107,26 +105,21 @@ export async function createPlanAction(
       .lean();
     const catalog = new Map(treatments.map(t => [String(t._id), t]));
 
-    // Fase 4C: PVP aplicado (editável) − desconto por item = valor ao paciente
+    // 9.ª ronda (ponto 11): o médico não aplica descontos, nem por linha
+    // nem ao plano. O valor ao paciente é o PVP aplicado (editável); campos
+    // de desconto que cheguem no pedido são ignorados.
     const items = data.items.map(i => {
       const cat = catalog.get(i.treatmentTypeId);
-      const discount: DiscountInput =
-        i.discountMode === 'percent'
-          ? { mode: 'percent', value: i.discountPct as number }
-          : i.discountMode === 'amount'
-            ? { mode: 'amount', cents: i.discountEuros as number }
-            : null;
-      const discountCents = discountCentsOf(i.priceEuros, discount);
       return {
         treatmentTypeId: i.treatmentTypeId,
         nameSnapshot: cat?.name ?? '(ato removido)',
         catalogPriceCents: cat?.priceCents ?? null,
         listPriceCents: i.priceEuros,
         priceEdited: cat != null && cat.priceCents !== i.priceEuros,
-        discountMode: i.discountMode,
-        discountPct: i.discountMode === 'percent' ? i.discountPct : null,
-        discountCents,
-        priceCents: i.priceEuros - discountCents,
+        discountMode: null,
+        discountPct: null,
+        discountCents: 0,
+        priceCents: i.priceEuros,
         note: i.note,
         toothNumbers: i.toothNumbers,
         phase: i.phase,
@@ -135,10 +128,6 @@ export async function createPlanAction(
     });
     const totalCents = items.reduce((s, i) => s + i.priceCents, 0);
     const editedCount = items.filter(i => i.priceEdited).length;
-    if (data.discountEuros > totalCents) {
-      return { error: 'O desconto não pode exceder o total do plano.' };
-    }
-
     const plan = await TreatmentPlan.create({
       clinicId: data.clinicId,
       patientId: data.patientId,
@@ -147,7 +136,7 @@ export async function createPlanAction(
       status: 'draft',
       items,
       totalCents,
-      discountCents: data.discountEuros,
+      discountCents: 0,
       notes: data.notes,
     });
 

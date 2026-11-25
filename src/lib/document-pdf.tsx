@@ -159,7 +159,7 @@ export function DocPdf({ input }: { input: DocPdfInput }) {
               <Text style={s.sigName}>{input.doctorName ?? c.name}</Text>
               <Text style={s.sigLabel}>
                 {input.doctorLicense
-                  ? `Médico(a) dentista · Cédula n.º ${input.doctorLicense}`
+                  ? `Médico(a) dentista · OMD n.º ${input.doctorLicense}`
                   : 'Médico(a) dentista'}
               </Text>
             </View>

@@ -11,6 +11,7 @@
 
 import Link from 'next/link';
 import { ConsultProgress } from '@/components/agenda/ConsultProgress';
+import { consultWindow } from '@/lib/consult-window';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
@@ -257,8 +258,11 @@ export default async function DoctorAgendaPage({
                   </p>
                   {a.status === 'in-progress' && (
                     <ConsultProgress
-                      startMs={a.startAt.getTime()}
-                      endMs={a.endAt.getTime()}
+                      {...consultWindow(
+                        a.startAt.getTime(),
+                        a.endAt.getTime(),
+                        a.startedAt ? new Date(a.startedAt).getTime() : null,
+                      )}
                       variant='row'
                     />
                   )}

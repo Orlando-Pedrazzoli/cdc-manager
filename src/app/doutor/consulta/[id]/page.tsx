@@ -31,6 +31,7 @@ import { documentUrls, previewUrl } from '@/lib/storage';
 import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
 import { MandatoryAnamnesisGate } from '@/components/clinico/MandatoryAnamnesisGate';
 import { ConsultProgress } from '@/components/agenda/ConsultProgress';
+import { consultWindow } from '@/lib/consult-window';
 import {
   anamnesisGateReason,
   anesthesiaReactionAlert,
@@ -390,8 +391,11 @@ export default async function ConsultationPage({
           {/* Barra de tempo da consulta (ideia do Victor, 11/11/2026) */}
           {status === 'in-progress' && (
             <ConsultProgress
-              startMs={appt.startAt.getTime()}
-              endMs={appt.endAt.getTime()}
+              {...consultWindow(
+                appt.startAt.getTime(),
+                appt.endAt.getTime(),
+                appt.startedAt ? new Date(appt.startedAt).getTime() : null,
+              )}
               variant='header'
             />
           )}

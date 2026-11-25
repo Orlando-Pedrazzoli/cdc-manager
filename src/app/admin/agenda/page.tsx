@@ -19,6 +19,7 @@
 //                    anti-no-show: não-resposta ao email ≠ confirmação.
 // =============================================================================
 
+import { consultWindow } from '@/lib/consult-window';
 import Link from 'next/link';
 import {
   ChevronLeft,
@@ -411,7 +412,7 @@ export default async function AgendaPage({
 
   const appts = await Appointment.find(apptQuery)
     .select(
-      'doctorId patientId treatmentTypeId startAt endAt status channel confirmedVia isUrgent createdByUserId createdAt note cancelledByUserId cancelledAt cancelledBy cancelReason rescheduledToId removedFromGridAt removedFromGridByUserId referralSource referralDetail closedAt closedByUserId',
+      'doctorId patientId treatmentTypeId startAt endAt startedAt status channel confirmedVia isUrgent createdByUserId createdAt note cancelledByUserId cancelledAt cancelledBy cancelReason rescheduledToId removedFromGridAt removedFromGridByUserId referralSource referralDetail closedAt closedByUserId',
     )
     .sort({ startAt: 1 })
     .lean();
@@ -614,8 +615,15 @@ export default async function AgendaPage({
       provisional: !!p?.provisional,
       cancelledOnGrid: cancelledOnGrid.has(String(a._id)),
       cancelledBy: (a.cancelledBy as string | null) ?? null,
-      startMs: a.startAt.getTime(),
-      endMs: a.endAt.getTime(),
+      // Barra de tempo: conta do início real quando a consulta começa fora
+      // do horário marcado (9.ª ronda, ponto 15)
+      ...consultWindow(
+        a.startAt.getTime(),
+        a.endAt.getTime(),
+        a.status === 'in-progress' && a.startedAt
+          ? new Date(a.startedAt).getTime()
+          : null,
+      ),
       referralLabel: a.referralSource
         ? [
             REFERRAL_SOURCE_LABEL[a.referralSource as ReferralSource] ??

@@ -98,10 +98,6 @@ export function ProcedureList({
   const toggleFace = (f: string) => setFaces(prev => (prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]));
   const [price, setPrice] = useState('');
   const [cost, setCost] = useState('');
-  const [discountMode, setDiscountMode] = useState<'' | 'percent' | 'amount'>(
-    '',
-  );
-  const [discountValue, setDiscountValue] = useState('');
   // Escolher o ato preenche PVP e custo do catálogo (ambos editáveis)
   const [selected, setSelected] = useState<TreatmentOption | null>(null);
 
@@ -109,8 +105,6 @@ export function ProcedureList({
     formRef.current?.reset();
     setPrice('');
     setCost('');
-    setDiscountMode('');
-    setDiscountValue('');
     setSelected(null);
     setToothNumbers('');
     setFaces([]);
@@ -135,28 +129,6 @@ export function ProcedureList({
     setPrice(t ? (t.priceCents / 100).toFixed(2).replace('.', ',') : '');
     setCost(t ? (t.costCents / 100).toFixed(2).replace('.', ',') : '');
   };
-
-  // Pré-visualização (espelha lib/commissions.ts — só para o médico ver o
-  // valor a cobrar antes de registar; o cálculo que vale é o do servidor)
-  const preview = (() => {
-    const toCents = (v: string) => {
-      const n = Number(v.trim().replace(/\s/g, '').replace(',', '.'));
-      return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
-    };
-    const list = toCents(price);
-    if (list == null) return null;
-    let discount = 0;
-    if (discountMode === 'percent') {
-      const pct = Number(discountValue.replace(',', '.'));
-      if (Number.isFinite(pct) && pct >= 0 && pct <= 100) {
-        discount = Math.min(list, Math.round((list * pct) / 100));
-      }
-    } else if (discountMode === 'amount') {
-      const c = toCents(discountValue);
-      if (c != null) discount = Math.min(list, c);
-    }
-    return { list, discount, charged: list - discount };
-  })();
 
   const active = procedures.filter(p => p.status !== 'void');
   const voided = procedures.filter(p => p.status === 'void');
@@ -227,17 +199,6 @@ export function ProcedureList({
           }}
         >
           <input type='hidden' name='appointmentId' value={appointmentId} />
-          <input type='hidden' name='discountMode' value={discountMode} />
-          <input
-            type='hidden'
-            name='discountPct'
-            value={discountMode === 'percent' ? discountValue : ''}
-          />
-          <input
-            type='hidden'
-            name='discountEuros'
-            value={discountMode === 'amount' ? discountValue : ''}
-          />
           <div style={{ gridColumn: '1 / span 3' }}>
             <TreatmentPicker
               name='treatmentTypeId'
@@ -255,65 +216,6 @@ export function ProcedureList({
             onChange={e => setPrice(e.target.value)}
             help='Preço de tabela; editável'
           />
-          <div>
-            <label
-              style={{
-                display: 'block',
-                fontSize: '13px',
-                fontWeight: 600,
-                color: '#1B2A6B',
-                marginBottom: 6,
-              }}
-            >
-              Desconto
-            </label>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <select
-                value={discountMode}
-                onChange={e => {
-                  setDiscountMode(e.target.value as '' | 'percent' | 'amount');
-                  setDiscountValue('');
-                }}
-                style={{
-                  border: '1px solid #D8DEEF',
-                  borderRadius: '10px',
-                  padding: '9px 8px',
-                  fontSize: '13px',
-                  color: '#1B2A6B',
-                  backgroundColor: '#FFFFFF',
-                  width: 86,
-                }}
-              >
-                <option value=''>Sem</option>
-                <option value='percent'>%</option>
-                <option value='amount'>€</option>
-              </select>
-              <input
-                inputMode='decimal'
-                value={discountValue}
-                disabled={discountMode === ''}
-                onChange={e => setDiscountValue(e.target.value)}
-                placeholder={discountMode === 'percent' ? 'ex.: 10' : 'ex.: 20'}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  border: '1px solid #D8DEEF',
-                  borderRadius: '10px',
-                  padding: '9px 10px',
-                  fontSize: '14px',
-                  color: '#1B2A6B',
-                  backgroundColor: discountMode === '' ? '#F4F6FB' : '#FFFFFF',
-                }}
-              />
-            </div>
-            <p
-              style={{ margin: '4px 0 0', fontSize: '12px', color: '#6A7186' }}
-            >
-              {preview && preview.discount > 0
-                ? `−${formatCents(preview.discount)} → a cobrar ${formatCents(preview.charged)}`
-                : 'Em % ou em € (exclusivos)'}
-            </p>
-          </div>
           <Input
             name='costEuros'
             label='Custo direto (€)'

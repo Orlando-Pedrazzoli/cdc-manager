@@ -148,7 +148,7 @@ export async function finalizeIssuedDocument(params: {
   const [patient, doctor, clinics] = await Promise.all([
     Patient.findById(params.patientId).select('name').lean(),
     params.doctorId && OID.test(params.doctorId)
-      ? Doctor.findById(params.doctorId).select('name licenseNumber').lean()
+      ? Doctor.findById(params.doctorId).select('name fullName licenseNumber').lean()
       : null,
     getActiveClinics(),
   ]);
@@ -168,7 +168,7 @@ export async function finalizeIssuedDocument(params: {
     },
     title,
     body,
-    doctorName: doctor?.name ?? null,
+    doctorName: doctor ? doctor.fullName || doctor.name : null,
     doctorLicense: doctor?.licenseNumber ?? null,
     issuedAtLabel: `${clinic?.address?.split(',').pop()?.trim() || 'Lisboa'}, ${longDatePt(now)}`,
     patientSignatureDataUrl: params.signatureDataUrl,

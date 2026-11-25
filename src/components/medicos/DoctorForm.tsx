@@ -76,6 +76,8 @@ interface ClinicState {
 
 export interface DoctorFormInitial {
   name: string;
+  /** 9.ª ronda/19: nome completo para documentos */
+  fullName?: string;
   licenseNumber: string;
   /** 8.ª ronda/09 */
   birthDate?: string;
@@ -116,6 +118,7 @@ const errorText = { margin: 0, fontSize: '12px', color: ERROR_COLOR };
 /** Onde fica cada campo no ecrã (o resumo dos erros leva lá) */
 const FIELD_TARGET: Record<DoctorField, string> = {
   name: 'name',
+  fullName: 'fullName',
   licenseNumber: 'licenseNumber',
   birthDate: 'birthDate',
   commissionRate: 'commissionRate',
@@ -526,16 +529,28 @@ export function DoctorForm({
               error={fieldError('name')}
               aria-invalid={fieldError('name') ? true : undefined}
             />
+            {/* 9.ª ronda/19: é este o nome que sai nos atestados e relatórios */}
+            <Input
+              id='fullName'
+              name='fullName'
+              label='Nome completo (documentos)'
+              maxLength={160}
+              defaultValue={initial?.fullName ?? ''}
+              placeholder='Nome completo, como na cédula'
+              error={fieldError('fullName')}
+              aria-invalid={fieldError('fullName') ? true : undefined}
+              help='Sai nos atestados, relatórios e consentimentos. Vazio: usa-se o nome acima.'
+            />
             <Input
               id='licenseNumber'
               name='licenseNumber'
-              label='Cédula profissional (OMD)'
+              label='N.º da OMD (cédula profissional)'
               inputMode='numeric'
               pattern='\d{1,10}'
               defaultValue={initial?.licenseNumber ?? ''}
               error={fieldError('licenseNumber')}
               aria-invalid={fieldError('licenseNumber') ? true : undefined}
-              help='Apenas dígitos. Necessária para receitas e consentimentos — profissionais sem cédula ficam sinalizados na listagem.'
+              help='Apenas dígitos. Sai nos atestados e relatórios; necessária para receitas e consentimentos — profissionais sem cédula ficam sinalizados na listagem.'
             />
             {/* 8.ª ronda/09: aviso à gestão na semana do aniversário */}
             <Input

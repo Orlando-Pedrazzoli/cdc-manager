@@ -252,7 +252,7 @@ async function buildValues(params: {
       .select('name nif snsNumber birthDate processNumber')
       .lean(),
     params.doctorId
-      ? Doctor.findById(params.doctorId).select('name licenseNumber').lean()
+      ? Doctor.findById(params.doctorId).select('name fullName licenseNumber').lean()
       : null,
     getActiveClinics(),
     params.appointmentId && OID.test(params.appointmentId)
@@ -278,7 +278,8 @@ async function buildValues(params: {
       ? shortDatePt(patient.birthDate)
       : null,
     'paciente.processo': processLabel(patient.processNumber),
-    'medico.nome': doctor?.name ?? null,
+    // 9.ª ronda (ponto 19): nome completo do médico, se estiver na ficha
+    'medico.nome': doctor ? doctor.fullName || doctor.name : null,
     'medico.cedula': doctor?.licenseNumber ?? null,
     'clinica.nome': clinic?.name ?? null,
     'clinica.morada': clinic?.address ?? clinic?.name ?? null,
