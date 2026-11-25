@@ -11,9 +11,14 @@
 // Mostra TODAS as canceladas do dia aberto (as que ainda estão na grelha e
 // as que já foram retiradas), agrupadas por médico. Só leitura — é um
 // registo. Server component (sem estado).
+//
+// 25/11/2026: na barra lateral a caixa vem fechada, só com o número — abre ao
+// clicar ("onde todos podem clicar e ver"). Assim o calendário fica sempre à
+// vista por cima dela.
 // =============================================================================
 
 import Link from 'next/link';
+import { ChevronRight } from 'lucide-react';
 
 export interface CancelledEntry {
   id: string;
@@ -60,107 +65,132 @@ export function CancelledBox({
         overflow: 'hidden',
       }}
     >
-      <div
-        style={{
-          padding: '11px 14px',
-          borderBottom: '1px solid #EEF1F8',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'baseline',
-          gap: 8,
-        }}
-      >
-        <strong style={{ fontSize: '13px', color: '#1B2A6B' }}>
-          Canceladas ({entries.length})
-        </strong>
-        <span style={{ fontSize: '11px', color: '#6A7186' }}>{dateLabel}</span>
-      </div>
-
-      {entries.length === 0 ? (
-        <p style={{ margin: 0, padding: '12px 14px', fontSize: '12px', color: '#6A7186' }}>
-          Sem cancelamentos neste dia.
+      <details className='cdc-fold'>
+        <summary
+          style={{
+            padding: '11px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <ChevronRight size={14} color='#1B2A6B' className='cdc-fold-chevron' />
+          <strong style={{ fontSize: '13px', color: '#1B2A6B' }}>Canceladas</strong>
+          <span
+            style={{
+              marginLeft: 'auto',
+              minWidth: 22,
+              padding: '1px 8px',
+              borderRadius: '999px',
+              textAlign: 'center',
+              fontSize: '12px',
+              fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+              backgroundColor: entries.length > 0 ? '#FFE3C2' : '#E6E9F1',
+              color: entries.length > 0 ? '#8A4B00' : '#4A5169',
+            }}
+          >
+            {entries.length}
+          </span>
+        </summary>
+        <p
+          style={{
+            margin: 0,
+            padding: '6px 14px',
+            borderTop: '1px solid #EEF1F8',
+            fontSize: '11px',
+            color: '#6A7186',
+          }}
+        >
+          {dateLabel}
         </p>
-      ) : (
-        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
-          {[...byDoctor.entries()].map(([doctor, list]) => (
-            <div key={doctor}>
-              <p
-                style={{
-                  margin: 0,
-                  padding: '7px 14px',
-                  backgroundColor: '#F8F9FD',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  color: '#3D4257',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.3px',
-                }}
-              >
-                {doctor}
-              </p>
-              {list.map(e => (
-                <div
-                  key={e.id}
+
+        {entries.length === 0 ? (
+          <p style={{ margin: 0, padding: '12px 14px', fontSize: '12px', color: '#6A7186' }}>
+            Sem cancelamentos neste dia.
+          </p>
+        ) : (
+          <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+            {[...byDoctor.entries()].map(([doctor, list]) => (
+              <div key={doctor}>
+                <p
                   style={{
-                    padding: '9px 14px',
-                    borderTop: '1px solid #F4F6FB',
-                    fontSize: '12px',
+                    margin: 0,
+                    padding: '7px 14px',
+                    backgroundColor: '#F8F9FD',
+                    fontSize: '11px',
+                    fontWeight: 700,
                     color: '#3D4257',
-                    lineHeight: 1.45,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.3px',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <strong style={{ color: '#1C2233', fontVariantNumeric: 'tabular-nums' }}>
-                      {e.time}
-                    </strong>
-                    <span
-                      style={{
-                        flexShrink: 0,
-                        padding: '0 7px',
-                        borderRadius: '999px',
-                        fontSize: '10px',
-                        fontWeight: 700,
-                        backgroundColor: e.onGrid ? '#FFE3C2' : '#E6E9F1',
-                        color: e.onGrid ? '#8A4B00' : '#4A5169',
-                      }}
-                    >
-                      {e.onGrid ? 'Na agenda' : 'Retirada'}
-                    </span>
-                  </div>
-                  <div style={{ fontWeight: 600, color: '#1B2A6B' }}>{e.patientName}</div>
-                  <div style={{ color: '#6A7186' }}>{e.treatmentName}</div>
-                  <div style={{ marginTop: 3 }}>
-                    <strong>{e.kind}</strong>
-                    {e.reason ? ` — ${e.reason}` : ''}
-                  </div>
-                  <div style={{ color: '#6A7186' }}>
-                    {e.cancelledByName ? `Registado por ${e.cancelledByName}` : 'Registado pelo sistema'}
-                    {e.cancelledAtLabel ? `, ${e.cancelledAtLabel}` : ''}
-                    {e.noticeLabel && (
-                      <span style={{ color: e.late ? '#B3261E' : '#6A7186', fontWeight: e.late ? 700 : 400 }}>
-                        {' '}
-                        · {e.noticeLabel}
+                  {doctor}
+                </p>
+                {list.map(e => (
+                  <div
+                    key={e.id}
+                    style={{
+                      padding: '9px 14px',
+                      borderTop: '1px solid #F4F6FB',
+                      fontSize: '12px',
+                      color: '#3D4257',
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <strong style={{ color: '#1C2233', fontVariantNumeric: 'tabular-nums' }}>
+                        {e.time}
+                      </strong>
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          padding: '0 7px',
+                          borderRadius: '999px',
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          backgroundColor: e.onGrid ? '#FFE3C2' : '#E6E9F1',
+                          color: e.onGrid ? '#8A4B00' : '#4A5169',
+                        }}
+                      >
+                        {e.onGrid ? 'Na agenda' : 'Retirada'}
                       </span>
+                    </div>
+                    <div style={{ fontWeight: 600, color: '#1B2A6B' }}>{e.patientName}</div>
+                    <div style={{ color: '#6A7186' }}>{e.treatmentName}</div>
+                    <div style={{ marginTop: 3 }}>
+                      <strong>{e.kind}</strong>
+                      {e.reason ? ` — ${e.reason}` : ''}
+                    </div>
+                    <div style={{ color: '#6A7186' }}>
+                      {e.cancelledByName ? `Registado por ${e.cancelledByName}` : 'Registado pelo sistema'}
+                      {e.cancelledAtLabel ? `, ${e.cancelledAtLabel}` : ''}
+                      {e.noticeLabel && (
+                        <span style={{ color: e.late ? '#B3261E' : '#6A7186', fontWeight: e.late ? 700 : 400 }}>
+                          {' '}
+                          · {e.noticeLabel}
+                        </span>
+                      )}
+                    </div>
+                    {!e.onGrid && (e.removedByName || e.removedAtLabel) && (
+                      <div style={{ color: '#6A7186' }}>
+                        Retirada da agenda
+                        {e.removedByName ? ` por ${e.removedByName}` : ''}
+                        {e.removedAtLabel ? `, ${e.removedAtLabel}` : ''}
+                      </div>
                     )}
                   </div>
-                  {!e.onGrid && (e.removedByName || e.removedAtLabel) && (
-                    <div style={{ color: '#6A7186' }}>
-                      Retirada da agenda
-                      {e.removedByName ? ` por ${e.removedByName}` : ''}
-                      {e.removedAtLabel ? `, ${e.removedAtLabel}` : ''}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ))}
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ padding: '8px 14px', borderTop: '1px solid #EEF1F8' }}>
+          <Link href={historyHref} style={{ fontSize: '12px', fontWeight: 700, color: '#2743A6', textDecoration: 'none' }}>
+            Histórico completo →
+          </Link>
         </div>
-      )}
-      <div style={{ padding: '8px 14px', borderTop: '1px solid #EEF1F8' }}>
-        <Link href={historyHref} style={{ fontSize: '12px', fontWeight: 700, color: '#2743A6', textDecoration: 'none' }}>
-          Histórico completo →
-        </Link>
-      </div>
+      </details>
     </section>
   );
 }

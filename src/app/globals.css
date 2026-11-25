@@ -621,3 +621,121 @@ body {
     opacity: 0.45;
   }
 }
+
+/* =============================================================================
+   Agenda — calendário sempre à vista (Victor, 25/11/2026)
+   A grelha do dia à esquerda e, à direita, uma barra de largura fixa com o
+   calendário, as canceladas e a lista de espera (AgendaSideLayout). A barra
+   fica presa ao topo enquanto se rola a agenda e pode fechar-se.
+     ≥ 1280px      barra ao lado da grelha (data-side)
+     1024–1279px   barra por cima da grelha, só quando aberta (data-overlay)
+     < 1024px      empilha por baixo da grelha; sem botões
+   ========================================================================== */
+.cdc-agenda-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.cdc-agenda-main {
+  min-width: 0;
+}
+.cdc-agenda-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.cdc-agenda-side-close,
+.cdc-agenda-rail {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .cdc-agenda-body {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+  .cdc-agenda-main {
+    flex: 1 1 0;
+  }
+  .cdc-agenda-side-close {
+    display: inline-flex;
+  }
+  .cdc-agenda-rail {
+    display: inline-flex;
+    flex-shrink: 0;
+    position: sticky;
+    top: calc(var(--cdc-topbar-h, 0px) + 12px);
+  }
+}
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .cdc-agenda-side {
+    position: fixed;
+    top: var(--cdc-topbar-h, 0px);
+    right: 0;
+    bottom: 0;
+    z-index: 25;
+    box-sizing: border-box;
+    width: 312px;
+    padding: 12px;
+    overflow-y: auto;
+    /* cor e sombra aqui porque só existem neste intervalo de largura */
+    background-color: #f4f6fb;
+    border-left: 1px solid #d8deef;
+    box-shadow: -12px 0 28px rgba(20, 27, 51, 0.16);
+  }
+  .cdc-agenda-body[data-overlay="closed"] .cdc-agenda-side,
+  .cdc-agenda-body[data-overlay="open"] .cdc-agenda-rail {
+    display: none;
+  }
+}
+@media (min-width: 1280px) {
+  .cdc-agenda-side {
+    flex-shrink: 0;
+    width: 288px;
+    position: sticky;
+    /* abaixo da barra superior, que fica presa ao topo */
+    top: calc(var(--cdc-topbar-h, 0px) + 12px);
+    max-height: calc(100vh - var(--cdc-topbar-h, 0px) - 24px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .cdc-agenda-body[data-side="closed"] .cdc-agenda-side,
+  .cdc-agenda-body[data-side="open"] .cdc-agenda-rail {
+    display: none;
+  }
+}
+@media print {
+  .cdc-agenda-side-close,
+  .cdc-agenda-rail {
+    display: none;
+  }
+}
+
+/* Caixas que abrem e fecham (<details class="cdc-fold">): sem o triângulo do
+   browser; a seta e os textos "ver / esconder" seguem o estado */
+.cdc-fold > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.cdc-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.cdc-fold > summary .cdc-fold-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+.cdc-fold[open] > summary .cdc-fold-chevron {
+  transform: rotate(90deg);
+}
+.cdc-fold > summary .cdc-fold-when-open,
+.cdc-fold[open] > summary .cdc-fold-when-closed {
+  display: none;
+}
+.cdc-fold[open] > summary .cdc-fold-when-open {
+  display: inline;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cdc-fold > summary .cdc-fold-chevron {
+    transition: none;
+  }
+}
