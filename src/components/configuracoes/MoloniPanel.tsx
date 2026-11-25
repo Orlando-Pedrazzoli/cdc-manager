@@ -165,7 +165,7 @@ export function MoloniPanel({
             })),
           )}
           {list(
-            'Séries → MOLONI_DOCUMENT_SET_ID / MOLONI_CREDIT_SET_ID',
+            'Séries → MOLONI_DOCUMENT_SETS (JSON por clínica: {"colombo":…,"buraca":…})',
             data.documentSets.map(s => ({
               id: s.document_set_id,
               name: s.name,
@@ -189,6 +189,13 @@ export function MoloniPanel({
           {list(
             'Isenções → MOLONI_EXEMPTION_REASON',
             data.exemptions.map(e => ({ id: e.code, name: e.name })),
+          )}
+          {list(
+            'Impostos → MOLONI_TAX_IDS (JSON taxa → id: {"23":…}) — produtos do balcão',
+            (data.taxes ?? []).map(t => ({
+              id: t.tax_id,
+              name: `${t.name} (${t.value}%)`,
+            })),
           )}
         </div>
       )}

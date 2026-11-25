@@ -1,5 +1,7 @@
 // 📄 src/components/faturacao/MoloniButtons.tsx
 // CDC Manager — Fatura: emitir no Moloni / abrir PDF certificado (Fase 7A)
+// 25/11: emite a FATURA e os RECIBOS dos pagamentos (nunca fatura-recibo);
+// se faltar o recibo de algum pagamento, mostra "Emitir recibo".
 'use client';
 
 import { useState } from 'react';
@@ -14,11 +16,14 @@ export function MoloniButtons({
   invoiceId,
   emitted,
   ready,
+  missingReceipts = 0,
   summary = [],
 }: {
   invoiceId: string;
   emitted: boolean;
   ready: boolean;
+  /** pagamentos registados ainda sem recibo no Moloni */
+  missingReceipts?: number;
   /** 5.ª ronda/05: resumo do documento para confirmar antes de emitir */
   summary?: { label: string; value: string }[];
 }) {
@@ -29,6 +34,26 @@ export function MoloniButtons({
   const [confirming, setConfirming] = useState(false);
   if (!ready) return null;
   return emitted ? (
+    <>
+    {missingReceipts > 0 && (
+      <Button
+        size='sm'
+        loading={busy}
+        onClick={async () => {
+          setBusy(true);
+          const r = await emitInvoiceAction(invoiceId);
+          setBusy(false);
+          if (r.error) toast.error(r.error);
+          else {
+            toast.success(`Recibo emitido no Moloni: ${r.number}`);
+            router.refresh();
+          }
+        }}
+      >
+        <FileBadge2 size={14} style={{ marginRight: 6 }} /> Emitir recibo
+        {missingReceipts > 1 ? `s (${missingReceipts})` : ''}
+      </Button>
+    )}
     <Button
       size='sm'
       variant='outline'
@@ -44,6 +69,7 @@ export function MoloniButtons({
       <ExternalLink size={14} style={{ marginRight: 6 }} /> PDF certificado
       (Moloni)
     </Button>
+    </>
   ) : (
     <>
       <Button size='sm' disabled={busy} onClick={() => setConfirming(true)}>
@@ -57,8 +83,10 @@ export function MoloniButtons({
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <p style={{ margin: 0, fontSize: '13px', color: '#3D4257', lineHeight: 1.5 }}>
-            Confirme os dados. Depois de emitido, o documento é certificado e
-            não pode ser apagado — só anulado com nota de crédito.
+            Confirme os dados. É emitida a fatura e, para cada pagamento já
+            registado, o respetivo recibo. Depois de emitido, o documento é
+            certificado e não pode ser apagado — só anulado (no próprio dia)
+            ou corrigido com nota de crédito.
           </p>
           {summary.length > 0 && (
             <div
@@ -95,6 +123,7 @@ export function MoloniButtons({
                 if (r.error) toast.error(r.error);
                 else {
                   toast.success(`Emitida no Moloni: ${r.number}`);
+                  if (r.warning) toast.error(r.warning);
                   setConfirming(false);
                   router.refresh();
                 }

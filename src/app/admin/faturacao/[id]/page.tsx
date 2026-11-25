@@ -6,8 +6,10 @@
 // linhas com snapshots imutáveis, total, referências Moloni quando emitida
 // (nº certificado, ATCUD, série) e bloco de anulação quando anulada.
 // Fase 1 (E2): botão "Anular documento" (admin) com a pergunta "linha de
-// balanço? Sim/Não" — ver VoidInvoiceModal. A nota de crédito Moloni pluga
-// no mesmo sítio na Fase 7.
+// balanço? Sim/Não" — ver VoidInvoiceModal.
+// 25/11 (Isabel): anular só no próprio dia; depois "Nota de crédito total";
+// e "Nota de crédito parcial" (linhas ou valor). Bloco com as notas de
+// crédito do documento e o n.º do recibo Moloni de cada pagamento.
 // =============================================================================
 
 import { auth } from '@/lib/auth';
@@ -25,6 +27,14 @@ import { INVOICE_STATUS_LABEL } from '@/lib/labels';
 import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/domain';
 import { Badge, type BadgeVariant } from '@/components/ui/Badge';
 import { VoidInvoiceModal } from '@/components/faturacao/VoidInvoiceModal';
+import { PartialCreditNoteModal } from '@/components/faturacao/PartialCreditNoteModal';
+import {
+  CREDIT_NOTE_KIND_LABEL,
+  canVoidOnDay,
+  creditableCents,
+  creditedCents,
+  type CreditNoteKind,
+} from '@/lib/credit-notes';
 import { PaymentsPanel } from '@/components/faturacao/PaymentsPanel';
 import { MoloniButtons } from '@/components/faturacao/MoloniButtons';
 import { isMoloniEmissionReady } from '@/lib/moloni';
@@ -131,6 +141,22 @@ export default async function InvoiceDetailPage({
     inv.moloniDocumentNumber ??
     `Interno #${String(inv._id).slice(-6).toUpperCase()}`;
   const when = (inv.paidAt ?? inv.createdAt) as Date;
+  const creditNotes = inv.creditNotes ?? [];
+  const credited = creditedCents(inv);
+  const creditable = creditableCents(inv);
+  const creditedLineIdx = new Set(creditNotes.flatMap(c => c.lineIndexes ?? []));
+  const receiptOf = new Map(
+    (inv.moloniReceipts ?? []).map(r => [String(r.paymentId), r.number ?? null]),
+  );
+  const missingReceipts = inv.moloniDocumentId
+    ? (inv.payments ?? []).filter(p => !receiptOf.has(String(p._id))).length
+    : 0;
+  const sameDay = canVoidOnDay(inv.createdAt as Date, new Date());
+  const cnUserIds = creditNotes.map(c => String(c.createdByUserId));
+  const cnUsers = cnUserIds.length
+    ? await User.find({ _id: { $in: cnUserIds } }).select('name').lean()
+    : [];
+  const cnUserName = new Map(cnUsers.map(u => [String(u._id), u.name]));
 
   return (
     <div
@@ -179,11 +205,8 @@ export default async function InvoiceDetailPage({
               <MoloniButtons
                 invoiceId={String(inv._id)}
                 emitted={inv.moloniDocumentId != null}
-                ready={
-                  isMoloniEmissionReady() &&
-                  (inv.moloniDocumentId != null ||
-                    (inv.paidCents ?? inv.totalCents) >= inv.totalCents)
-                }
+                ready={isMoloniEmissionReady()}
+                missingReceipts={missingReceipts}
                 summary={[
                   { label: 'Paciente', value: patient?.name ?? '—' },
                   { label: 'NIF', value: inv.nifSnapshot ?? 'Consumidor final' },
@@ -193,15 +216,29 @@ export default async function InvoiceDetailPage({
               />
             </div>
           )}
-          {session.user.role === 'admin' && inv.status !== 'voided' && (
-            <div>
-              <VoidInvoiceModal
-                invoiceId={String(inv._id)}
-                docLabel={docLabel}
-                lineCount={inv.lines.length}
-              />
-            </div>
-          )}
+          {session.user.role === 'admin' &&
+            inv.status !== 'voided' &&
+            creditable > 0 && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <PartialCreditNoteModal
+                  invoiceId={String(inv._id)}
+                  docLabel={docLabel}
+                  creditableCents={creditable}
+                  lines={inv.lines.map((l, i) => ({
+                    index: i,
+                    description: l.description,
+                    priceCents: l.priceCents,
+                    credited: creditedLineIdx.has(i),
+                  }))}
+                />
+                <VoidInvoiceModal
+                  invoiceId={String(inv._id)}
+                  docLabel={docLabel}
+                  lineCount={inv.lines.length}
+                  mode={sameDay ? 'void' : 'credit-total'}
+                />
+              </div>
+            )}
         </div>
       </div>
 
@@ -216,9 +253,9 @@ export default async function InvoiceDetailPage({
             color: '#B06000',
           }}
         >
-          Pagamento registado no balcão — o documento fiscal certificado será
-          emitido quando a conta Moloni ativar. Nada se perde: a emissão
-          pendente fica nesta fila.
+          Pagamento registado no balcão — a fatura certificada (e o recibo de
+          cada pagamento) ainda não foi emitida no Moloni. Nada se perde: a
+          emissão pendente fica nesta fila.
         </div>
       )}
 
@@ -365,7 +402,9 @@ export default async function InvoiceDetailPage({
           invoiceId={String(inv._id)}
           totalCents={inv.totalCents}
           paidCents={paidCents}
+          creditedCents={credited}
           payments={(inv.payments ?? []).map(p => ({
+            receiptNumber: receiptOf.get(String(p._id)) ?? null,
             id: String(p._id),
             amountCents: p.amountCents,
             method: p.method,
@@ -409,6 +448,51 @@ export default async function InvoiceDetailPage({
         </div>
       )}
 
+      {/* 25/11 (Isabel): notas de crédito do documento */}
+      {creditNotes.length > 0 && (
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #EEF1F8',
+            borderRadius: '14px',
+            padding: '18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+          }}
+        >
+          <h2
+            style={{
+              margin: '0 0 4px',
+              fontSize: '14px',
+              fontWeight: 700,
+              color: '#1C2233',
+            }}
+          >
+            Notas de crédito ({formatCents(credited)})
+          </h2>
+          {creditNotes.map(c => (
+            <InfoRow
+              key={String(c._id)}
+              label={lisbonDateTime(c.createdAt as Date)}
+              value={`${CREDIT_NOTE_KIND_LABEL[c.kind as CreditNoteKind]} · ${formatCents(c.totalCents)}${
+                c.kind === 'lines' && c.lineIndexes?.length
+                  ? ` · linha(s) ${c.lineIndexes.map(i => i + 1).join(', ')}`
+                  : ''
+              }${c.kind === 'value' && c.description ? ` · ${c.description}` : ''} · ${c.reason} · ${
+                cnUserName.get(String(c.createdByUserId)) ?? '—'
+              }${
+                c.moloniDocumentNumber
+                  ? ` · Moloni ${c.moloniDocumentNumber}`
+                  : inv.moloniDocumentId
+                    ? ` · Moloni por emitir${c.moloniError ? ` (${c.moloniError})` : ''}`
+                    : ''
+              }`}
+            />
+          ))}
+        </div>
+      )}
+
       {/* Anulação */}
       {inv.status === 'voided' && (
         <div
@@ -441,9 +525,11 @@ export default async function InvoiceDetailPage({
           <InfoRow
             label='Nota de crédito'
             value={
-              inv.creditNoteMoloniId !== null
+              creditNotes.find(c => c.kind === 'void' || c.kind === 'total')
+                ?.moloniDocumentNumber ??
+              (inv.creditNoteMoloniId !== null
                 ? `Moloni #${inv.creditNoteMoloniId}`
-                : '—'
+                : '—')
             }
           />
         </div>

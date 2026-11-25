@@ -8,6 +8,8 @@
 //     de comissão se o mês já fechou)
 //   · NÃO → o erro está no documento: os atos voltam à fila de cobrança
 // Só a administração vê este botão (RBAC no servidor também).
+// 25/11 (Isabel): "Anular" só no próprio dia da emissão; depois, o mesmo
+// fluxo chama-se "Nota de crédito total" (mode 'credit-total').
 // =============================================================================
 
 'use client';
@@ -25,11 +27,15 @@ export function VoidInvoiceModal({
   invoiceId,
   docLabel,
   lineCount,
+  mode = 'void',
 }: {
   invoiceId: string;
   docLabel: string;
   lineCount: number;
+  mode?: 'void' | 'credit-total';
 }) {
+  const isVoid = mode === 'void';
+  const verb = isVoid ? 'Anular documento' : 'Nota de crédito total';
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [voidProcedures, setVoidProcedures] = useState<'true' | 'false'>(
@@ -45,8 +51,8 @@ export function VoidInvoiceModal({
       if (result && 'success' in result) {
         toast.success(
           result.voidedProcedures > 0
-            ? `Documento anulado — ${result.voidedProcedures} ato(s) anulado(s)${result.adjustments > 0 ? `, ${result.adjustments} estorno(s) de comissão` : ''}`
-            : 'Documento anulado — atos devolvidos à cobrança',
+            ? `${isVoid ? 'Documento anulado' : 'Nota de crédito emitida'} — ${result.voidedProcedures} ato(s) anulado(s)${result.adjustments > 0 ? `, ${result.adjustments} estorno(s) de comissão` : ''}`
+            : `${isVoid ? 'Documento anulado' : 'Nota de crédito emitida'} — atos devolvidos à cobrança`,
         );
         setOpen(false);
         router.refresh();
@@ -71,12 +77,12 @@ export function VoidInvoiceModal({
     <>
       <Button type='button' variant='danger' onClick={() => setOpen(true)}>
         <Ban size={15} style={{ marginRight: 6 }} />
-        Anular documento
+        {verb}
       </Button>
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title={`Anular ${docLabel}`}
+        title={isVoid ? `Anular ${docLabel}` : `Nota de crédito total — ${docLabel}`}
         maxWidth={560}
       >
         <form
@@ -85,8 +91,12 @@ export function VoidInvoiceModal({
         >
           <input type='hidden' name='invoiceId' value={invoiceId} />
           <input type='hidden' name='voidProcedures' value={voidProcedures} />
+          <input type='hidden' name='mode' value={mode} />
 
           <p style={{ margin: 0, fontSize: '14px', color: '#3D4257' }}>
+            {isVoid
+              ? 'Anulação no próprio dia da emissão. '
+              : 'Já passou o dia da emissão: o documento só pode ser corrigido com nota de crédito, que fica registada na ficha do paciente. '}
             O documento fica anulado (nunca é apagado). Quer criar uma{' '}
             <strong>linha de balanço</strong> para os {lineCount} tratamento
             {lineCount === 1 ? '' : 's'} desta fatura?
@@ -124,7 +134,7 @@ export function VoidInvoiceModal({
 
           <Input
             name='reason'
-            label='Motivo da anulação *'
+            label={isVoid ? 'Motivo da anulação *' : 'Motivo da nota de crédito *'}
             required
             minLength={3}
             placeholder='ex.: valor errado na coroa do dente 26'
@@ -141,7 +151,7 @@ export function VoidInvoiceModal({
               Cancelar
             </Button>
             <Button type='submit' variant='danger' loading={pending}>
-              Anular documento
+              {verb}
             </Button>
           </div>
         </form>

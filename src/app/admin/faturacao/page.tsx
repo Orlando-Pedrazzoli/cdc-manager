@@ -16,6 +16,7 @@
 // 'pending' (paidAt null) e anuladas.
 // =============================================================================
 
+import { invoiceDueCents } from '@/lib/credit-notes';
 import { defaultClinicForPost } from '@/lib/post-clinic';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
@@ -481,9 +482,8 @@ export default async function FaturacaoPage({
                     >
                       {formatCents(inv.totalCents)}
                       {/* Fase 5C: saldo em dívida (pagamento parcial) */}
-                      {inv.status !== 'voided' &&
-                        inv.paidCents != null &&
-                        inv.paidCents < inv.totalCents && (
+                      {invoiceDueCents(inv) > 0 &&
+                        inv.paidCents != null && (
                           <span
                             style={{
                               display: 'block',
@@ -493,7 +493,7 @@ export default async function FaturacaoPage({
                             }}
                           >
                             em dívida{' '}
-                            {formatCents(inv.totalCents - inv.paidCents)}
+                            {formatCents(invoiceDueCents(inv))}
                           </span>
                         )}
                     </td>
