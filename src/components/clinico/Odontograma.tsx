@@ -25,6 +25,12 @@
 
 'use client';
 
+import {
+  PlanEditor,
+  type ClinicOption,
+  type PlanEditorHandle,
+  type TreatmentOption,
+} from '@/components/clinico/PlanEditor';
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
@@ -112,7 +118,13 @@ export function Odontograma({
   consultationHref = null,
   initialDentition = 'permanent',
   childAge = false,
+  budget = null,
 }: {
+  /** 9.ª ronda/13 (Victor, 17 e 18/11): "o médico marca os tratamentos que
+   *  vão ser cobrados a olhar para o odontograma; já pode fazer o orçamento
+   *  na mesma página". Com isto, cada dente ganha "Adicionar ao orçamento"
+   *  e o editor do plano abre por baixo do odontograma. */
+  budget?: { treatments: TreatmentOption[]; clinics: ClinicOption[] } | null;
   /** 7.ª ronda/B6: dentição mostrada ao abrir (pela idade do paciente) */
   initialDentition?: Dentition;
   /** Paciente até aos 12 anos: destaca o seletor de dentição */
@@ -137,6 +149,24 @@ export function Odontograma({
     () => new Map(initialTeeth.map(t => [t.number, t])),
   );
   const [selected, setSelected] = useState<string | null>(null);
+  // 9.ª ronda/13: orçamento na mesma página
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  const [budgetFirstTooth, setBudgetFirstTooth] = useState('');
+  const budgetRef = useRef<PlanEditorHandle>(null);
+  const budgetBoxRef = useRef<HTMLDivElement>(null);
+  const addToBudget = (tooth: string) => {
+    if (budgetOpen && budgetRef.current) {
+      budgetRef.current.addTooth(tooth);
+    } else {
+      // o editor ainda não existe: nasce já com este dente na 1.ª linha
+      setBudgetFirstTooth(tooth);
+      setBudgetOpen(true);
+    }
+    toast.success(`Dente ${tooth} no orçamento.`);
+    requestAnimationFrame(() =>
+      budgetBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }),
+    );
+  };
   const [dirty, setDirty] = useState(false);
   const [layers, setLayers] = useState<Record<ChartLayer, boolean>>({ existing: true, completed: true, planned: true });
   const [view, setView] = useState<ChartView>('anatomico');
@@ -412,6 +442,9 @@ export function Odontograma({
               readOnly={readOnly}
               procedures={proceduresByTooth[selectedTooth.number] ?? []}
               planHref={planBaseHref ? `${planBaseHref}&dentes=${selectedTooth.number}` : null}
+              onAddToBudget={
+                budget && !readOnly ? () => addToBudget(selectedTooth.number) : null
+              }
               consultationHref={consultationHref}
             />
           ) : (
@@ -442,6 +475,61 @@ export function Odontograma({
           </form>
         )}
       </div>
+
+      {/* 9.ª ronda/13: orçamento a olhar para o odontograma, na mesma página.
+          Fica FORA do formulário de gravação do registo (são dois formulários). */}
+      {budget && !readOnly && (
+        <div
+          ref={budgetBoxRef}
+          style={{
+            backgroundColor: '#F7F9FF',
+            border: '1px solid #D8DEEF',
+            borderRadius: '14px',
+            padding: '16px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div>
+              <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#1B2A6B' }}>
+                Orçamento
+              </h2>
+              <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#6A7186' }}>
+                Clique num dente e em &quot;Adicionar ao orçamento&quot;: cada
+                dente entra como uma linha. Escolha o ato e confirme o valor.
+              </p>
+            </div>
+            {!budgetOpen && (
+              <Button type='button' onClick={() => setBudgetOpen(true)}>
+                Fazer orçamento nesta página
+              </Button>
+            )}
+          </div>
+          {budgetOpen && (
+            <PlanEditor
+              ref={budgetRef}
+              patientId={patientId}
+              treatments={budget.treatments}
+              clinics={budget.clinics}
+              initialTeeth={budgetFirstTooth}
+              onCancel={() => {
+                setBudgetOpen(false);
+                setBudgetFirstTooth('');
+              }}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

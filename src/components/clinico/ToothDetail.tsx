@@ -100,8 +100,11 @@ export function ToothDetail({
   readOnly,
   procedures = [],
   planHref,
+  onAddToBudget,
   consultationHref = null,
 }: {
+  /** 9.ª ronda/13: orçamento na própria página — acrescenta este dente */
+  onAddToBudget?: (() => void) | null;
   tooth: ToothEntry;
   /** Estado derivado (camadas) mostrado no mapa — só leitura */
   derived?: ToothChartState | null;
@@ -290,7 +293,28 @@ export function ToothDetail({
           <span style={{ fontSize: '12px', fontWeight: 700, color: '#1B2A6B' }}>
             Tratamentos no dente {tooth.number}
           </span>
-          {planHref && (
+          {onAddToBudget ? (
+            <button
+              type='button'
+              onClick={onAddToBudget}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: '12px',
+                fontWeight: 700,
+                color: '#FFFFFF',
+                backgroundColor: '#2743A6',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '6px 10px',
+                cursor: 'pointer',
+              }}
+            >
+              <ClipboardPlus size={13} />
+              Adicionar ao orçamento
+            </button>
+          ) : planHref && (
             <Link
               href={planHref}
               style={{

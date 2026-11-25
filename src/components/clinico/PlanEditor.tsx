@@ -15,7 +15,14 @@
 
 'use client';
 
-import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useActionState,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Plus, Trash2, Send, Check, X, Play } from 'lucide-react';
@@ -65,21 +72,50 @@ const emptyRow = (key: number, teeth = ''): ItemRow => ({
   phase: '1',
 });
 
+/** 9.ª ronda/13: o odontograma acrescenta linhas ao orçamento */
+export interface PlanEditorHandle {
+  /** Nova linha para este dente (ou preenche a 1.ª, se ainda estiver vazia) */
+  addTooth: (tooth: string) => void;
+}
+
 export function PlanEditor({
   patientId,
   treatments,
   clinics,
   initialTeeth = '',
+  ref,
+  onCancel,
 }: {
   patientId: string;
   treatments: TreatmentOption[];
   clinics: ClinicOption[];
   /** Vindo do odontograma: "26" ou "26, 27" — pré-preenche a 1.ª linha */
   initialTeeth?: string;
+  ref?: React.Ref<PlanEditorHandle>;
+  /** Embutido no odontograma: "Cancelar" fecha o painel em vez de navegar */
+  onCancel?: () => void;
 }) {
   const router = useRouter();
   const nextKey = useRef(1);
   const [rows, setRows] = useState<ItemRow[]>([emptyRow(0, initialTeeth)]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      addTooth(tooth: string) {
+        const key = nextKey.current++;
+        setRows(prev => {
+          const only = prev.length === 1 ? prev[0] : null;
+          // Orçamento ainda em branco: o dente vai para a linha que já existe
+          if (only && !only.treatmentTypeId && !only.toothNumbers.trim()) {
+            return [{ ...only, toothNumbers: tooth }];
+          }
+          return [...prev, emptyRow(key, tooth)];
+        });
+      },
+    }),
+    [],
+  );
 
   const [state, action, pending] = useActionState<PlanActionState, FormData>(
     createPlanAction,
@@ -328,7 +364,9 @@ export function PlanEditor({
         <Button
           type='button'
           variant='secondary'
-          onClick={() => router.push(`/doutor/pacientes/${patientId}/plano`)}
+          onClick={() =>
+            onCancel ? onCancel() : router.push(`/doutor/pacientes/${patientId}/plano`)
+          }
         >
           Cancelar
         </Button>
