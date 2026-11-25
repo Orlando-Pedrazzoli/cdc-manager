@@ -268,6 +268,12 @@ export default async function PatientPlansPage({
                       color: '#1B2A6B',
                     }}
                   >
+                    {/* 9.ª ronda/22: orçamentos numerados */}
+                    {plan.number != null && (
+                      <span style={{ color: '#6A7186', fontWeight: 600 }}>
+                        Orçamento n.º {plan.number} ·{' '}
+                      </span>
+                    )}
                     {plan.title}
                   </p>
                   <p

@@ -79,7 +79,12 @@ import { loadCounterNotices } from '@/lib/attendance-data';
 import { WaitlistBox } from '@/components/agenda/WaitlistBox';
 import { AgendaSideLayout } from '@/components/agenda/AgendaSideLayout';
 import { CalendarDoctorSelect } from '@/components/agenda/CalendarDoctorSelect';
-import { loadActiveWaitlist, waitlistForDay } from '@/lib/waitlist-data';
+import {
+  loadActiveWaitlist,
+  loadDayRequests,
+  waitlistForDay,
+} from '@/lib/waitlist-data';
+import { DayRequestsBox } from '@/components/agenda/DayRequestsBox';
 import { doctorColor } from '@/lib/doctor-colors';
 import { getOrganizationSettings } from '@/lib/org-settings';
 import {
@@ -538,6 +543,15 @@ export default async function AgendaPage({
   // (leitura protegida: um erro aqui nunca pode deitar abaixo a agenda)
   const waitlistAll = await loadActiveWaitlist(clinicId).catch(err => {
     console.error('[agenda] lista de espera indisponível', err);
+    return [];
+  });
+  // 9.ª ronda/17: pedidos para "médico X no dia X", com o estado desse dia
+  const dayRequests = await loadDayRequests(
+    clinic,
+    todayLisbon(),
+    utcToLisbonMin(new Date()).min,
+  ).catch(err => {
+    console.error('[agenda] pedidos para um dia indisponíveis', err);
     return [];
   });
   const waitlistByAppointment = new Map(
@@ -1384,6 +1398,24 @@ export default async function AgendaPage({
               phone: w.phone,
               appointmentLabel: w.appointmentLabel,
               appointmentHref: `/admin/agenda?clinic=${clinic.slug}&date=${w.appointmentDay}&marcacao=${w.appointmentId}`,
+            }))}
+          />
+          {/* 9.ª ronda/17: pedidos para um médico num dia sem horário ou cheio */}
+          <DayRequestsBox
+            clinicId={clinicId}
+            date={date}
+            minDate={todayLisbon()}
+            doctors={allDoctors.map(d => ({ id: String(d._id), name: d.name }))}
+            entries={dayRequests.map(r => ({
+              id: r.id,
+              patientName: r.patientName,
+              phone: r.phone,
+              doctorName: r.doctorName,
+              dayLabel: r.dayLabel,
+              note: r.note,
+              state: r.state,
+              freeFrom: r.freeFrom,
+              dayHref: `/admin/agenda?clinic=${clinic.slug}&date=${r.dayIso}&medico=${r.doctorId}`,
             }))}
           />
         </AgendaSideLayout>

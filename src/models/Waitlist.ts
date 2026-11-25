@@ -51,10 +51,11 @@ const WaitlistSchema = new Schema(
       required: true,
       index: true,
     },
+    // 9.ª ronda/17: num pedido "médico X no dia X" ainda não há ato
     treatmentTypeId: {
       type: Schema.Types.ObjectId,
       ref: 'TreatmentType',
-      required: true,
+      default: null,
     },
     // null = qualquer médico da especialidade
     doctorId: {

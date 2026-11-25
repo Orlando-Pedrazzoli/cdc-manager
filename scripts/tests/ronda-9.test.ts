@@ -18,6 +18,12 @@ import { createRxRequestSchema } from '../../src/lib/validations/rx';
 import { createDoctorSchema } from '../../src/lib/validations/doctor';
 import { daysFrom, mondayOf, rangesLabel } from '../../src/lib/doctor-work-days';
 import { stripTitleLine } from '../../src/lib/document-merge';
+import { dayRequestState, firstFreeGap } from '../../src/lib/waitlist';
+import {
+  budgetConversion,
+  budgetNumberLabel,
+  budgetTicketStats,
+} from '../../src/lib/budgets';
 import {
   TIME_LOCKED_KINDS,
   isTimeLockedKind,
@@ -153,6 +159,83 @@ test('documentos: o título repetido na 1.ª linha é retirado', () => {
   // sem linha em branco a seguir, ou sem maiúsculas: fica como está
   assert.equal(stripTitleLine('TÍTULO\ntexto'), 'TÍTULO\ntexto');
   assert.equal(stripTitleLine('Para os devidos efeitos.'), 'Para os devidos efeitos.');
+});
+
+test('lista de espera: dia sem horário, cheio e com vaga', () => {
+  const work = [{ start: 9 * 60, end: 13 * 60 }];
+  assert.equal(dayRequestState([], []), 'no-schedule');
+  assert.equal(dayRequestState(work, [{ start: 9 * 60, end: 13 * 60 }]), 'full');
+  // sobra só 10 min: não chega para um lugar da grelha
+  assert.equal(
+    dayRequestState(work, [{ start: 9 * 60, end: 12 * 60 + 50 }]),
+    'full',
+  );
+  assert.equal(dayRequestState(work, [{ start: 9 * 60, end: 12 * 60 }]), 'free');
+  assert.equal(dayRequestState(work, []), 'free');
+});
+
+test('lista de espera: primeira vaga do dia', () => {
+  const work = [
+    { start: 14 * 60, end: 18 * 60 },
+    { start: 9 * 60, end: 13 * 60 },
+  ];
+  const busy = [
+    { start: 9 * 60, end: 10 * 60 },
+    { start: 10 * 60, end: 11 * 60 },
+    { start: 11 * 60 + 30, end: 13 * 60 },
+  ];
+  assert.deepEqual(firstFreeGap(work, busy), { start: 11 * 60, end: 11 * 60 + 30 });
+  // hoje, às 12:00: a vaga das 11:00 já passou → só à tarde
+  assert.deepEqual(firstFreeGap(work, busy, 15, 12 * 60), {
+    start: 14 * 60,
+    end: 18 * 60,
+  });
+  // marcações sobrepostas não criam vagas falsas
+  assert.equal(
+    firstFreeGap(
+      [{ start: 9 * 60, end: 10 * 60 }],
+      [
+        { start: 9 * 60, end: 9 * 60 + 40 },
+        { start: 9 * 60 + 20, end: 10 * 60 },
+      ],
+    ),
+    null,
+  );
+  // depois da hora de fecho não há vaga
+  assert.equal(firstFreeGap(work, [], 15, 18 * 60), null);
+});
+
+test('orçamentos: conversão por orçamento', () => {
+  assert.equal(budgetConversion(100_00, 0), 0);
+  assert.equal(budgetConversion(100_00, 25_00), 25);
+  assert.equal(budgetConversion(100_00, 100_00), 100);
+  assert.equal(budgetConversion(100_00, 130_00), 100); // nunca passa de 100%
+  assert.equal(budgetConversion(0, 0), null); // orçamento a zero
+});
+
+test('orçamentos: ticket médio apresentado, aceite e do tratamento feito', () => {
+  const s = budgetTicketStats([
+    { valueCents: 1000_00, accepted: true, doneCents: 400_00 },
+    { valueCents: 500_00, accepted: true, doneCents: 0 },
+    { valueCents: 300_00, accepted: false, doneCents: 0 },
+  ]);
+  assert.equal(s.presentedN, 3);
+  assert.equal(s.acceptedN, 2);
+  assert.equal(s.startedN, 1);
+  assert.equal(s.avgPresentedCents, 600_00);
+  assert.equal(s.avgAcceptedCents, 750_00);
+  assert.equal(s.avgDoneCents, 400_00);
+  assert.equal(s.conversionCents, 22); // 400 de 1800
+  const empty = budgetTicketStats([]);
+  assert.equal(empty.avgPresentedCents, null);
+  assert.equal(empty.avgDoneCents, null);
+  assert.equal(empty.conversionCents, null);
+});
+
+test('orçamentos: etiqueta do número', () => {
+  assert.equal(budgetNumberLabel(12), 'n.º 12');
+  assert.equal(budgetNumberLabel(null), 's/ n.º');
+  assert.equal(budgetNumberLabel(undefined), 's/ n.º');
 });
 
 console.log(`\n${n} testes OK`);

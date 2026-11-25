@@ -10,6 +10,9 @@ import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
 import Appointment from '@/models/Appointment';
+import Doctor from '@/models/Doctor';
+import Patient from '@/models/Patient';
+import { lisbonToUtc, todayLisbon } from '@/lib/availability';
 import User, { canOperateClinic } from '@/models/User';
 import Waitlist, { WAITLIST_PREFERENCES } from '@/models/Waitlist';
 import type { WaitlistPreference } from '@/lib/waitlist';
@@ -131,6 +134,89 @@ export async function closeWaitlistAction(
         outcome === 'fulfilled'
           ? 'Lista de espera: pedido resolvido'
           : 'Lista de espera: pedido retirado',
+    });
+    revalidatePath('/admin/agenda');
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Erro inesperado.' };
+  }
+}
+
+/**
+ * 9.ª ronda/17: o paciente liga e quer o médico X no dia X, mas a agenda
+ * desse dia ainda não tem horário (ou está cheia). Fica o pedido; a agenda
+ * avisa quando esse dia passar a ter vaga.
+ */
+export async function addDayRequestAction(input: {
+  clinicId: string;
+  patientId: string;
+  doctorId: string;
+  date: string; // YYYY-MM-DD
+  note: string;
+}): Promise<WaitlistResult> {
+  try {
+    if (
+      !OBJECT_ID.test(input.clinicId) ||
+      !OBJECT_ID.test(input.patientId) ||
+      !OBJECT_ID.test(input.doctorId)
+    ) {
+      return { error: 'Escolha o paciente e o médico.' };
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
+      return { error: 'Indique o dia pedido.' };
+    }
+    if (input.date < todayLisbon()) {
+      return { error: 'O dia pedido já passou.' };
+    }
+    const user = await requireStaff(input.clinicId);
+    const [patient, doctor] = await Promise.all([
+      Patient.findById(input.patientId).select('status').lean(),
+      Doctor.findOne({
+        _id: input.doctorId,
+        active: true,
+        'clinicSchedules.clinicId': input.clinicId,
+      })
+        .select('_id')
+        .lean(),
+    ]);
+    if (!patient || patient.status !== 'active') {
+      return { error: 'Paciente não encontrado ou inativo.' };
+    }
+    if (!doctor) return { error: 'Este médico não trabalha nesta clínica.' };
+
+    const from = lisbonToUtc(input.date, 0);
+    const until = lisbonToUtc(input.date, 24 * 60 - 1);
+    const duplicate = await Waitlist.exists({
+      clinicId: input.clinicId,
+      patientId: input.patientId,
+      doctorId: input.doctorId,
+      appointmentId: null,
+      status: 'active',
+      fromDate: from,
+    });
+    if (duplicate) return { error: 'Este pedido já está na lista de espera.' };
+
+    const created = await Waitlist.create({
+      clinicId: input.clinicId,
+      patientId: input.patientId,
+      doctorId: input.doctorId,
+      treatmentTypeId: null,
+      appointmentId: null,
+      preference: 'any',
+      fromDate: from,
+      untilDate: until,
+      status: 'active',
+      createdByUserId: user.id,
+      note: input.note.trim().slice(0, 300) || null,
+    });
+    await logAudit({
+      userId: user.id,
+      action: 'create',
+      entityType: 'Waitlist',
+      entityId: String(created._id),
+      patientId: input.patientId,
+      clinicId: input.clinicId,
+      summary: `Lista de espera: pedido para o dia ${input.date}`,
     });
     revalidatePath('/admin/agenda');
     return { success: true };

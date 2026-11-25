@@ -179,7 +179,30 @@ export async function proposePlanAction(
       'validUntil',
       new Date(now.getTime() + VALIDITY_DAYS * 24 * 60 * 60 * 1000),
     );
-    await plan.save();
+    // 9.ª ronda/22: número sequencial do orçamento, dado ao apresentar.
+    // Estratégia otimista (como o n.º de processo): max+1 e, se outro
+    // orçamento ficar com o número no mesmo instante, tenta o seguinte.
+    if (plan.number == null) {
+      for (let attempt = 0; ; attempt++) {
+        const last = await TreatmentPlan.findOne({ number: { $ne: null } })
+          .sort({ number: -1 })
+          .select('number')
+          .lean();
+        plan.set('number', (last?.number ?? 0) + 1);
+        try {
+          await plan.save();
+          break;
+        } catch (err) {
+          const dup =
+            typeof err === 'object' &&
+            err !== null &&
+            (err as { code?: number }).code === 11000;
+          if (!dup || attempt >= 4) throw err;
+        }
+      }
+    } else {
+      await plan.save();
+    }
 
     await logAudit({
       userId,
@@ -188,7 +211,7 @@ export async function proposePlanAction(
       entityId: String(plan._id),
       patientId: String(plan.patientId),
       clinicId: String(plan.clinicId),
-      summary: `Plano proposto: ${plan.title}`,
+      summary: `Plano proposto (orçamento n.º ${plan.number}): ${plan.title}`,
     });
 
     revalidatePath(`/doutor/pacientes/${String(plan.patientId)}/plano`);

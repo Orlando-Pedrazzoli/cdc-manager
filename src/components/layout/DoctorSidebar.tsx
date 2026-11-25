@@ -24,6 +24,8 @@ import {
   LayoutDashboard,
   ScanSearch,
   Users,
+  ClipboardList,
+  Euro,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 
@@ -54,6 +56,9 @@ const NAV: { section: string; items: NavItem[] }[] = [
       },
       // 8.ª ronda/08: como usar o sistema (versão Médicos)
       { href: '/doutor/treinamento', label: 'Treinamento', icon: GraduationCap },
+      // 9.ª ronda/06: protocolos da clínica e tabela de preços, só leitura
+      { href: '/doutor/protocolos', label: 'Protocolos', icon: ClipboardList },
+      { href: '/doutor/precos', label: 'Tabela de preços', icon: Euro },
     ],
   },
 ];

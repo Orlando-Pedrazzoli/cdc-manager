@@ -136,3 +136,71 @@ export function isInProgressWithoutReturn(
   if (ref === 0) return true;
   return daysSince(ref, nowMs) > minDays;
 }
+
+// -----------------------------------------------------------------------------
+// 9.ª ronda (ponto 22, Victor, 17 e 18/11): "dentro de orçamentos, o cálculo
+// do ticket médio do tratamento feito por orçamento" e "a taxa de conversão
+// por orçamento".
+//   · conversão de um orçamento = valor já realizado ÷ valor do orçamento
+//   · ticket médio do tratamento feito = valor realizado ÷ n.º de orçamentos
+//     com algum tratamento feito
+// "Realizado" = atos do plano já executados (concluídos ou faturados).
+// -----------------------------------------------------------------------------
+export interface BudgetForTicket {
+  /** total − desconto, em cêntimos */
+  valueCents: number;
+  accepted: boolean;
+  /** valor dos atos do plano já executados */
+  doneCents: number;
+}
+
+/** % do orçamento já realizada (0–100); null se o orçamento vale 0 */
+export function budgetConversion(valueCents: number, doneCents: number): number | null {
+  if (valueCents <= 0) return null;
+  return Math.min(100, Math.round((doneCents / valueCents) * 100));
+}
+
+export interface BudgetTicketStats {
+  presentedN: number;
+  acceptedN: number;
+  /** orçamentos com algum tratamento já feito */
+  startedN: number;
+  presentedCents: number;
+  acceptedCents: number;
+  doneCents: number;
+  /** médias em cêntimos; null quando não há orçamentos nesse grupo */
+  avgPresentedCents: number | null;
+  avgAcceptedCents: number | null;
+  avgDoneCents: number | null;
+  /** % do valor apresentado que já foi realizado */
+  conversionCents: number | null;
+}
+
+export function budgetTicketStats(plans: BudgetForTicket[]): BudgetTicketStats {
+  const accepted = plans.filter(p => p.accepted);
+  const started = plans.filter(p => p.doneCents > 0);
+  const sum = (list: BudgetForTicket[], k: 'valueCents' | 'doneCents') =>
+    list.reduce((s, p) => s + p[k], 0);
+  const avg = (total: number, n: number) => (n > 0 ? Math.round(total / n) : null);
+  const presentedCents = sum(plans, 'valueCents');
+  const acceptedCents = sum(accepted, 'valueCents');
+  const doneCents = sum(plans, 'doneCents');
+  return {
+    presentedN: plans.length,
+    acceptedN: accepted.length,
+    startedN: started.length,
+    presentedCents,
+    acceptedCents,
+    doneCents,
+    avgPresentedCents: avg(presentedCents, plans.length),
+    avgAcceptedCents: avg(acceptedCents, accepted.length),
+    avgDoneCents: avg(doneCents, started.length),
+    conversionCents:
+      presentedCents > 0 ? Math.round((doneCents / presentedCents) * 100) : null,
+  };
+}
+
+/** "n.º 123" ou "s/ n.º" (rascunhos e orçamentos anteriores à numeração) */
+export function budgetNumberLabel(n: number | null | undefined): string {
+  return typeof n === 'number' && n > 0 ? `n.º ${n}` : 's/ n.º';
+}
