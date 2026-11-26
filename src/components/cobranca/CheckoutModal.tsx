@@ -18,6 +18,10 @@ import { ReceiptEuro } from 'lucide-react';
 import { checkoutAction, type BillingActionState } from '@/actions/billing';
 import { formatCents } from '@/lib/commissions';
 import {
+  checkoutDiscountTotal,
+  parseDiscountField,
+} from '@/lib/checkout-discount';
+import {
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABEL,
   type PaymentMethod,
@@ -90,13 +94,46 @@ export function CheckoutModal({
       return next;
     });
 
-  const totalCents = useMemo(
+  // Respostas de 25/11 (A1): desconto no momento da faturação (% ou €)
+  const [discountMode, setDiscountMode] = useState<'percent' | 'amount'>('percent');
+  const [discountValue, setDiscountValue] = useState('');
+  const grossCents = useMemo(
     () =>
       acts
         .filter(a => selected.has(a.id))
         .reduce((s, a) => s + a.priceCents, 0),
     [acts, selected],
   );
+  const discountInfo = useMemo(() => {
+    const parsed = parseDiscountField(discountMode, discountValue);
+    if (parsed === 'invalid') {
+      return {
+        cents: 0,
+        error:
+          discountMode === 'percent'
+            ? 'Indique uma percentagem entre 0 e 100'
+            : 'Indique um valor em euros',
+      };
+    }
+    if (!parsed) return { cents: 0, error: null };
+    if (parsed.mode === 'amount' && parsed.cents > grossCents) {
+      return { cents: 0, error: 'Maior do que o total dos atos' };
+    }
+    const cents = checkoutDiscountTotal(
+      acts.filter(a => selected.has(a.id)).map(a => ({ id: a.id, priceCents: a.priceCents })),
+      parsed,
+    );
+    if (cents >= grossCents && grossCents > 0) {
+      return { cents: 0, error: 'O documento não pode ficar a 0,00 €' };
+    }
+    return { cents, error: null };
+  }, [acts, selected, discountMode, discountValue, grossCents]);
+  const discountCents = discountInfo.cents;
+  const totalCents = grossCents - discountCents;
+  const discountLabel =
+    discountMode === 'percent' && discountCents > 0
+      ? `${discountValue.trim().replace('%', '')}%`
+      : null;
   const [paidNow, setPaidNow] = useState('');
   const partialInfo = useMemo(() => {
     const s = paidNow.trim().replace(',', '.');
@@ -128,7 +165,7 @@ export function CheckoutModal({
             // Enter num campo do 1.º passo nunca regista sem passar pelo resumo
             if (!review) {
               e.preventDefault();
-              if (selected.size > 0) setReview(true);
+              if (selected.size > 0 && !discountInfo.error) setReview(true);
             }
           }}
           style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
@@ -177,6 +214,16 @@ export function CheckoutModal({
                     ))}
                 </ul>
               </div>
+              {discountCents > 0 && (
+                <>
+                  <SummaryRow label='Soma dos atos' value={formatCents(grossCents)} />
+                  <SummaryRow
+                    label={`Desconto${discountLabel ? ` (${discountLabel})` : ''}`}
+                    value={`−${formatCents(discountCents)}`}
+                    warn
+                  />
+                </>
+              )}
               <SummaryRow label='Total do documento' value={formatCents(totalCents)} strong />
               <SummaryRow
                 label='Pago agora'
@@ -282,6 +329,30 @@ export function CheckoutModal({
               inputMode='numeric'
               maxLength={9}
             />
+            {/* Respostas de 25/11 (A1): desconto dado pela gestão ou receção */}
+            <Select
+              name='discountMode'
+              label='Desconto em'
+              value={discountMode}
+              onChange={e => setDiscountMode(e.target.value as 'percent' | 'amount')}
+            >
+              <option value='percent'>Percentagem (%)</option>
+              <option value='amount'>Valor (€)</option>
+            </Select>
+            <Input
+              name='discountValue'
+              label={discountMode === 'percent' ? 'Desconto (%)' : 'Desconto (€)'}
+              inputMode='decimal'
+              value={discountValue}
+              onChange={e => setDiscountValue(e.target.value)}
+              placeholder='Vazio = sem desconto'
+              error={discountInfo.error ?? undefined}
+              help={
+                discountCents > 0
+                  ? `Desconta ${formatCents(discountCents)} ao total dos atos selecionados`
+                  : 'Aplica-se ao conjunto dos atos selecionados'
+              }
+            />
             {/* Fase 5C (P16): pagamento em 2x — vazio = paga tudo agora */}
             <Input
               name='paidNowEuros'
@@ -315,6 +386,18 @@ export function CheckoutModal({
             <span
               style={{ fontSize: '18px', fontWeight: 700, color: '#1B2A6B' }}
             >
+              {discountCents > 0 && (
+                <span
+                  style={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#6A7186',
+                    marginRight: 8,
+                  }}
+                >
+                  {formatCents(grossCents)} − {formatCents(discountCents)} =
+                </span>
+              )}
               {formatCents(totalCents)}
             </span>
           </div>
@@ -358,7 +441,7 @@ export function CheckoutModal({
                 </Button>
                 <Button
                   type='button'
-                  disabled={selected.size === 0}
+                  disabled={selected.size === 0 || !!discountInfo.error}
                   onClick={() => setReview(true)}
                 >
                   Rever e confirmar ({formatCents(totalCents)})

@@ -7,9 +7,10 @@
 // sobretudo para o médico, que trabalha de costas para o computador: ao olhar
 // para a barra, percebe logo que o tempo está a acabar."
 //
-// Conta sobre o horário MARCADO (início → fim); quando a consulta começa
-// fora dele, quem chama passa a janela de lib/consult-window.ts. Cores: azul enquanto há
-// tempo, âmbar nos últimos 20% (ou 5 minutos), vermelho depois da hora.
+// Conta do início real da consulta até ao fim MARCADO (janela de
+// lib/consult-window.ts); depois do fim marcado mostra o atraso a contar
+// (respostas de 25/11, A3). Cores: azul enquanto há tempo, âmbar nos últimos
+// 20% (ou 5 minutos), vermelho depois da hora.
 // O relógio é um store externo partilhado (um só intervalo para todas as
 // barras do ecrã), lido com useSyncExternalStore — no servidor e na
 // hidratação devolve 0 e a barra não é desenhada.
@@ -68,11 +69,12 @@ export function ConsultProgress({
   if (now === 0) return null;
   const { ratio, leftMin, state } = consultProgress(startMs, endMs, now);
   const color = COLOR[state];
+  // Respostas de 25/11 (A3): depois do fim marcado conta o atraso
   const label =
     state === 'over'
       ? leftMin >= 0
         ? 'Tempo esgotado'
-        : `Tempo esgotado há ${-leftMin} min`
+        : `Atraso: ${-leftMin} min`
       : `Falta${leftMin === 1 ? '' : 'm'} ${leftMin} min`;
 
   if (variant === 'card') {

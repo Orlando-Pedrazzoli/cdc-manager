@@ -59,6 +59,9 @@ const InvoiceLineSchema = new Schema(
     },
     description: { type: String, required: true, trim: true },
     priceCents: { type: Number, required: true, min: 0 },
+    // Respostas de 25/11 (A1): desconto dado a esta linha na faturação
+    // (0 em documentos anteriores). priceCents já é o valor com desconto.
+    discountCents: { type: Number, min: 0, default: 0 },
   },
   { _id: false },
 );
@@ -100,6 +103,10 @@ const InvoiceSchema = new Schema(
       required: true,
       min: 0,
     },
+    // Respostas de 25/11 (A1): desconto dado na faturação (soma das linhas);
+    // totalCents já é o valor com desconto. `discountPct` só quando foi em %.
+    discountCents: { type: Number, min: 0, default: 0 },
+    discountPct: { type: Number, min: 0, max: 100, default: null },
     paymentMethod: {
       type: String,
       enum: PAYMENT_METHODS,

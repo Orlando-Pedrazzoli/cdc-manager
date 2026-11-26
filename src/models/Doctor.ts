@@ -173,6 +173,10 @@ const DoctorSchema = new Schema(
     // 9.ª ronda (ponto 19): nome completo, como deve sair nos atestados e
     // relatórios. Vazio = os documentos usam `name` (o nome das agendas).
     fullName: { type: String, trim: true, maxlength: 160, default: null },
+    // Respostas de 25/11 (A8): o médico entrega a imagem da assinatura, que
+    // fica guardada (R2, lib/storage doctorSignatureKey) e sai impressa nos
+    // documentos. Aqui só fica a data: null = sem assinatura carregada.
+    signatureUpdatedAt: { type: Date, default: null },
     // Cédula profissional (Ordem dos Médicos Dentistas) — aparece em documentos
     // 8.ª ronda/09 (Victor, 17/11/2026): aviso à gestão na semana do aniversário
     birthDate: { type: Date, default: null },

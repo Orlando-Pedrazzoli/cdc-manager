@@ -378,6 +378,17 @@ export default async function RelatoriosPage({
               >
                 Acessos às fichas
               </Link>
+              {/* Respostas de 25/11 (A3): tempo para lá do fim marcado */}
+              <Link
+                href='/admin/relatorios/atrasos'
+                style={{
+                  ...navBtn,
+                  padding: '7px 12px',
+                  fontSize: '12px',
+                }}
+              >
+                Atrasos das consultas
+              </Link>
               <Link
                 href={`/admin/relatorios/comissoes?mes=${mes}`}
                 style={{

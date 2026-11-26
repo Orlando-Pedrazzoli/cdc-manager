@@ -172,8 +172,11 @@ export interface BudgetTicketStats {
   avgPresentedCents: number | null;
   avgAcceptedCents: number | null;
   avgDoneCents: number | null;
-  /** % do valor apresentado que já foi realizado */
+  /** % do valor apresentado que já foi realizado (conversão financeira) */
   conversionCents: number | null;
+  /** % dos orçamentos apresentados com pelo menos um tratamento feito
+   *  (taxa de conversão, em número) */
+  conversionN: number | null;
 }
 
 export function budgetTicketStats(plans: BudgetForTicket[]): BudgetTicketStats {
@@ -197,7 +200,39 @@ export function budgetTicketStats(plans: BudgetForTicket[]): BudgetTicketStats {
     avgDoneCents: avg(doneCents, started.length),
     conversionCents:
       presentedCents > 0 ? Math.round((doneCents / presentedCents) * 100) : null,
+    conversionN:
+      plans.length > 0 ? Math.round((started.length / plans.length) * 100) : null,
   };
+}
+
+// -----------------------------------------------------------------------------
+// Victor, 25/11/2026 (resposta A11): os três indicadores dos orçamentos.
+//   · taxa de conversão      = n.º de orçamentos com pelo menos um tratamento
+//                              feito ÷ n.º de orçamentos apresentados
+//   · conversão financeira   = valor dos tratamentos feitos ÷ valor apresentado
+//   · ticket médio           = valor dos tratamentos feitos ÷ n.º de orçamentos
+//                              convertidos
+// "Cada orçamento conta uma só vez; execução parcial conta só o valor dos
+// tratamentos feitos." São os campos conversionN, conversionCents e
+// avgDoneCents de budgetTicketStats. Aqui, o mesmo por médico.
+// -----------------------------------------------------------------------------
+export interface DoctorBudgetIndicators extends BudgetTicketStats {
+  doctorId: string;
+}
+
+/** Os três indicadores por médico; só médicos com orçamentos apresentados */
+export function budgetIndicatorsByDoctor(
+  plans: (BudgetForTicket & { doctorId: string })[],
+): DoctorBudgetIndicators[] {
+  const groups = new Map<string, BudgetForTicket[]>();
+  for (const p of plans) {
+    const list = groups.get(p.doctorId);
+    if (list) list.push(p);
+    else groups.set(p.doctorId, [p]);
+  }
+  return [...groups.entries()]
+    .map(([doctorId, list]) => ({ doctorId, ...budgetTicketStats(list) }))
+    .sort((a, b) => b.presentedCents - a.presentedCents);
 }
 
 /** "n.º 123" ou "s/ n.º" (rascunhos e orçamentos anteriores à numeração) */

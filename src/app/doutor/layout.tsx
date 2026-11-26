@@ -20,6 +20,7 @@ import { ClockWeather } from '@/components/layout/ClockWeather';
 import { AppShell } from '@/components/layout/AppShell';
 import { DoctorWaitingAlert } from '@/components/layout/DoctorWaitingAlert';
 import { getOrganization } from '@/models/Organization';
+import { UPPERCASE_DISPLAY_CSS } from '@/lib/uppercase-display';
 
 export default async function DoctorLayout({
   children,
@@ -178,6 +179,10 @@ export default async function DoctorLayout({
       topbarOnMobile={false}
       drawerFooter={drawerFooter}
     >
+      {/* Respostas de 25/11 (F3): ecrãs em maiúsculas, só apresentação */}
+      {org.uppercaseDisplay && (
+        <style dangerouslySetInnerHTML={{ __html: UPPERCASE_DISPLAY_CSS }} />
+      )}
       {children}
       {/* 9.ª ronda/10: aviso luminoso de paciente lançado pela receção */}
       <DoctorWaitingAlert />

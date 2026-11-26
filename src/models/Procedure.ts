@@ -119,6 +119,14 @@ const ProcedureSchema = new Schema(
     },
     discountPct: { type: Number, min: 0, max: 100, default: null },
     discountCents: { type: Number, min: 0, default: 0 },
+    // Respostas de 25/11 (A1): quem deu desconto no momento da faturação
+    // (gestão ou receção) e quando. null = sem desconto dado na faturação.
+    discountByUserId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    discountAt: { type: Date, default: null },
     priceCents: {
       type: Number,
       required: true,

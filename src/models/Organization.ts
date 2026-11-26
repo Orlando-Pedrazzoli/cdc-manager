@@ -70,6 +70,11 @@ const OrganizationSchema = new Schema(
       allowedIps: { type: [String], default: [] },
       roles: { type: [String], default: ['receptionist'] },
     },
+    // Respostas de 25/11 (F3, Victor): "ter o sistema todo em maiúsculas sem
+    // precisar de Caps Lock". Só muda a APRESENTAÇÃO nos ecrãs da gestão,
+    // receção e médicos (lib/uppercase-display.ts); o que fica gravado não
+    // muda. Desligado por omissão.
+    uppercaseDisplay: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
@@ -101,6 +106,8 @@ export type Brand = {
   emailFromAddress: string | null;
   emailFooter: string | null;
   gdprConsentText: string | null;
+  /** Respostas de 25/11 (F3): ecrãs em maiúsculas (só apresentação) */
+  uppercaseDisplay: boolean;
 };
 
 /** Os valores que estavam hardcoded — servem de rede até o seed correr */
@@ -120,6 +127,7 @@ export const DEFAULT_BRAND: Brand = {
   emailFromAddress: null,
   emailFooter: 'Centro Dentário Colombo · Centro Comercial Colombo, Lisboa',
   gdprConsentText: null,
+  uppercaseDisplay: false,
 };
 
 function toBrand(o: OrganizationDoc): Brand {
@@ -139,6 +147,7 @@ function toBrand(o: OrganizationDoc): Brand {
     emailFromAddress: o.emailFromAddress ?? null,
     emailFooter: o.emailFooter ?? null,
     gdprConsentText: o.gdprConsentText ?? null,
+    uppercaseDisplay: !!o.uppercaseDisplay,
   };
 }
 

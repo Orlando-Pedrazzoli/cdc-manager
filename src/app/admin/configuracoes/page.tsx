@@ -190,6 +190,8 @@ export default async function ConfiguracoesPage({
 
   return (
     <div
+      // credenciais, endereços, IP e chaves: nunca em maiúsculas (F3)
+      data-keep-case
       style={{
         padding: '24px',
         display: 'flex',
@@ -260,6 +262,7 @@ export default async function ConfiguracoesPage({
           messageTemplates={opSettings.messageTemplates}
           network={opSettings.network}
           currentIp={clientIp}
+          uppercaseDisplay={opSettings.uppercaseDisplay}
         />
       ) : activeTab === 'conta' ? (
         <ChangePasswordForm

@@ -47,7 +47,13 @@ import {
   invoiceDueCents,
   validatePartialCredit,
 } from '@/lib/credit-notes';
-import { needsAdjustmentOnVoid } from '@/lib/commission-accounting';
+import { lisbonMonthOf, needsAdjustmentOnVoid } from '@/lib/commission-accounting';
+import {
+  allocateCheckoutDiscount,
+  applyBillingDiscount,
+  checkoutDiscountTotal,
+  parseDiscountField,
+} from '@/lib/checkout-discount';
 import { createVoidAdjustment } from '@/lib/commission-adjustments';
 import { cancelRecallForProcedure } from '@/lib/recalls';
 import { reverseStockForProcedure } from '@/lib/stock-consumption';
@@ -79,6 +85,8 @@ export async function checkoutAction(
       paymentMethod: formData.get('paymentMethod'),
       nif: formData.get('nif'),
       paidNowCents: formData.get('paidNowEuros'), // euros no form → cêntimos no schema
+      discountMode: formData.get('discountMode'),
+      discountValue: formData.get('discountValue'),
     });
     if (!parsed.success) {
       return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
@@ -123,8 +131,54 @@ export async function checkoutAction(
       };
     }
 
-    const totalCents = procedures.reduce((s, p) => s + p.priceCents, 0);
     const now = new Date();
+
+    // Respostas de 25/11 (A1): desconto no momento da faturação, dado pela
+    // gestão ou pela receção, em % ou em €. Fica gravado ato a ato.
+    const discount = parseDiscountField(data.discountMode, data.discountValue);
+    if (discount === 'invalid') {
+      return {
+        error:
+          data.discountMode === 'percent'
+            ? 'Desconto inválido: indique uma percentagem entre 0 e 100.'
+            : 'Desconto inválido: indique um valor em euros.',
+      };
+    }
+    const grossCents = procedures.reduce((s, p) => s + p.priceCents, 0);
+    const discountLines = procedures.map(p => ({
+      id: String(p._id),
+      priceCents: p.priceCents,
+    }));
+    if (discount && discount.mode === 'amount' && discount.cents > grossCents) {
+      return { error: 'O desconto não pode ser maior do que o total dos atos.' };
+    }
+    const discountByLine = allocateCheckoutDiscount(discountLines, discount);
+    const discountCents = checkoutDiscountTotal(discountLines, discount);
+    const totalCents = grossCents - discountCents;
+    if (discountCents > 0 && totalCents <= 0) {
+      return {
+        error:
+          'Com este desconto o documento ficava a 0,00 €. Um ato oferecido não é cobrado aqui — fale com a gestão.',
+      };
+    }
+    const currentMonth = lisbonMonthOf(now);
+    const discounted = procedures
+      .filter(p => (discountByLine.get(String(p._id)) ?? 0) > 0)
+      .map(p => ({
+        id: p._id,
+        next: applyBillingDiscount(p, discountByLine.get(String(p._id)) ?? 0, {
+          percent: discount && discount.mode === 'percent' ? discount.value : null,
+          // a comissão de um mês já fechado não é mexida
+          recomputeCommission:
+            !!p.executedAt && lisbonMonthOf(p.executedAt) === currentMonth,
+        }),
+      }));
+    const netPrice = new Map(
+      procedures.map(p => [
+        String(p._id),
+        p.priceCents - (discountByLine.get(String(p._id)) ?? 0),
+      ]),
+    );
 
     // Fase 5C: pagamento parcial ("em 2x") — o que fica por pagar regista-se
     // depois na fatura (Registar pagamento). 0 = nada pago agora (pendente).
@@ -178,9 +232,13 @@ export async function checkoutAction(
                   (p.toothNumbers?.length
                     ? ` (dentes ${p.toothNumbers.join(', ')})`
                     : ''),
-                priceCents: p.priceCents,
+                priceCents: netPrice.get(String(p._id)) ?? p.priceCents,
+                discountCents: discountByLine.get(String(p._id)) ?? 0,
               })),
               totalCents,
+              discountCents,
+              discountPct:
+                discount && discount.mode === 'percent' ? discount.value : null,
               paymentMethod: data.paymentMethod,
               paidAt: paidNow > 0 ? now : null,
               payments:
@@ -206,6 +264,27 @@ export async function checkoutAction(
           { session: mongooseSession },
         );
         invoiceId = invoice._id;
+
+        // Desconto da faturação: grava o valor cobrado de cada ato (com a
+        // mesma guarda: só quem ainda está por cobrar)
+        for (const d of discounted) {
+          const upd = await Procedure.updateOne(
+            { _id: d.id, status: 'completed', invoiceId: null },
+            {
+              $set: {
+                ...d.next,
+                discountByUserId: session.user.id,
+                discountAt: now,
+              },
+            },
+            { session: mongooseSession },
+          );
+          if (upd.modifiedCount !== 1) {
+            throw new Error(
+              'Cobrança concorrente detetada — nenhum valor foi registado. Atualize a página.',
+            );
+          }
+        }
 
         // Guarda contra corrida: só transiciona quem AINDA está elegível
         const res = await Procedure.updateMany(
@@ -234,7 +313,13 @@ export async function checkoutAction(
       entityId: String(invoiceId),
       patientId: data.patientId,
       clinicId: data.clinicId,
-      summary: `Cobrança registada: ${(totalCents / 100).toFixed(2)} € (${procedures.length} ato${procedures.length === 1 ? '' : 's'}, ${data.paymentMethod}) — documento fiscal aguarda Moloni`,
+      summary: `Cobrança registada: ${(totalCents / 100).toFixed(2)} € (${procedures.length} ato${procedures.length === 1 ? '' : 's'}, ${data.paymentMethod}${
+        discountCents > 0
+          ? `, desconto na faturação ${
+              discount && discount.mode === 'percent' ? `${discount.value}% = ` : ''
+            }${(discountCents / 100).toFixed(2)} € sobre ${(grossCents / 100).toFixed(2)} €`
+          : ''
+      }) — documento fiscal aguarda Moloni`,
     });
 
     revalidatePath('/admin/cobranca');

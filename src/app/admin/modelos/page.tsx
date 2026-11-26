@@ -49,7 +49,8 @@ export default async function ModelosPage() {
   }));
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    // os modelos têm campos {{…}} e saem em PDF como escritos (F3)
+    <div data-keep-case style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div
         style={{
           display: 'flex',

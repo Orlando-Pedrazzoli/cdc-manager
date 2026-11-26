@@ -42,6 +42,8 @@ export interface DocPdfInput {
   footerNote?: string | null;
   /** Logo do cabeçalho (data URL PNG/JPEG); sem logo fica só o nome */
   logoDataUrl?: string | null;
+  /** Imagem da assinatura do médico (data URL PNG), por cima da linha */
+  doctorSignatureDataUrl?: string | null;
 }
 
 const s = StyleSheet.create({
@@ -164,6 +166,10 @@ export function DocPdf({ input }: { input: DocPdfInput }) {
 
         <View style={s.signatures} wrap={false}>
           <View style={s.sigBox}>
+            {input.doctorSignatureDataUrl && (
+              // eslint-disable-next-line jsx-a11y/alt-text
+              <Image src={input.doctorSignatureDataUrl} style={s.sigImg} />
+            )}
             <View style={s.sigLine}>
               <Text style={s.sigName}>{input.doctorName ?? c.name}</Text>
               <Text style={s.sigLabel}>

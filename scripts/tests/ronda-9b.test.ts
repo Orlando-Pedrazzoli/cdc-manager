@@ -147,6 +147,34 @@ test('médicos: nomes padronizados com Dr. / Dra.', () => {
   });
   assert.equal(standardDoctorName('Éder Lima').name, 'Dr. Éder Lima');
   assert.equal(standardDoctorName('Geane Souza').name, 'Dra. Geane Souza');
+  // Dentoral: o título vem no fim — passa para a frente, uma só vez
+  assert.deepEqual(standardDoctorName('ANA PAULA BORGES DRA.'), {
+    name: 'Dra. ANA PAULA BORGES',
+    outcome: 'normalized',
+  });
+  assert.equal(standardDoctorName('DIANA FERNANDES DRª').name, 'Dra. DIANA FERNANDES');
+  assert.equal(standardDoctorName('NATALIIA GALKA DRª.').name, 'Dra. NATALIIA GALKA');
+  assert.equal(standardDoctorName('PATRÍCIA OCTAVIO DRA').name, 'Dra. PATRÍCIA OCTAVIO');
+  assert.equal(standardDoctorName('EDER QUEDAS FERREIRA DR.').name, 'Dr. EDER QUEDAS FERREIRA');
+  assert.equal(standardDoctorName('VIVIANE  LIMA PAULA DRª.').name, 'Dra. VIVIANE LIMA PAULA');
+  // o título escrito decide quando o primeiro nome não dá certeza
+  assert.equal(standardDoctorName('REGIS SIMONY DR.').name, 'Dr. REGIS SIMONY');
+  assert.equal(standardDoctorName('ROSELI TAVARES DRA.').name, 'Dra. ROSELI TAVARES');
+  assert.equal(standardDoctorName('Doutor Teste 2').name, 'Dr. Teste 2');
+  // título escrito que contradiz o nome: por decidir, não se adivinha
+  assert.equal(standardDoctorName('JANAÍNA DE OLIVEIRA BRAGA DR.').outcome, 'unknown');
+  assert.equal(
+    standardDoctorName('JANAÍNA DE OLIVEIRA BRAGA DR.', 'Dra.').name,
+    'Dra. JANAÍNA DE OLIVEIRA BRAGA',
+  );
+  // entradas que não são médicos ficam como estão
+  for (const n of ['BACKOFFICE', 'ORTOPANTOMOGRAFO', 'MONTEIRO', 'Médico não identificado (Dentoral)']) {
+    const r = standardDoctorName(n);
+    assert.equal(r.outcome, 'unknown');
+    assert.equal(r.name, n);
+  }
+  // aplicar duas vezes não muda nada
+  assert.equal(standardDoctorName('Dra. ANA PAULA BORGES').outcome, 'ok');
   // sem certeza não se inventa: fica por decidir
   assert.equal(standardDoctorName('Portugal').outcome, 'unknown');
   assert.equal(standardDoctorName('Darcy Reis').outcome, 'unknown');
