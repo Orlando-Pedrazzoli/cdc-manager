@@ -16,6 +16,7 @@ import {
 import { consultWindow } from '../../src/lib/consult-window';
 import { createRxRequestSchema } from '../../src/lib/validations/rx';
 import { createDoctorSchema } from '../../src/lib/validations/doctor';
+import { createPlanSchema } from '../../src/lib/validations/procedure';
 import { daysFrom, mondayOf, rangesLabel } from '../../src/lib/doctor-work-days';
 import { stripTitleLine } from '../../src/lib/document-merge';
 import { dayRequestState, firstFreeGap } from '../../src/lib/waitlist';
@@ -283,6 +284,31 @@ test('acessos: aviso à gestão só a partir do limite de fichas fora da agenda'
   assert.ok(alerts[0].href?.includes('medico=b'));
   assert.equal(alerts[1].level, 'urgent');
   assert.ok(alerts[1].text.includes(String(t * 2)));
+});
+
+test('plano: criar orçamento sem desconto (null) não falha a validação', () => {
+  const id = '507f1f77bcf86cd799439011';
+  const parsed = createPlanSchema.safeParse({
+    patientId: id,
+    clinicId: id,
+    title: 'Reabilitação do quadrante',
+    items: JSON.stringify([
+      {
+        treatmentTypeId: id,
+        priceEuros: '45,50',
+        note: '',
+        toothNumbers: '26',
+        phase: '1',
+      },
+    ]),
+    discountEuros: null,
+    notes: '',
+  });
+  assert.equal(parsed.success, true);
+  if (!parsed.success) return;
+  assert.equal(parsed.data.discountEuros, 0);
+  assert.equal(parsed.data.items[0].priceEuros, 4550);
+  assert.deepEqual(parsed.data.items[0].toothNumbers, ['26']);
 });
 
 console.log(`\n${n} testes OK`);

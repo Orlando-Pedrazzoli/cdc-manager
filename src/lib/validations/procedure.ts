@@ -296,8 +296,10 @@ export const createPlanSchema = z.object({
       return [];
     }
   }, z.array(planItemSchema).min(1, 'O plano precisa de pelo menos um ato').max(60)),
+  // Sem desconto (9.ª ronda): a action envia null de propósito. null,
+  // undefined e vazio valem 0. Um número continua a ser validado.
   discountEuros: z.preprocess(
-    v => (typeof v === 'string' && v.trim() === '' ? '0' : v),
+    v => (v == null || (typeof v === 'string' && v.trim() === '') ? '0' : v),
     eurosToCentsField,
   ),
   notes: optionalText(2000),
