@@ -32,7 +32,7 @@ import { documentUrls, previewUrl } from '@/lib/storage';
 import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
 import { MandatoryAnamnesisGate } from '@/components/clinico/MandatoryAnamnesisGate';
 import { ConsultProgress } from '@/components/agenda/ConsultProgress';
-import { consultWindow } from '@/lib/consult-window';
+import { consultWindow, lateStartMinutes } from '@/lib/consult-window';
 import {
   anamnesisGateReason,
   anesthesiaReactionAlert,
@@ -402,6 +402,10 @@ export default async function ConsultationPage({
               {...consultWindow(
                 appt.startAt.getTime(),
                 appt.endAt.getTime(),
+                appt.startedAt ? new Date(appt.startedAt).getTime() : null,
+              )}
+              lateStartMin={lateStartMinutes(
+                appt.startAt.getTime(),
                 appt.startedAt ? new Date(appt.startedAt).getTime() : null,
               )}
               variant='header'

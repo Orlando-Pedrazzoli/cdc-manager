@@ -128,8 +128,13 @@ test('documentos: o médico não vê a categoria "Outro", salvo o que carregou',
   assert.equal(doctorCanSeeDocument({ category: 'other', uploadedByUserId: 'x' }, 'u1'), false);
   assert.equal(doctorCanSeeDocument({ category: 'other', uploadedByUserId: 'u1' }, 'u1'), true);
   assert.equal(doctorCanSeeDocument({ category: 'other' }, 'u1'), false);
+  // 9.ª ronda (c), 27/11: os contratos também ficam de fora para o médico
+  // sem acesso (regra e testes em ronda-9c.test.ts)
   assert.deepEqual(doctorDocumentFilter('u1'), {
-    $or: [{ category: { $ne: 'other' } }, { uploadedByUserId: 'u1' }],
+    $or: [
+      { category: { $nin: ['other', 'contract'] } },
+      { uploadedByUserId: 'u1' },
+    ],
   });
 });
 

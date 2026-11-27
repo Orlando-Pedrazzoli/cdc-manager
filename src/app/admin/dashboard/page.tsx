@@ -792,7 +792,8 @@ export default async function AdminDashboardPage() {
     {
       count: collectTotalN,
       label: `${collectTotalN} ${collectTotalN === 1 ? 'ato' : 'atos'} por cobrar (${formatCents(collectTotalCents)})`,
-      href: '/admin/cobranca',
+      // total por cobrar: fila completa, não só a de hoje (ponto 24)
+      href: '/admin/cobranca?todos=1',
       tone: 'info',
     },
     {
@@ -863,7 +864,8 @@ export default async function AdminDashboardPage() {
         collectTotalN > 0
           ? `${collectTotalN} ato${collectTotalN === 1 ? '' : 's'}`
           : 'Tudo cobrado',
-      href: '/admin/cobranca',
+      // total por cobrar: fila completa, não só a de hoje (ponto 24)
+      href: '/admin/cobranca?todos=1',
     },
     {
       label: 'Amanhã pendentes',

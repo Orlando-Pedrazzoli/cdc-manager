@@ -24,6 +24,7 @@ import {
   type TemplateKind,
 } from '@/lib/data/document-templates';
 import {
+  type DoctorOption,
   TemplateEditorButton,
   TemplateToggle,
 } from '@/components/documentos/TemplateEditor';
@@ -39,6 +40,9 @@ export interface TemplateRow {
   placeholders: string[];
   allowStaff: boolean;
   requiresSignature: boolean;
+  /** 9.ª ronda (c): modelo restrito a médicos escolhidos */
+  restrictedToDoctors: boolean;
+  allowedDoctorIds: string[];
   active: boolean;
 }
 
@@ -47,7 +51,14 @@ function fold(s: string): string {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 }
 
-export function TemplatesTable({ templates }: { templates: TemplateRow[] }) {
+export function TemplatesTable({
+  templates,
+  doctors = [],
+}: {
+  templates: TemplateRow[];
+  /** 9.ª ronda (c): para a lista de acesso dos modelos restritos */
+  doctors?: DoctorOption[];
+}) {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<TemplateKind | ''>('');
   // 8.ª ronda/06: filtro por pasta (especialidade)
@@ -258,7 +269,11 @@ export function TemplatesTable({ templates }: { templates: TemplateRow[] }) {
                     {t.placeholders.join(', ') || '—'}
                   </td>
                   <td style={td}>
-                    {t.allowStaff ? 'Médico e receção' : 'Só médico'}
+                    {t.restrictedToDoctors
+                      ? `${t.allowedDoctorIds.length} médico(s) escolhido(s)${t.allowStaff ? ' e receção' : ''}`
+                      : t.allowStaff
+                        ? 'Médico e receção'
+                        : 'Só médico'}
                   </td>
                   <td
                     style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}
@@ -273,8 +288,11 @@ export function TemplatesTable({ templates }: { templates: TemplateRow[] }) {
                           body: t.body,
                           allowStaff: t.allowStaff,
                           requiresSignature: t.requiresSignature,
+                          restrictedToDoctors: t.restrictedToDoctors,
+                          allowedDoctorIds: t.allowedDoctorIds,
                           active: t.active,
                         }}
+                        doctors={doctors}
                       />
                       <TemplateToggle id={t.id} active={t.active} />
                     </span>

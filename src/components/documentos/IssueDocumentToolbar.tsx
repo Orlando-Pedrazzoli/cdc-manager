@@ -5,7 +5,9 @@
 // =============================================================================
 
 import { defaultClinicForPost } from '@/lib/post-clinic';
+import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
+import { templateListFilter } from '@/lib/template-access';
 import DocumentTemplate from '@/models/DocumentTemplate';
 import Appointment from '@/models/Appointment';
 import TreatmentType from '@/models/TreatmentType';
@@ -26,10 +28,12 @@ export async function IssueDocumentToolbar({
 }) {
   await dbConnect();
   await ensureDefaultTemplates();
+  const doctorId =
+    role === 'doctor' ? ((await auth())?.user?.doctorId ?? null) : null;
   const [templates, appts, clinics] = await Promise.all([
-    DocumentTemplate.find(
-      role === 'doctor' ? { active: true } : { active: true, allowStaff: true },
-    )
+    // 9.ª ronda (c): o médico não vê os modelos restritos em que não está
+    // (contratos); a regra é a mesma da emissão — lib/template-access.ts
+    DocumentTemplate.find(templateListFilter({ role, doctorId }))
       .sort({ kind: 1, title: 1 })
       .lean(),
     Appointment.find({

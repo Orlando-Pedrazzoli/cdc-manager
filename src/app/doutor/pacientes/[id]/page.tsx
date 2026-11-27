@@ -38,6 +38,7 @@ import {
   type DocumentItem,
 } from '@/components/pacientes/DocumentsTab';
 import { doctorDocumentFilter } from '@/lib/patient-access';
+import { doctorSeesContracts } from '@/lib/contract-access';
 import ClinicalDocument from '@/models/Document';
 import { documentUrls } from '@/lib/storage';
 import { PatientLabCases } from '@/components/proteses/PatientLabCases';
@@ -146,7 +147,11 @@ export default async function DoctorPatientPage({
     const docs = await ClinicalDocument.find({
       patientId: id,
       voidedAt: null,
-      ...doctorDocumentFilter(session.user.id),
+      // 9.ª ronda (c): contratos só para os médicos autorizados
+      ...doctorDocumentFilter(
+        session.user.id,
+        await doctorSeesContracts(doctorId),
+      ),
     })
       .sort({ createdAt: -1 })
       .populate<{

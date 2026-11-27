@@ -34,6 +34,7 @@ import Appointment from '@/models/Appointment';
 import Doctor from '@/models/Doctor';
 import Patient from '@/models/Patient';
 import TreatmentPlan from '@/models/TreatmentPlan';
+import { PrintBudgetLink } from '@/components/orcamentos/PrintBudgetLink';
 import Procedure from '@/models/Procedure';
 
 export const dynamic = 'force-dynamic';
@@ -372,6 +373,7 @@ export default async function OrcamentosPage({
                   <th style={th}>Médico</th>
                   <th style={th}>Entregue</th>
                   <th style={{ ...th, textAlign: 'right' }}>Valor</th>
+                  <th style={th} aria-label='Imprimir' />
                 </tr>
               </thead>
               <tbody>
@@ -390,6 +392,9 @@ export default async function OrcamentosPage({
                       </div>
                     </td>
                     <td style={num}>{formatCents(value(p))}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>
+                      <PrintBudgetLink planId={String(p._id)} area='admin' />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -417,6 +422,7 @@ export default async function OrcamentosPage({
                   <th style={th}>Médico</th>
                   <th style={th}>Última consulta</th>
                   <th style={{ ...th, textAlign: 'right' }}>Valor</th>
+                  <th style={th} aria-label='Imprimir' />
                 </tr>
               </thead>
               <tbody>
@@ -441,6 +447,9 @@ export default async function OrcamentosPage({
                         )}
                       </td>
                       <td style={num}>{formatCents(value(p))}</td>
+                      <td style={{ ...td, textAlign: 'right' }}>
+                        <PrintBudgetLink planId={String(p._id)} area='admin' />
+                      </td>
                     </tr>
                   );
                 })}
@@ -623,6 +632,7 @@ export default async function OrcamentosPage({
                     <th style={{ ...th, textAlign: 'right' }}>Valor</th>
                     <th style={{ ...th, textAlign: 'right' }}>Realizado</th>
                     <th style={{ ...th, textAlign: 'right' }}>Conversão</th>
+                    <th style={th} aria-label='Imprimir' />
                   </tr>
                 </thead>
                 <tbody>
@@ -645,6 +655,9 @@ export default async function OrcamentosPage({
                         <td style={num}>{formatCents(r.doneCents)}</td>
                         <td style={{ ...num, fontWeight: 700 }}>
                           {conv == null ? '—' : `${conv}%`}
+                        </td>
+                        <td style={{ ...td, textAlign: 'right' }}>
+                          <PrintBudgetLink planId={String(r.plan._id)} area='admin' />
                         </td>
                       </tr>
                     );

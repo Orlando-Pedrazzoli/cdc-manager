@@ -42,6 +42,7 @@ import { finalizeIssuedDocument } from '@/lib/signing';
 import User from '@/models/User';
 import { processLabel } from '@/lib/domain';
 import { certificateTimes } from '@/lib/certificate-times';
+import { cleanDoctorIds, templateIssueBlock } from '@/lib/template-access';
 
 const OID = /^[0-9a-fA-F]{24}$/;
 
@@ -146,7 +147,31 @@ const templateSchema = z.object({
   body: z.string().min(10).max(20_000),
   allowStaff: z.preprocess(v => v === 'on' || v === 'true', z.boolean()),
   requiresSignature: z.preprocess(v => v === 'on' || v === 'true', z.boolean()),
+  // 9.ª ronda (c): modelo restrito aos médicos escolhidos pela gestão
+  restrictedToDoctors: z.preprocess(
+    v => v === 'on' || v === 'true',
+    z.boolean(),
+  ),
+  allowedDoctorIds: z.array(z.string()).max(300).default([]),
 });
+
+/** Para a auditoria: o que mudou no acesso dos médicos ao modelo */
+function accessChangeSummary(
+  before: {
+    restrictedToDoctors?: boolean | null;
+    allowedDoctorIds?: unknown[] | null;
+  } | null,
+  restricted: boolean,
+  ids: string[],
+): string {
+  const was = !!before?.restrictedToDoctors;
+  const prev = (before?.allowedDoctorIds ?? []).map(String).sort().join(',');
+  const now = [...ids].sort().join(',');
+  if (was === restricted && prev === now) return '';
+  return restricted
+    ? ` · acesso restrito a ${ids.length} médico(s)`
+    : ' · acesso aberto a todos os médicos';
+}
 
 export async function saveTemplateAction(
   _prev: TemplateFormState,
@@ -164,6 +189,10 @@ export async function saveTemplateAction(
       body: formData.get('body'),
       allowStaff: formData.get('allowStaff'),
       requiresSignature: formData.get('requiresSignature'),
+      restrictedToDoctors: formData.get('restrictedToDoctors'),
+      allowedDoctorIds: formData
+        .getAll('allowedDoctorIds')
+        .filter((v): v is string => typeof v === 'string'),
     });
     if (!parsed.success)
       return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
@@ -172,6 +201,19 @@ export async function saveTemplateAction(
     const admin = await User.findById(session.user.id).select('role status').lean();
     if (!admin || admin.status !== 'active' || admin.role !== 'admin')
       return { error: 'Conta inativa ou permissões alteradas.' };
+    // Só ficam na lista médicos que existem; sem restrição a lista é limpa
+    const wanted = d.restrictedToDoctors ? cleanDoctorIds(d.allowedDoctorIds) : [];
+    const allowedDoctorIds = wanted.length
+      ? (await Doctor.find({ _id: { $in: wanted } }).select('_id').lean()).map(
+          x => String(x._id),
+        )
+      : [];
+    const before = d.id
+      ? await DocumentTemplate.findById(d.id)
+          .select('restrictedToDoctors allowedDoctorIds')
+          .lean()
+      : null;
+    if (d.id && !before) return { error: 'Modelo não encontrado.' };
     if (d.id) {
       await DocumentTemplate.updateOne(
         { _id: d.id },
@@ -183,6 +225,8 @@ export async function saveTemplateAction(
             body: d.body,
             allowStaff: d.allowStaff,
             requiresSignature: d.requiresSignature,
+            restrictedToDoctors: d.restrictedToDoctors,
+            allowedDoctorIds,
             updatedByUserId: session.user.id,
           },
         },
@@ -197,6 +241,8 @@ export async function saveTemplateAction(
         body: d.body,
         allowStaff: d.allowStaff,
         requiresSignature: d.requiresSignature,
+        restrictedToDoctors: d.restrictedToDoctors,
+        allowedDoctorIds,
         updatedByUserId: session.user.id,
       });
     }
@@ -205,7 +251,7 @@ export async function saveTemplateAction(
       action: d.id ? 'update' : 'create',
       entityType: 'DocumentTemplate',
       entityId: d.id ?? undefined,
-      summary: `Modelo de documento ${d.id ? 'atualizado' : 'criado'}: ${d.title}`,
+      summary: `Modelo de documento ${d.id ? 'atualizado' : 'criado'}: ${d.title}${accessChangeSummary(before, d.restrictedToDoctors, allowedDoctorIds)}`,
     });
     revalidatePath('/admin/modelos');
     return { success: true };
@@ -256,7 +302,7 @@ async function buildValues(params: {
 }) {
   const [patient, doctor, clinics, appt] = await Promise.all([
     Patient.findById(params.patientId)
-      .select('name nif snsNumber birthDate processNumber')
+      .select('name nif snsNumber birthDate processNumber address phone email')
       .lean(),
     params.doctorId
       ? Doctor.findById(params.doctorId).select('name fullName licenseNumber').lean()
@@ -286,6 +332,18 @@ async function buildValues(params: {
       ? shortDatePt(patient.birthDate)
       : null,
     'paciente.processo': processLabel(patient.processNumber),
+    // 9.ª ronda (c): identificação do paciente nos contratos
+    'paciente.morada':
+      [
+        patient.address?.street,
+        [patient.address?.postalCode, patient.address?.city]
+          .filter(Boolean)
+          .join(' '),
+      ]
+        .filter(Boolean)
+        .join(', ') || null,
+    'paciente.telemovel': patient.phone ?? null,
+    'paciente.email': patient.email ?? null,
     // 9.ª ronda (ponto 19): nome completo do médico, se estiver na ficha
     'medico.nome': doctor ? doctor.fullName || doctor.name : null,
     'medico.cedula': doctor?.licenseNumber ?? null,
@@ -344,8 +402,10 @@ export async function prepareDocumentAction(input: {
     if ('error' in access) return { error: access.error };
     const t = await DocumentTemplate.findById(input.templateId).lean();
     if (!t || !t.active) return { error: 'Modelo indisponível.' };
-    if (role !== 'doctor' && !t.allowStaff)
-      return { error: 'Este modelo só pode ser emitido pelo médico.' };
+    // 9.ª ronda (c): receção só nos modelos allowStaff; médico fora da
+    // lista de um modelo restrito não o emite (lib/template-access.ts)
+    const block = templateIssueBlock(t, { role, doctorId: access.doctorId });
+    if (block) return { error: block };
     const locked = isTimeLockedKind(t.kind);
     if (locked && !input.appointmentId)
       return {
@@ -405,9 +465,13 @@ export async function issueDocumentAction(input: {
       return { error: 'Dados inválidos.' };
     await dbConnect();
     const t = await DocumentTemplate.findById(input.templateId)
-      .select('active allowStaff kind title body')
+      .select(
+        'active allowStaff restrictedToDoctors allowedDoctorIds kind title body',
+      )
       .lean();
     if (!t || !t.active) return { error: 'Modelo indisponível.' };
+    // A receção fica já barrada nos modelos só do médico; a lista de médicos
+    // de um modelo restrito é verificada abaixo, depois de se saber quem é
     if (role !== 'doctor' && !t.allowStaff)
       return { error: 'Este modelo só pode ser emitido pelo médico.' };
 
@@ -429,6 +493,9 @@ export async function issueDocumentAction(input: {
       appointmentId,
     });
     if ('error' in access) return { error: access.error };
+    // 9.ª ronda (c): modelo restrito a médicos escolhidos pela gestão
+    const block = templateIssueBlock(t, { role, doctorId: access.doctorId });
+    if (block) return { error: block };
 
     let title = input.title;
     let body = input.body;

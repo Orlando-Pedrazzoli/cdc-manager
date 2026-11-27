@@ -83,21 +83,34 @@ export function patientAccessAlerts(
 // desaparecia-lhe logo a seguir ao upload).
 // -----------------------------------------------------------------------------
 export const DOCTOR_HIDDEN_DOCUMENT_CATEGORY = 'other';
+// 9.ª ronda (c), Victor 27/11: os contratos (aparelho, alinhadores) só são
+// vistos pelos médicos a quem a gestão deu acesso (lib/template-access.ts).
+// `seesContracts` é calculado por quem chama (doctorSeesContracts, em
+// lib/contract-access.ts); por omissão o médico NÃO vê contratos.
+export const DOCTOR_CONTRACT_DOCUMENT_CATEGORY = 'contract';
 
 export function doctorCanSeeDocument(
   doc: { category?: string | null; uploadedByUserId?: unknown },
   userId: string,
+  seesContracts = false,
 ): boolean {
-  if (doc.category !== DOCTOR_HIDDEN_DOCUMENT_CATEGORY) return true;
-  return doc.uploadedByUserId != null && String(doc.uploadedByUserId) === userId;
+  const own =
+    doc.uploadedByUserId != null && String(doc.uploadedByUserId) === userId;
+  if (doc.category === DOCTOR_HIDDEN_DOCUMENT_CATEGORY) return own;
+  if (doc.category === DOCTOR_CONTRACT_DOCUMENT_CATEGORY)
+    return seesContracts || own;
+  return true;
 }
 
 /** O mesmo critério, como filtro de consulta à BD */
-export function doctorDocumentFilter(userId: string): Record<string, unknown> {
+export function doctorDocumentFilter(
+  userId: string,
+  seesContracts = false,
+): Record<string, unknown> {
+  const hidden = seesContracts
+    ? [DOCTOR_HIDDEN_DOCUMENT_CATEGORY]
+    : [DOCTOR_HIDDEN_DOCUMENT_CATEGORY, DOCTOR_CONTRACT_DOCUMENT_CATEGORY];
   return {
-    $or: [
-      { category: { $ne: DOCTOR_HIDDEN_DOCUMENT_CATEGORY } },
-      { uploadedByUserId: userId },
-    ],
+    $or: [{ category: { $nin: hidden } }, { uploadedByUserId: userId }],
   };
 }

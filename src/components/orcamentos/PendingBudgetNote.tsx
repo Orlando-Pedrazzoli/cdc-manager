@@ -8,6 +8,7 @@
 import TreatmentPlan from '@/models/TreatmentPlan';
 import { formatCents } from '@/lib/commissions';
 import { daysSince } from '@/lib/budgets';
+import { PrintBudgetLink } from '@/components/orcamentos/PrintBudgetLink';
 
 const dayFmt = new Intl.DateTimeFormat('pt-PT', {
   day: '2-digit',
@@ -48,7 +49,14 @@ async function loadPendingBudgets(patientId: string) {
   });
 }
 
-export async function PendingBudgetNote({ patientId }: { patientId: string }) {
+export async function PendingBudgetNote({
+  patientId,
+  area,
+}: {
+  patientId: string;
+  /** 27/11: com a área, cada orçamento ganha o botão "Imprimir" (PDF A4) */
+  area?: 'admin' | 'doutor';
+}) {
   const plans = await loadPendingBudgets(patientId);
   if (plans.length === 0) return null;
   return (
@@ -67,10 +75,22 @@ export async function PendingBudgetNote({ patientId }: { patientId: string }) {
       }}
     >
       {plans.map(p => (
-        <div key={p.id}>
-          <strong>Orçamento entregue no dia {p.dayLabel}, pendente</strong>
-          {p.days > 0 ? ` há ${p.days} dia${p.days === 1 ? '' : 's'}` : ''} · {p.title} ·{' '}
-          {p.valueLabel}
+        <div
+          key={p.id}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            flexWrap: 'wrap',
+          }}
+        >
+          <span>
+            <strong>Orçamento entregue no dia {p.dayLabel}, pendente</strong>
+            {p.days > 0 ? ` há ${p.days} dia${p.days === 1 ? '' : 's'}` : ''} · {p.title} ·{' '}
+            {p.valueLabel}
+          </span>
+          {area && <PrintBudgetLink planId={p.id} area={area} />}
         </div>
       ))}
     </div>

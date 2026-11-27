@@ -443,6 +443,9 @@ export const DOCUMENT_CATEGORIES = [
   'referral', // encaminhamentos
   'medical-request', // pedidos médicos (análises, exames)
   'certificate', // atestados / certificados
+  // 9.ª ronda (c), Victor 27/11: contratos (aparelho, alinhadores) — só a
+  // gestão, a receção e os médicos autorizados os veem
+  'contract',
   'other',
 ] as const;
 export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
@@ -460,6 +463,7 @@ export const DOCUMENT_CATEGORY_LABEL: Record<DocumentCategory, string> = {
   referral: 'Encaminhamento',
   'medical-request': 'Pedido médico',
   certificate: 'Atestado / certificado',
+  contract: 'Contrato',
   other: 'Outro',
 };
 

@@ -239,6 +239,10 @@ test('atrasos: resumo por médico', () => {
     avgOverrunMin: 15,
     maxOverrunMin: 20,
     lateStartMin: 5,
+    // 27/11 (A3): o atraso para começar passou a ter as suas contas
+    lateStarts: 1,
+    avgLateStartMin: 5,
+    maxLateStartMin: 5,
     delayedPct: 67,
   });
   assert.equal(rows[1].key, 'b');

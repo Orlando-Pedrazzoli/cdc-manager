@@ -28,7 +28,7 @@ export function CollectCard({
   return (
     <Section
       title='Por cobrar'
-      action={<ActionLink href='/admin/cobranca'>Ver cobranças</ActionLink>}
+      action={<ActionLink href='/admin/cobranca?todos=1'>Ver cobranças</ActionLink>}
     >
       <p
         style={{

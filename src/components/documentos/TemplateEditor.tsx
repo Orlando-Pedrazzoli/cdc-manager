@@ -40,13 +40,25 @@ export interface TemplateInitial {
   body: string;
   allowStaff: boolean;
   requiresSignature: boolean;
+  /** 9.ª ronda (c): só os médicos da lista emitem este modelo */
+  restrictedToDoctors?: boolean;
+  allowedDoctorIds?: string[];
+  active: boolean;
+}
+
+/** Médico para a lista de acesso de um modelo restrito */
+export interface DoctorOption {
+  id: string;
+  name: string;
   active: boolean;
 }
 
 export function TemplateEditorButton({
   initial,
+  doctors = [],
 }: {
   initial?: TemplateInitial;
+  doctors?: DoctorOption[];
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -64,7 +76,11 @@ export function TemplateEditorButton({
         {initial ? 'Editar' : 'Novo modelo'}
       </Button>
       {open && (
-        <TemplateEditor initial={initial} onClose={() => setOpen(false)} />
+        <TemplateEditor
+          initial={initial}
+          doctors={doctors}
+          onClose={() => setOpen(false)}
+        />
       )}
     </>
   );
@@ -72,12 +88,25 @@ export function TemplateEditorButton({
 
 function TemplateEditor({
   initial,
+  doctors,
   onClose,
 }: {
   initial?: TemplateInitial;
+  doctors: DoctorOption[];
   onClose: () => void;
 }) {
   const router = useRouter();
+  // 9.ª ronda (c): acesso dos médicos (contratos)
+  const [restricted, setRestricted] = useState(
+    initial?.restrictedToDoctors ?? false,
+  );
+  const [allowed, setAllowed] = useState<string[]>(
+    initial?.allowedDoctorIds ?? [],
+  );
+  const toggleDoctor = (id: string) =>
+    setAllowed(cur =>
+      cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id],
+    );
   const [state, action, pending] = useActionState<TemplateFormState, FormData>(
     saveTemplateAction,
     undefined,
@@ -211,6 +240,79 @@ function TemplateEditor({
             label='Exige assinatura do paciente no ecrã'
             defaultChecked={initial?.requiresSignature ?? false}
           />
+        </div>
+        {/* 9.ª ronda (c), Victor 27/11: a gestão escolhe os médicos que
+            podem emitir este modelo (contratos de aparelho/alinhadores) */}
+        <div
+          style={{
+            border: '1px solid #D8DEEF',
+            borderRadius: 10,
+            padding: '10px 12px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+          }}
+        >
+          <Checkbox
+            id='tpl-restricted'
+            name='restrictedToDoctors'
+            label='Só os médicos escolhidos podem emitir e ver este modelo'
+            checked={restricted}
+            onChange={e => setRestricted(e.currentTarget.checked)}
+          />
+          {restricted && (
+            <>
+              <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
+                Assinale quem tem acesso. Os restantes médicos não veem este
+                modelo na lista. A gestão e a receção dependem só da opção
+                «A receção também pode emitir». Sem ninguém assinalado, nenhum
+                médico tem acesso.
+              </p>
+              {doctors.length === 0 ? (
+                <p style={{ margin: 0, fontSize: '12px', color: '#B3261E' }}>
+                  Não há médicos ativos para escolher.
+                </p>
+              ) : (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns:
+                      'repeat(auto-fill, minmax(230px, 1fr))',
+                    gap: '4px 12px',
+                    maxHeight: 180,
+                    overflowY: 'auto',
+                  }}
+                >
+                  {doctors.map(d => (
+                    <label
+                      key={d.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: '13px',
+                        color: d.active ? '#1C2233' : '#9AA1B4',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type='checkbox'
+                        name='allowedDoctorIds'
+                        value={d.id}
+                        checked={allowed.includes(d.id)}
+                        onChange={() => toggleDoctor(d.id)}
+                      />
+                      {d.name}
+                      {d.active ? '' : ' (inativo)'}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <span style={{ fontSize: '12px', color: '#6A7186' }}>
+                {allowed.length} médico(s) com acesso
+              </span>
+            </>
+          )}
         </div>
         {state && 'error' in state && (
           <p

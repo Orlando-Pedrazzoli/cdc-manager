@@ -196,7 +196,7 @@ export default async function AdminOdontogramPage({
       </div>
 
       {/* 8.ª ronda/12: "Orçamento entregue no dia X, pendente" */}
-      <PendingBudgetNote patientId={id} />
+      <PendingBudgetNote patientId={id} area='admin' />
 
       <div
         style={{

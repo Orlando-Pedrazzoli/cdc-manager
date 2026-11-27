@@ -28,3 +28,17 @@ export function consultWindow(
   if (startedMs < endMs) return { startMs: startedMs, endMs };
   return { startMs: Math.min(startMs, endMs), endMs };
 }
+
+/**
+ * Victor, 27/11/2026 (A3): "os dois, contados em separado — o atraso para
+ * começar (da hora marcada até o médico puxar o paciente) e o tempo excedido
+ * (depois do fim marcado)". Minutos inteiros entre a hora marcada e o início
+ * real; 0 se começou a horas, antes da hora, ou se ainda não começou.
+ */
+export function lateStartMinutes(
+  startMs: number,
+  startedMs: number | null | undefined,
+): number {
+  if (startedMs == null || !Number.isFinite(startedMs)) return 0;
+  return Math.max(0, Math.floor((startedMs - startMs) / 60_000));
+}
