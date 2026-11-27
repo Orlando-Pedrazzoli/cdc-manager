@@ -20,6 +20,9 @@ export const TEMPLATE_KINDS = [
   'termo',
   'pos-operatorio',
   'autorizacao',
+  // 9.ª ronda (c), Victor 27/11: encaminhamento clínico e contratos
+  'encaminhamento',
+  'contrato',
   'outro',
 ] as const;
 export type TemplateKind = (typeof TEMPLATE_KINDS)[number];
@@ -33,6 +36,8 @@ export const TEMPLATE_KIND_LABEL: Record<TemplateKind, string> = {
   termo: 'Termo de responsabilidade',
   'pos-operatorio': 'Instruções pós-operatórias',
   autorizacao: 'Autorização',
+  encaminhamento: 'Encaminhamento clínico',
+  contrato: 'Contrato',
   outro: 'Outro',
 };
 
@@ -120,6 +125,10 @@ export const TEMPLATE_KIND_DOC_CATEGORY: Record<
   termo: 'consent',
   'pos-operatorio': 'other',
   autorizacao: 'authorization',
+  encaminhamento: 'referral',
+  // contratos: categoria própria, escondida dos médicos sem acesso
+  // (lib/template-access.ts)
+  contrato: 'contract',
   outro: 'other',
 };
 
@@ -130,6 +139,10 @@ export const PLACEHOLDERS: { key: string; label: string }[] = [
   { key: 'paciente.utente', label: 'Nº de utente' },
   { key: 'paciente.nascimento', label: 'Data de nascimento' },
   { key: 'paciente.processo', label: 'N.º do paciente' },
+  // 9.ª ronda (c): identificação do paciente nos contratos
+  { key: 'paciente.morada', label: 'Morada do paciente' },
+  { key: 'paciente.telemovel', label: 'Telemóvel do paciente' },
+  { key: 'paciente.email', label: 'Email do paciente' },
   { key: 'medico.nome', label: 'Nome completo do médico' },
   { key: 'medico.cedula', label: 'N.º da OMD do médico' },
   { key: 'clinica.nome', label: 'Nome da clínica' },

@@ -49,6 +49,7 @@ import User from '@/models/User';
 import Doctor from '@/models/Doctor';
 import Appointment from '@/models/Appointment';
 import { doctorCanSeeDocument } from '@/lib/patient-access';
+import { doctorSeesContracts } from '@/lib/contract-access';
 
 const STAFF_ROLES = ['admin', 'receptionist', 'doctor'] as const;
 
@@ -310,7 +311,20 @@ export async function getDocumentDownloadUrlAction(input: {
     doc.voidedAt ||
     !(await doctorCanAccessPatient(gate, String(doc.patientId))) ||
     // Victor, 25/11 (B3): "Outro" fica fora do alcance do médico
-    (gate.role === 'doctor' && !doctorCanSeeDocument(doc, gate.userId))
+    (gate.role === 'doctor' &&
+      !doctorCanSeeDocument(
+        doc,
+        gate.userId,
+        // 9.ª ronda (c): contratos só para os médicos autorizados
+        doc.category === 'contract'
+          ? await doctorSeesContracts(
+              String(
+                (await User.findById(gate.userId).select('doctorId').lean())
+                  ?.doctorId ?? '',
+              ),
+            )
+          : false,
+      ))
   ) {
     return { ok: false, error: 'Documento não encontrado.' };
   }

@@ -21,6 +21,7 @@ import TreatmentPlan from '@/models/TreatmentPlan';
 import Procedure from '@/models/Procedure';
 import { getActiveClinics } from '@/models/Clinic';
 import { formatCents } from '@/lib/commissions';
+import { PrintBudgetLink } from '@/components/orcamentos/PrintBudgetLink';
 import {
   PlanEditor,
   PlanLifecycleButtons,
@@ -318,6 +319,8 @@ export default async function PatientPlansPage({
                   >
                     {PLAN_STATUS_LABEL[plan.status] ?? plan.status}
                   </span>
+                  {/* 27/11: orçamento em A4 para entregar ao paciente */}
+                  <PrintBudgetLink planId={String(plan._id)} area='doutor' />
                   <PlanLifecycleButtons
                     planId={String(plan._id)}
                     status={plan.status}

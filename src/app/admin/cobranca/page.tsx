@@ -29,6 +29,7 @@ import { patientSearchOr } from '@/lib/patient-search';
 import { getActiveClinics } from '@/models/Clinic';
 import { clinicLabel } from '@/lib/branding';
 import { lisbonToUtc, todayLisbon } from '@/lib/availability';
+import { cobrancaOpensToday } from '@/lib/cobranca-filters';
 import { formatCents } from '@/lib/commissions';
 import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/domain';
 import {
@@ -125,6 +126,8 @@ export default async function CobrancaPage({
     ano?: string;
     mes?: string;
     dia?: string;
+    /** ponto 24: "1" = todos os dias (sem isto, e sem data, abre em hoje) */
+    todos?: string;
     paciente?: string;
     tratamento?: string;
     medico?: string;
@@ -150,9 +153,16 @@ export default async function CobrancaPage({
     const n = Number(v);
     return Number.isInteger(n) && n >= min && n <= max ? n : null;
   };
-  const fAno = int(sp.ano, 2000, currentYear + 1);
-  const fMes = int(sp.mes, 1, 12);
-  const fDia = fMes ? int(sp.dia, 1, 31) : null;
+  // Ponto 24 (Giulia, 27/11): "ao abrir a aba de cobranças, filtrar primeiro
+  // pela data de hoje — evita erros de cobrança de outros dias e de outros
+  // pacientes". Sem data no endereço a fila abre no dia de hoje; quem
+  // escolhe "Todos" no filtro (ano= vazio no endereço) ou carrega em "Ver
+  // todos os dias" (todos=1) vê a fila completa, como antes.
+  const openToday = cobrancaOpensToday(sp);
+  const [tYear, tMonth, tDay] = today.split('-').map(Number);
+  const fAno = openToday ? tYear : int(sp.ano, 2000, currentYear + 1);
+  const fMes = openToday ? tMonth : int(sp.mes, 1, 12);
+  const fDia = openToday ? tDay : fMes ? int(sp.dia, 1, 31) : null;
   const fPaciente = (sp.paciente ?? '').trim().slice(0, 80);
   const fTratamento = (sp.tratamento ?? '').trim().slice(0, 80);
   const fMedico = sp.medico && OID_RE.test(sp.medico) ? sp.medico : '';
@@ -410,14 +420,29 @@ export default async function CobrancaPage({
           </button>
           {hasFilters && (
             <Link
+              href={`/admin/cobranca?clinic=${clinic.slug}&todos=1`}
+              style={{ fontSize: '13px', fontWeight: 600, color: '#2743A6' }}
+            >
+              {openToday ? 'Ver todos os dias' : 'Limpar'}
+            </Link>
+          )}
+          {!openToday && (
+            <Link
               href={`/admin/cobranca?clinic=${clinic.slug}`}
               style={{ fontSize: '13px', fontWeight: 600, color: '#2743A6' }}
             >
-              Limpar
+              Só hoje
             </Link>
           )}
         </div>
       </form>
+      {openToday && (
+        <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
+          A mostrar só os atos feitos hoje ({pad2(tDay)}/{pad2(tMonth)}/{tYear}).
+          Para cobrar atos de outros dias, escolha a data no filtro ou «Ver
+          todos os dias».
+        </p>
+      )}
       {fMes && !fAno && (
         <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
           Mês sem ano escolhido: a mostrar {MONTHS[fMes - 1]} de {currentYear}.
@@ -436,7 +461,9 @@ export default async function CobrancaPage({
             color: '#6A7186',
           }}
         >
-          {hasFilters
+          {openToday
+            ? 'Nenhum ato de hoje por cobrar. Os de outros dias estão em «Ver todos os dias».'
+            : hasFilters
             ? 'Nenhum valor por cobrar corresponde aos filtros.'
             : 'Sem valores por cobrar nesta clínica. 🎉'}
         </div>

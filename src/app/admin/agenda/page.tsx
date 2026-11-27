@@ -20,7 +20,7 @@
 // =============================================================================
 
 import { defaultClinicForPost } from '@/lib/post-clinic';
-import { consultWindow } from '@/lib/consult-window';
+import { consultWindow, lateStartMinutes } from '@/lib/consult-window';
 import Link from 'next/link';
 import {
   ChevronLeft,
@@ -639,6 +639,14 @@ export default async function AgendaPage({
           ? new Date(a.startedAt).getTime()
           : null,
       ),
+      // Victor, 27/11 (A3): atraso para começar, à parte do tempo excedido
+      lateStartMin:
+        a.status === 'in-progress' && a.startedAt
+          ? lateStartMinutes(
+              a.startAt.getTime(),
+              new Date(a.startedAt).getTime(),
+            )
+          : 0,
       referralLabel: a.referralSource
         ? [
             REFERRAL_SOURCE_LABEL[a.referralSource as ReferralSource] ??

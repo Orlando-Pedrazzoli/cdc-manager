@@ -17,7 +17,11 @@ import {
   type TemplateKind,
 } from '@/lib/data/document-templates';
 import { placeholdersIn } from '@/lib/document-merge';
-import { TemplateEditorButton } from '@/components/documentos/TemplateEditor';
+import Doctor from '@/models/Doctor';
+import {
+  TemplateEditorButton,
+  type DoctorOption,
+} from '@/components/documentos/TemplateEditor';
 import {
   TemplatesTable,
   type TemplateRow,
@@ -34,6 +38,23 @@ export default async function ModelosPage() {
   const templates = await DocumentTemplate.find({})
     .sort({ active: -1, kind: 1, title: 1 })
     .lean();
+  // 9.ª ronda (c): médicos ativos, para a lista de acesso dos modelos
+  // restritos (contratos). Os inativos que ainda estejam numa lista
+  // aparecem também, para poderem ser retirados.
+  const listed = new Set(
+    templates.flatMap(t => (t.allowedDoctorIds ?? []).map(String)),
+  );
+  const doctorDocs = await Doctor.find({
+    $or: [{ active: true }, { _id: { $in: [...listed] } }],
+  })
+    .select('name active')
+    .sort({ name: 1 })
+    .lean();
+  const doctors: DoctorOption[] = doctorDocs.map(d => ({
+    id: String(d._id),
+    name: d.name,
+    active: !!d.active,
+  }));
 
   const rows: TemplateRow[] = templates.map(t => ({
     id: String(t._id),
@@ -45,6 +66,8 @@ export default async function ModelosPage() {
     placeholders: placeholdersIn(t.body),
     allowStaff: !!t.allowStaff,
     requiresSignature: !!t.requiresSignature,
+    restrictedToDoctors: !!t.restrictedToDoctors,
+    allowedDoctorIds: (t.allowedDoctorIds ?? []).map(String),
     active: !!t.active,
   }));
 
@@ -81,10 +104,10 @@ export default async function ModelosPage() {
             preenchidos e o texto editável antes de gerar o PDF.
           </p>
         </div>
-        <TemplateEditorButton />
+        <TemplateEditorButton doctors={doctors} />
       </div>
 
-      <TemplatesTable templates={rows} />
+      <TemplatesTable templates={rows} doctors={doctors} />
     </div>
   );
 }

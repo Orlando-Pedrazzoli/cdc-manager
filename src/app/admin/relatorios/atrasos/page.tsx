@@ -185,12 +185,18 @@ export default async function AtrasosPage({
       key: String(groupBy === 'paciente' ? r.a.patientId : r.a.treatmentTypeId),
       delay: r.delay,
     })),
-  ).filter(s => s.delayed > 0);
+  ).filter(s => s.delayed > 0 || s.lateStarts > 0);
   const total = summarizeDelays(rows.map(r => ({ key: 'total', delay: r.delay })))[0];
 
+  // Victor, 27/11 (A3): os dois contam, em separado — entra na lista a
+  // consulta que passou do fim marcado OU que começou depois da hora
   const delayedRows = rows
-    .filter(r => r.delay.overrunMin > 0)
-    .sort((x, y) => y.delay.overrunMin - x.delay.overrunMin);
+    .filter(r => r.delay.overrunMin > 0 || r.delay.lateStartMin > 0)
+    .sort(
+      (x, y) =>
+        y.delay.overrunMin - x.delay.overrunMin ||
+        y.delay.lateStartMin - x.delay.lateStartMin,
+    );
   const detail = delayedRows.slice(0, DETAIL_LIMIT);
 
   const patientIds = [
@@ -229,10 +235,11 @@ export default async function AtrasosPage({
           Atrasos das consultas
         </h1>
         <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6A7186', maxWidth: 820 }}>
-          <strong>Atraso</strong> é o tempo que a consulta durou para lá do fim
-          marcado na agenda. <strong>Início tardio</strong> é o tempo entre a
-          hora marcada e o médico chamar o paciente; aparece à parte, porque
-          pode ser o paciente que chegou tarde. Só entram consultas concluídas.
+          São duas contas separadas. <strong>Atraso para começar</strong> é o
+          tempo entre a hora marcada e o médico chamar o paciente (quando foi o
+          paciente que chegou tarde, isso fica indicado).{' '}
+          <strong>Tempo excedido</strong> é o tempo que a consulta durou para
+          lá do fim marcado na agenda. Só entram consultas concluídas.
         </p>
       </div>
 
@@ -278,7 +285,7 @@ export default async function AtrasosPage({
         <h2 style={h2}>Por médico</h2>
         <p style={lead}>
           {total
-            ? `${total.consults} consulta${total.consults === 1 ? '' : 's'} concluída${total.consults === 1 ? '' : 's'}, ${total.delayed} com atraso (${total.delayedPct ?? 0}%). Atraso total: ${minutesLabel(total.overrunMin)}.`
+            ? `${total.consults} consulta${total.consults === 1 ? '' : 's'} concluída${total.consults === 1 ? '' : 's'}, ${total.lateStarts} começaram depois da hora (atraso para começar: ${minutesLabel(total.lateStartMin)}) e ${total.delayed} passaram do fim marcado (${total.delayedPct ?? 0}%; tempo excedido: ${minutesLabel(total.overrunMin)}).`
             : 'Sem consultas concluídas neste período.'}
           {truncated && ` A mostrar as primeiras ${QUERY_LIMIT} consultas do período; escolha um período mais curto para as contas completas.`}
         </p>
@@ -289,12 +296,15 @@ export default async function AtrasosPage({
                 <tr>
                   <th style={th}>Médico</th>
                   <th style={{ ...th, textAlign: 'right' }}>Consultas</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Com atraso</th>
-                  <th style={{ ...th, textAlign: 'right' }}>% com atraso</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Atraso total</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Média por atraso</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Maior atraso</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Início tardio (total)</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Começaram tarde</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Atraso para começar (total)</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Média</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Maior</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Passaram do fim</th>
+                  <th style={{ ...th, textAlign: 'right' }}>% das consultas</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Tempo excedido (total)</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Média</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Maior</th>
                 </tr>
               </thead>
               <tbody>
@@ -310,12 +320,15 @@ export default async function AtrasosPage({
                       )}
                     </td>
                     <td style={num}>{s.consults}</td>
+                    <td style={num}>{s.lateStarts}</td>
+                    <td style={{ ...num, fontWeight: 700 }}>{s.lateStartMin > 0 ? minutesLabel(s.lateStartMin) : '—'}</td>
+                    <td style={num}>{s.avgLateStartMin == null ? '—' : minutesLabel(s.avgLateStartMin)}</td>
+                    <td style={num}>{s.maxLateStartMin > 0 ? minutesLabel(s.maxLateStartMin) : '—'}</td>
                     <td style={num}>{s.delayed}</td>
                     <td style={num}>{s.delayedPct == null ? '—' : `${s.delayedPct}%`}</td>
                     <td style={{ ...num, fontWeight: 700 }}>{minutesLabel(s.overrunMin)}</td>
                     <td style={num}>{s.avgOverrunMin == null ? '—' : minutesLabel(s.avgOverrunMin)}</td>
                     <td style={num}>{s.maxOverrunMin > 0 ? minutesLabel(s.maxOverrunMin) : '—'}</td>
-                    <td style={num}>{s.lateStartMin > 0 ? minutesLabel(s.lateStartMin) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -326,7 +339,7 @@ export default async function AtrasosPage({
 
       <section style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <h2 style={h2}>Atraso por {groupBy === 'paciente' ? 'paciente' : 'tratamento'}</h2>
+          <h2 style={h2}>Por {groupBy === 'paciente' ? 'paciente' : 'tratamento'}</h2>
           <div style={{ display: 'flex', gap: 6 }}>
             <Link href={href({ ver: 'tratamento' })} style={pill(groupBy === 'tratamento')}>
               Por tratamento
@@ -336,7 +349,7 @@ export default async function AtrasosPage({
             </Link>
           </div>
         </div>
-        <p style={lead}>Só os que tiveram consultas com atraso, do maior atraso para o menor.</p>
+        <p style={lead}>Só os que tiveram consultas que começaram tarde ou passaram do fim marcado, do maior tempo excedido para o menor.</p>
         {byGroup.length === 0 ? (
           <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>Sem atrasos neste período.</p>
         ) : (
@@ -346,10 +359,12 @@ export default async function AtrasosPage({
                 <tr>
                   <th style={th}>{groupBy === 'paciente' ? 'Paciente' : 'Tratamento'}</th>
                   <th style={{ ...th, textAlign: 'right' }}>Consultas</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Com atraso</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Atraso total</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Média por atraso</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Maior atraso</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Começaram tarde</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Atraso para começar (total)</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Passaram do fim</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Tempo excedido (total)</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Média</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Maior</th>
                 </tr>
               </thead>
               <tbody>
@@ -365,10 +380,12 @@ export default async function AtrasosPage({
                       )}
                     </td>
                     <td style={num}>{s.consults}</td>
+                    <td style={num}>{s.lateStarts}</td>
+                    <td style={num}>{s.lateStartMin > 0 ? minutesLabel(s.lateStartMin) : '—'}</td>
                     <td style={num}>{s.delayed}</td>
-                    <td style={{ ...num, fontWeight: 700 }}>{minutesLabel(s.overrunMin)}</td>
+                    <td style={{ ...num, fontWeight: 700 }}>{s.overrunMin > 0 ? minutesLabel(s.overrunMin) : '—'}</td>
                     <td style={num}>{s.avgOverrunMin == null ? '—' : minutesLabel(s.avgOverrunMin)}</td>
-                    <td style={num}>{minutesLabel(s.maxOverrunMin)}</td>
+                    <td style={num}>{s.maxOverrunMin > 0 ? minutesLabel(s.maxOverrunMin) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -379,7 +396,7 @@ export default async function AtrasosPage({
 
       <section style={card}>
         <h2 style={h2}>Consultas com atraso ({delayedRows.length})</h2>
-        <p style={lead}>Uma linha por consulta que passou do fim marcado, da mais atrasada para a menos.</p>
+        <p style={lead}>Uma linha por consulta que começou depois da hora ou passou do fim marcado, do maior tempo excedido para o menor.</p>
         {detail.length === 0 ? (
           <p style={{ margin: 0, fontSize: '13px', color: '#6A7186' }}>Sem atrasos neste período.</p>
         ) : (
@@ -394,8 +411,8 @@ export default async function AtrasosPage({
                   <th style={th}>Início real</th>
                   <th style={th}>Fim real</th>
                   <th style={{ ...th, textAlign: 'right' }}>Duração (marcada)</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Início tardio</th>
-                  <th style={{ ...th, textAlign: 'right' }}>Atraso</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Atraso para começar</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Tempo excedido</th>
                 </tr>
               </thead>
               <tbody>
@@ -424,14 +441,14 @@ export default async function AtrasosPage({
                       {r.delay.actualMin} min ({r.delay.plannedMin})
                     </td>
                     <td style={num}>{lateNote(r.delay)}</td>
-                    <td style={{ ...num, fontWeight: 700, color: '#B3261E' }}>{minutesLabel(r.delay.overrunMin)}</td>
+                    <td style={{ ...num, fontWeight: 700, color: '#B3261E' }}>{r.delay.overrunMin > 0 ? minutesLabel(r.delay.overrunMin) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             {delayedRows.length > DETAIL_LIMIT && (
               <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#6A7186' }}>
-                A mostrar as {DETAIL_LIMIT} consultas mais atrasadas de {delayedRows.length}. Os totais acima contam todas.
+                A mostrar {DETAIL_LIMIT} de {delayedRows.length} consultas. Os totais acima contam todas.
               </p>
             )}
           </div>

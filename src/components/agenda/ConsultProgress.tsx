@@ -9,7 +9,10 @@
 //
 // Conta do início real da consulta até ao fim MARCADO (janela de
 // lib/consult-window.ts); depois do fim marcado mostra o atraso a contar
-// (respostas de 25/11, A3). Cores: azul enquanto há tempo, âmbar nos últimos
+// (respostas de 25/11, A3). Victor, 27/11: "os dois, contados em separado" —
+// o atraso para começar (hora marcada → médico chama o paciente) aparece ao
+// lado, sem mexer na barra; depois do fim marcado conta o tempo excedido.
+// Cores: azul enquanto há tempo, âmbar nos últimos
 // 20% (ou 5 minutos), vermelho depois da hora.
 // O relógio é um store externo partilhado (um só intervalo para todas as
 // barras do ecrã), lido com useSyncExternalStore — no servidor e na
@@ -54,13 +57,23 @@ export function consultProgress(startMs: number, endMs: number, nowMs: number) {
 
 const COLOR = { ok: '#2743A6', ending: '#D98300', over: '#B3261E' } as const;
 
+/** Texto do atraso para começar; null quando começou a horas */
+export function lateStartLabel(lateStartMin: number | null | undefined) {
+  return lateStartMin && lateStartMin > 0
+    ? `Começou ${lateStartMin} min depois da hora`
+    : null;
+}
+
 export function ConsultProgress({
   startMs,
   endMs,
+  lateStartMin,
   variant = 'card',
 }: {
   startMs: number;
   endMs: number;
+  /** Victor, 27/11 (A3): minutos entre a hora marcada e o início real */
+  lateStartMin?: number;
   /** card = fio no fundo do cartão da agenda; row = barra fina com texto;
    *  header = barra grande no ecrã da consulta */
   variant?: 'card' | 'row' | 'header';
@@ -69,19 +82,23 @@ export function ConsultProgress({
   if (now === 0) return null;
   const { ratio, leftMin, state } = consultProgress(startMs, endMs, now);
   const color = COLOR[state];
-  // Respostas de 25/11 (A3): depois do fim marcado conta o atraso
+  // Respostas de 25/11 (A3): depois do fim marcado conta o tempo a mais.
+  // 27/11: chama-se "Tempo excedido", para não se confundir com o atraso
+  // para começar, que é outra conta.
   const label =
     state === 'over'
       ? leftMin >= 0
         ? 'Tempo esgotado'
-        : `Atraso: ${-leftMin} min`
+        : `Tempo excedido: ${-leftMin} min`
       : `Falta${leftMin === 1 ? '' : 'm'} ${leftMin} min`;
+  const late = lateStartLabel(lateStartMin);
+  const fullLabel = late ? `${label} · ${late}` : label;
 
   if (variant === 'card') {
     return (
       <span
-        title={label}
-        aria-label={label}
+        title={fullLabel}
+        aria-label={fullLabel}
         style={{
           position: 'absolute',
           left: 0,
@@ -112,10 +129,11 @@ export function ConsultProgress({
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(ratio * 100)}
-      aria-label={label}
+      aria-label={fullLabel}
       style={{
         display: 'flex',
         alignItems: 'center',
+        flexWrap: 'wrap',
         gap: big ? 14 : 8,
         marginTop: big ? 10 : 4,
         maxWidth: big ? 640 : 260,
@@ -151,6 +169,18 @@ export function ConsultProgress({
       >
         {label}
       </span>
+      {late && (
+        <span
+          style={{
+            flexBasis: '100%',
+            fontSize: big ? '13px' : '11px',
+            fontWeight: 600,
+            color: '#8A5A00',
+          }}
+        >
+          {late}
+        </span>
+      )}
     </div>
   );
 }

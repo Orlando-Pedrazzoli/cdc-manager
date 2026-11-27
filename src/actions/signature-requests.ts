@@ -30,6 +30,7 @@ import Appointment from '@/models/Appointment';
 import Doctor from '@/models/Doctor';
 import User from '@/models/User';
 import DocumentTemplate from '@/models/DocumentTemplate';
+import { templateIssueBlock } from '@/lib/template-access';
 import SignatureRequest, {
   SIGNATURE_REQUEST_TTL_MS,
   type SignatureRequestStatus,
@@ -239,7 +240,7 @@ export async function createTemplateSignatureRequestAction(input: {
         .select('+kioskToken')
         .lean(),
       DocumentTemplate.findById(input.templateId)
-        .select('active allowStaff title kind')
+        .select('active allowStaff restrictedToDoctors allowedDoctorIds title kind')
         .lean(),
     ]);
     if (!patient || patient.status !== 'active')
@@ -249,8 +250,13 @@ export async function createTemplateSignatureRequestAction(input: {
     if (!(await canAccessSignatureClinic(staff, input.clinicId, input.patientId)))
       return { error: 'Sem permissões para este paciente nesta clínica.' };
     if (!t || !t.active) return { error: 'Modelo indisponível.' };
-    if (staff.role !== 'doctor' && !t.allowStaff)
-      return { error: 'Este modelo só pode ser emitido pelo médico.' };
+    // 9.ª ronda (c): mesma regra da emissão ao balcão (receção só allowStaff;
+    // médico fora da lista de um modelo restrito não o usa)
+    const block = templateIssueBlock(t, {
+      role: staff.role,
+      doctorId: staff.role === 'doctor' ? staff.doctorId : null,
+    });
+    if (block) return { error: block };
     // 9.ª ronda/20: o texto destes comprovativos é feito no servidor com as
     // horas registadas; pelo tablet viajaria o texto do browser
     if (isTimeLockedKind(t.kind))

@@ -22,6 +22,14 @@ const DocumentTemplateSchema = new Schema(
     body: { type: String, required: true, maxlength: 20_000 },
     // Quem pode emitir: médico sempre; receção só se allowStaff
     allowStaff: { type: Boolean, default: false },
+    // 9.ª ronda (c), Victor 27/11: modelo restrito a médicos escolhidos pela
+    // gestão (contratos). Sem restrição, qualquer médico emite. Com
+    // restrição e lista vazia, nenhum médico. Regras: lib/template-access.ts
+    restrictedToDoctors: { type: Boolean, default: false },
+    allowedDoctorIds: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'Doctor' }],
+      default: [],
+    },
     // Pede assinatura do paciente no ecrã antes de gerar
     requiresSignature: { type: Boolean, default: false },
     active: { type: Boolean, default: true },

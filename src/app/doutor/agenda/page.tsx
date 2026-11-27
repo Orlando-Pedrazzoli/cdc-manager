@@ -11,7 +11,7 @@
 
 import Link from 'next/link';
 import { ConsultProgress } from '@/components/agenda/ConsultProgress';
-import { consultWindow } from '@/lib/consult-window';
+import { consultWindow, lateStartMinutes } from '@/lib/consult-window';
 import AutoRefresh from '@/components/ui/AutoRefresh';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { auth } from '@/lib/auth';
@@ -422,6 +422,10 @@ export default async function DoctorAgendaPage({
                       {...consultWindow(
                         a.startAt.getTime(),
                         a.endAt.getTime(),
+                        a.startedAt ? new Date(a.startedAt).getTime() : null,
+                      )}
+                      lateStartMin={lateStartMinutes(
+                        a.startAt.getTime(),
                         a.startedAt ? new Date(a.startedAt).getTime() : null,
                       )}
                       variant='row'

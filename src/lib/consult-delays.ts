@@ -66,6 +66,14 @@ export interface DelaySummary {
   maxOverrunMin: number;
   /** soma dos minutos de início tardio */
   lateStartMin: number;
+  // Victor, 27/11 (A3): "os dois, contados em separado" — o atraso para
+  // começar tem as suas próprias contas, como o tempo excedido
+  /** consultas que começaram depois da hora marcada */
+  lateStarts: number;
+  /** média por consulta que começou tarde; null se nenhuma */
+  avgLateStartMin: number | null;
+  /** maior atraso para começar do grupo */
+  maxLateStartMin: number;
   /** % das consultas que acabaram depois da hora */
   delayedPct: number | null;
 }
@@ -86,12 +94,19 @@ export function summarizeDelays(
         avgOverrunMin: null,
         maxOverrunMin: 0,
         lateStartMin: 0,
+        lateStarts: 0,
+        avgLateStartMin: null,
+        maxLateStartMin: 0,
         delayedPct: null,
       };
       map.set(r.key, s);
     }
     s.consults += 1;
     s.lateStartMin += r.delay.lateStartMin;
+    if (r.delay.lateStartMin > 0) {
+      s.lateStarts += 1;
+      s.maxLateStartMin = Math.max(s.maxLateStartMin, r.delay.lateStartMin);
+    }
     if (r.delay.overrunMin > 0) {
       s.delayed += 1;
       s.overrunMin += r.delay.overrunMin;
@@ -100,6 +115,8 @@ export function summarizeDelays(
   }
   for (const s of map.values()) {
     s.avgOverrunMin = s.delayed > 0 ? Math.round(s.overrunMin / s.delayed) : null;
+    s.avgLateStartMin =
+      s.lateStarts > 0 ? Math.round(s.lateStartMin / s.lateStarts) : null;
     s.delayedPct = s.consults > 0 ? Math.round((s.delayed / s.consults) * 100) : null;
   }
   return [...map.values()].sort(

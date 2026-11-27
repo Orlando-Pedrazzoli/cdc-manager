@@ -368,7 +368,7 @@ export async function PatientAccount({
               ))}
             </div>
           ) : (
-            <Link href='/admin/cobranca' style={{ fontSize: '13px', fontWeight: 600, color: '#2743A6' }}>
+            <Link href='/admin/cobranca?todos=1' style={{ fontSize: '13px', fontWeight: 600, color: '#2743A6' }}>
               Ver em Cobranças
             </Link>
           )}

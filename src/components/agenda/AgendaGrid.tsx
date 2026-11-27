@@ -311,6 +311,8 @@ export interface AgendaAppointment {
   /** Início e fim reais (epoch ms) — para a barra de tempo da consulta */
   startMs?: number;
   endMs?: number;
+  /** Victor, 27/11 (A3): minutos de atraso para começar (0 = a horas) */
+  lateStartMin?: number;
   /** 5.ª ronda/09: como nos conheceu (rótulo pronto a mostrar) */
   referralLabel?: string | null;
   /** 8.ª ronda/04: n.º do paciente (null = pré-marcação) */
@@ -1198,7 +1200,12 @@ export function AgendaGrid({
                       ) : null}
                       {/* Barra de tempo: enche enquanto a consulta decorre */}
                       {a.status === 'in-progress' && a.startMs != null && a.endMs != null && (
-                        <ConsultProgress startMs={a.startMs} endMs={a.endMs} variant='card' />
+                        <ConsultProgress
+                          startMs={a.startMs}
+                          endMs={a.endMs}
+                          lateStartMin={a.lateStartMin}
+                          variant='card'
+                        />
                       )}
                     </div>
                   );
