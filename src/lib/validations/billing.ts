@@ -107,5 +107,58 @@ export const voidInvoiceSchema = z.object({
     v => v === 'true' || v === 'on' || v === true,
     z.boolean(),
   ),
+  // 25/11 (Isabel): 'void' = anular (só no próprio dia); 'credit-total' =
+  // nota de crédito total (qualquer dia). Default 'void' (formulário antigo).
+  mode: z.preprocess(
+    v => (v == null || v === '' ? 'void' : v),
+    z.enum(['void', 'credit-total']),
+  ),
 });
 export type VoidInvoiceInput = z.infer<typeof voidInvoiceSchema>;
+
+// --- Nota de crédito parcial (25/11, Isabel) ---------------------------------
+//   kind 'lines' → lineIndexes "0,2" (linhas da fatura) + voidProcedures
+//   kind 'value' → valueEuros + description (ex.: desconto esquecido)
+export const partialCreditNoteSchema = z
+  .object({
+    invoiceId: z.string().regex(OBJECT_ID, 'Fatura inválida'),
+    kind: z.enum(['lines', 'value']),
+    reason: z
+      .string()
+      .trim()
+      .min(3, 'Indique o motivo da nota de crédito')
+      .max(300, 'Motivo demasiado longo'),
+    lineIndexes: z.preprocess(
+      v =>
+        String(v ?? '')
+          .split(',')
+          .map(x => x.trim())
+          .filter(Boolean)
+          .map(Number),
+      z.array(z.number().int().min(0)),
+    ),
+    valueCents: z.preprocess(
+      v => {
+        const s = String(v ?? '').trim().replace(/\s/g, '').replace(',', '.');
+        if (s === '') return 0;
+        const n = Number(s);
+        return Number.isFinite(n) ? Math.round(n * 100) : NaN;
+      },
+      z.number({ error: 'Valor inválido' }).int().min(0),
+    ),
+    description: z.preprocess(
+      v => (v == null ? '' : String(v).trim()),
+      z.string().max(120, 'Descrição demasiado longa'),
+    ),
+    voidProcedures: z.preprocess(
+      v => v === 'true' || v === 'on' || v === true,
+      z.boolean(),
+    ),
+  })
+  .superRefine((d, ctx) => {
+    if (d.kind === 'lines' && d.lineIndexes.length === 0)
+      ctx.addIssue({ code: 'custom', message: 'Escolha pelo menos uma linha.' });
+    if (d.kind === 'value' && d.valueCents <= 0)
+      ctx.addIssue({ code: 'custom', message: 'Indique o valor a creditar.' });
+  });
+export type PartialCreditNoteInput = z.infer<typeof partialCreditNoteSchema>;

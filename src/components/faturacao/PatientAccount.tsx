@@ -22,6 +22,12 @@ import Doctor from '@/models/Doctor';
 import { getActiveClinics } from '@/models/Clinic';
 import { clinicLabel } from '@/lib/branding';
 import { CheckoutModal, type BillableAct } from '@/components/cobranca/CheckoutModal';
+import {
+  CREDIT_NOTE_KIND_LABEL,
+  creditedCents,
+  invoiceDueCents,
+  type CreditNoteKind,
+} from '@/lib/credit-notes';
 
 const ptDateTime = (d: Date) =>
   new Intl.DateTimeFormat('pt-PT', {
@@ -54,7 +60,7 @@ export async function PatientAccount({
     Invoice.find({ patientId })
       .sort({ createdAt: -1 })
       .select(
-        'createdAt status totalCents paidCents payments moloniDocumentNumber',
+        'createdAt status totalCents paidCents payments moloniDocumentNumber creditNotes',
       )
       .lean(),
     Procedure.find({ patientId, status: 'completed', invoiceId: null })
@@ -99,7 +105,26 @@ export async function PatientAccount({
     (a, i) => a + (i.paidCents ?? i.totalCents),
     0,
   );
-  const due = totalBilled - totalPaid;
+  // 25/11 (Isabel): notas de crédito parciais abatem à dívida
+  const totalCredited = active.reduce((a, i) => a + creditedCents(i), 0);
+  const due = active.reduce((a, i) => a + invoiceDueCents(i), 0);
+  // Todas as notas de crédito do paciente (anulações incluídas), recentes primeiro
+  const creditRows = invoices
+    .flatMap(i =>
+      (i.creditNotes ?? []).map(c => ({
+        id: String(c._id),
+        invoiceId: String(i._id),
+        invoiceLabel:
+          i.moloniDocumentNumber ??
+          `Interno #${String(i._id).slice(-6).toUpperCase()}`,
+        createdAt: c.createdAt as Date,
+        kind: c.kind as CreditNoteKind,
+        totalCents: c.totalCents,
+        reason: c.reason,
+        moloniNumber: (c.moloniDocumentNumber as string | null) ?? null,
+      })),
+    )
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const unbilledCents = unbilled.reduce((a, p) => a + p.priceCents, 0);
 
   const th: React.CSSProperties = {
@@ -142,6 +167,8 @@ export async function PatientAccount({
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         {kpi('Faturado', formatCents(totalBilled))}
         {kpi('Pago', formatCents(totalPaid), '#0F7B4D')}
+        {totalCredited > 0 &&
+          kpi('Notas de crédito (parciais)', formatCents(totalCredited), '#6A7186')}
         {kpi('Em dívida', formatCents(due), due > 0 ? '#B3261E' : '#0F7B4D')}
         {kpi(
           'Por faturar (atos concluídos)',
@@ -174,7 +201,7 @@ export async function PatientAccount({
             {invoices.map(i => {
               const paid =
                 i.status === 'voided' ? 0 : (i.paidCents ?? i.totalCents);
-              const d = i.status === 'voided' ? 0 : i.totalCents - paid;
+              const d = invoiceDueCents(i);
               return (
                 <tr
                   key={String(i._id)}
@@ -251,6 +278,60 @@ export async function PatientAccount({
           </tbody>
         </table>
       </div>
+      {creditRows.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <p
+            style={{
+              margin: '0 0 6px',
+              fontSize: '13px',
+              fontWeight: 700,
+              color: '#1C2233',
+            }}
+          >
+            Notas de crédito
+          </p>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={th}>Data</th>
+                <th style={th}>Fatura</th>
+                <th style={th}>Tipo</th>
+                <th style={th}>Motivo</th>
+                <th style={th}>N.º Moloni</th>
+                <th style={{ ...th, textAlign: 'right' }}>Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {creditRows.map(c => (
+                <tr key={c.id}>
+                  <td style={td}>{ptDate(c.createdAt)}</td>
+                  <td style={td}>
+                    <Link
+                      href={`/admin/faturacao/${c.invoiceId}`}
+                      style={{ color: '#2743A6', fontWeight: 600, textDecoration: 'none' }}
+                    >
+                      {c.invoiceLabel}
+                    </Link>
+                  </td>
+                  <td style={td}>{CREDIT_NOTE_KIND_LABEL[c.kind]}</td>
+                  <td style={{ ...td, color: '#6A7186' }}>{c.reason}</td>
+                  <td style={{ ...td, color: '#6A7186' }}>{c.moloniNumber ?? '—'}</td>
+                  <td
+                    style={{
+                      ...td,
+                      textAlign: 'right',
+                      fontVariantNumeric: 'tabular-nums',
+                      fontWeight: 700,
+                    }}
+                  >
+                    −{formatCents(c.totalCents)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       {unbilled.length > 0 && (
         <div
           style={{

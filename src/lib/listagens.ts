@@ -15,6 +15,7 @@
 // fecho de mês para produção = lib/commission-accounting.ts.
 // =============================================================================
 
+import { invoiceDueCents } from '@/lib/credit-notes';
 import mongoose from 'mongoose';
 import Patient from '@/models/Patient';
 import Appointment from '@/models/Appointment';
@@ -681,11 +682,12 @@ export async function runListing(
         status: { $ne: 'voided' },
         paidCents: { $ne: null },
       })
-        .select('patientId createdAt totalCents paidCents moloniDocumentNumber')
+        .select(
+          'patientId createdAt totalCents paidCents status moloniDocumentNumber creditNotes.totalCents',
+        )
         .lean();
-      const open = inv.filter(
-        i => (i.paidCents ?? i.totalCents) < i.totalCents,
-      );
+      // 25/11: notas de crédito parciais abatem à dívida
+      const open = inv.filter(i => invoiceDueCents(i) > 0);
       const patients = await Patient.find({
         _id: { $in: open.map(i => i.patientId) },
       })
@@ -705,7 +707,7 @@ export async function runListing(
             telefone: pt?.phone ?? '',
             total: i.totalCents,
             pago: i.paidCents ?? 0,
-            divida: i.totalCents - (i.paidCents ?? 0),
+            divida: invoiceDueCents(i),
           };
         })
         .sort((a, b) => b.divida - a.divida);

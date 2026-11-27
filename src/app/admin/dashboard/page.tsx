@@ -941,10 +941,16 @@ export default async function AdminDashboardPage() {
               _id: null,
               n: { $sum: 1 },
               cents: {
+                // 25/11: notas de crédito parciais abatem à dívida
                 $sum: {
                   $subtract: [
-                    '$totalCents',
-                    { $ifNull: ['$paidCents', '$totalCents'] },
+                    {
+                      $subtract: [
+                        '$totalCents',
+                        { $ifNull: ['$paidCents', '$totalCents'] },
+                      ],
+                    },
+                    { $sum: { $ifNull: ['$creditNotes.totalCents', []] } },
                   ],
                 },
               },

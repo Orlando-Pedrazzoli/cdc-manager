@@ -34,7 +34,7 @@ import { OrganizationForm } from '@/components/configuracoes/OrganizationForm';
 import { TabletLinkPanel } from '@/components/configuracoes/TabletLinkPanel';
 import { getOrganization } from '@/models/Organization';
 import { defaultClinic } from '@/lib/branding';
-import { isMoloniConfigured, isMoloniEmissionReady } from '@/lib/moloni';
+import { hasMoloniCredentials, isMoloniEmissionReady } from '@/lib/moloni';
 import User from '@/models/User';
 import { isPlaceholderEmail } from '@/lib/username';
 import { OperationsPanel } from '@/components/configuracoes/OperationsPanel';
@@ -274,7 +274,7 @@ export default async function ConfiguracoesPage({
         />
       ) : activeTab === 'integracoes' ? (
         <MoloniPanel
-          configured={isMoloniConfigured()}
+          configured={hasMoloniCredentials()}
           ready={isMoloniEmissionReady()}
           present={Object.fromEntries(
             [
@@ -283,12 +283,12 @@ export default async function ConfiguracoesPage({
               'MOLONI_USERNAME',
               'MOLONI_PASSWORD',
               'MOLONI_COMPANY_ID',
-              'MOLONI_DOCUMENT_SET_ID',
-              'MOLONI_CREDIT_SET_ID',
+              'MOLONI_DOCUMENT_SETS',
               'MOLONI_CATEGORY_ID',
               'MOLONI_UNIT_ID',
               'MOLONI_PAYMENT_METHODS',
               'MOLONI_EXEMPTION_REASON',
+              'MOLONI_TAX_IDS',
             ].map(k => [k, !!process.env[k]]),
           )}
         />

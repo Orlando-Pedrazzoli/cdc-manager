@@ -16,11 +16,16 @@
 //     negativo no mês corrente (lib/commission-accounting.ts)
 //   · Não → o erro estava no DOCUMENTO (NIF, meio de pagamento…): os atos
 //     voltam a 'completed' sem fatura → reaparecem na fila de cobrança
-//   Enquanto o Moloni não está ligado, a anulação é interna; quando ligar
-//   (Fase 7) a nota de crédito Moloni pluga aqui e preenche creditNoteMoloniId.
+//   25/11 (Isabel): ANULAR só no próprio dia da emissão; depois, só NOTA DE
+//   CRÉDITO (mode 'credit-total' — mesmo fluxo, qualquer dia). Ambos ficam em
+//   invoice.creditNotes e, se a fatura estiver no Moloni, emitem lá a NC.
+//
+// partialCreditNoteAction (25/11, Isabel) — nota de crédito PARCIAL: só
+//   algumas linhas (com a mesma pergunta da linha de balanço para esses
+//   atos) ou só um valor (ex.: desconto esquecido). A fatura continua válida.
 //
 // RBAC: admin sempre; receptionist só nas clínicas onde opera
-// (User.clinicIds via canOperateClinic). Anulação: SÓ admin.
+// (User.clinicIds via canOperateClinic). Anulação e notas de crédito: SÓ admin.
 // =============================================================================
 
 'use server';
@@ -34,7 +39,14 @@ import {
   checkoutSchema,
   voidInvoiceSchema,
   registerPaymentSchema,
+  partialCreditNoteSchema,
 } from '@/lib/validations/billing';
+import {
+  canVoidOnDay,
+  creditableCents,
+  invoiceDueCents,
+  validatePartialCredit,
+} from '@/lib/credit-notes';
 import { lisbonMonthOf, needsAdjustmentOnVoid } from '@/lib/commission-accounting';
 import {
   allocateCheckoutDiscount,
@@ -45,7 +57,11 @@ import {
 import { createVoidAdjustment } from '@/lib/commission-adjustments';
 import { cancelRecallForProcedure } from '@/lib/recalls';
 import { reverseStockForProcedure } from '@/lib/stock-consumption';
-import { emitCreditNoteFor, tryEmitInvoice } from '@/lib/moloni-emission';
+import {
+  emitCreditNoteFor,
+  tryEmitInvoice,
+  tryEmitReceipts,
+} from '@/lib/moloni-emission';
 import { FINAL_CONSUMER_ADDRESS_THRESHOLD_CENTS } from '@/lib/validations/patient';
 import Invoice from '@/models/Invoice';
 import Procedure from '@/models/Procedure';
@@ -307,9 +323,11 @@ export async function checkoutAction(
     });
 
     revalidatePath('/admin/cobranca');
-    // Fase 7A: emissão automática no Moloni (só se totalmente pago e o
-    // Moloni estiver configurado; falha não afeta a cobrança registada)
-    if (!isPartial && invoiceId) await tryEmitInvoice(String(invoiceId));
+    // Emissão automática no Moloni: FATURA + RECIBO do que foi pago agora
+    // (25/11). Também quando o pagamento é parcial ou nada foi pago — a
+    // dívida fica na fatura e cada pagamento posterior gera o seu recibo.
+    // Falha não afeta a cobrança registada.
+    if (invoiceId) await tryEmitInvoice(String(invoiceId));
     revalidatePath('/admin/dashboard');
     return { success: true };
   } catch (e) {
@@ -361,14 +379,27 @@ export async function voidInvoiceAction(
       return { error: 'Este documento já está anulado.' };
     }
 
+    const now = new Date();
+    // 25/11 (Isabel): anular só no próprio dia; depois, nota de crédito
+    if (data.mode === 'void' && !canVoidOnDay(invoice.createdAt, now)) {
+      return {
+        error:
+          'Só é possível anular no próprio dia da emissão. Depois disso, use a nota de crédito.',
+      };
+    }
+    const creditCents = creditableCents(invoice);
+    if (creditCents <= 0) {
+      return { error: 'Este documento já foi todo creditado.' };
+    }
+
     const procedureIds = invoice.lines.map(l => l.procedureId);
     const procedures = await Procedure.find({
       _id: { $in: procedureIds },
       invoiceId: invoice._id,
     });
 
-    const now = new Date();
     let adjustments = 0;
+    const creditNoteId = new mongoose.Types.ObjectId();
 
     const mongooseSession = await mongoose.startSession();
     try {
@@ -377,6 +408,17 @@ export async function voidInvoiceAction(
         invoice.set('voidedAt', now);
         invoice.set('voidedByUserId', session.user.id);
         invoice.set('voidReason', data.reason);
+        invoice.creditNotes = [
+          ...(invoice.creditNotes ?? []),
+          {
+            _id: creditNoteId,
+            kind: data.mode === 'void' ? 'void' : 'total',
+            totalCents: creditCents,
+            reason: data.reason,
+            createdAt: now,
+            createdByUserId: new mongoose.Types.ObjectId(session.user.id),
+          },
+        ] as typeof invoice.creditNotes;
         await invoice.save({ session: mongooseSession });
 
         if (data.voidProcedures) {
@@ -425,14 +467,19 @@ export async function voidInvoiceAction(
       }
     }
 
-    // Fase 7A: nota de crédito no Moloni se a fatura já lá estava emitida
-    // (best-effort — o registo interno já está anulado)
+    // Nota de crédito no Moloni se a fatura já lá estava emitida
+    // (best-effort — o registo interno já está anulado; o erro fica gravado
+    // na própria nota de crédito para se repetir depois)
     let creditNote: string | null = null;
     if (invoice.moloniDocumentId) {
-      const cn = await emitCreditNoteFor(String(invoice._id), data.reason);
+      const cn = await emitCreditNoteFor(
+        String(invoice._id),
+        String(creditNoteId),
+      );
       if (cn.error) console.error('[moloni] nota de crédito:', cn.error);
       creditNote = cn.number ?? null;
     }
+    const label = data.mode === 'void' ? 'Fatura anulada' : 'Nota de crédito total';
 
     await logAudit({
       userId: session.user.id,
@@ -442,8 +489,8 @@ export async function voidInvoiceAction(
       patientId: String(invoice.patientId),
       clinicId: String(invoice.clinicId),
       summary: data.voidProcedures
-        ? `Fatura anulada com linha de balanço: ${procedures.length} ato(s) anulado(s), ${adjustments} estorno(s) de comissão — ${data.reason}${creditNote ? ` · NC Moloni ${creditNote}` : ''}`
-        : `Fatura anulada (documento): ${procedures.length} ato(s) devolvido(s) à cobrança — ${data.reason}${creditNote ? ` · NC Moloni ${creditNote}` : ''}`,
+        ? `${label} com linha de balanço: ${procedures.length} ato(s) anulado(s), ${adjustments} estorno(s) de comissão — ${data.reason}${creditNote ? ` · NC Moloni ${creditNote}` : ''}`
+        : `${label} (documento): ${procedures.length} ato(s) devolvido(s) à cobrança — ${data.reason}${creditNote ? ` · NC Moloni ${creditNote}` : ''}`,
     });
 
     revalidatePath(`/admin/faturacao/${data.invoiceId}`);
@@ -451,6 +498,7 @@ export async function voidInvoiceAction(
     revalidatePath('/admin/cobranca');
     revalidatePath('/admin/relatorios');
     revalidatePath('/admin/dashboard');
+    revalidatePath(`/admin/pacientes/${String(invoice.patientId)}`);
     return {
       success: true,
       voidedProcedures: data.voidProcedures ? procedures.length : 0,
@@ -513,7 +561,8 @@ export async function registerPaymentAction(
 
     if (invoice.status === 'voided') return { error: 'Documento anulado.' };
     const paid = invoice.paidCents ?? invoice.totalCents;
-    const due = invoice.totalCents - paid;
+    // Dívida = total − notas de crédito parciais − pagamentos
+    const due = invoiceDueCents(invoice);
     if (due <= 0) return { error: 'Este documento já está totalmente pago.' };
     if (data.amountEuros > due) {
       return {
@@ -534,7 +583,8 @@ export async function registerPaymentAction(
     const newPaid = paid + data.amountEuros;
     invoice.set('paidCents', newPaid);
     if (!invoice.paidAt) invoice.set('paidAt', now);
-    if (newPaid >= invoice.totalCents && invoice.status === 'pending') {
+    const newDue = invoiceDueCents(invoice);
+    if (newDue <= 0 && invoice.status === 'pending') {
       invoice.set(
         'status',
         invoice.moloniDocumentId ? 'issued' : 'awaiting-emission',
@@ -548,14 +598,196 @@ export async function registerPaymentAction(
       entityId: String(invoice._id),
       patientId: String(invoice.patientId),
       clinicId: String(invoice.clinicId),
-      summary: `Pagamento registado: ${(data.amountEuros / 100).toFixed(2)} € (${data.paymentMethod}) — saldo ${((invoice.totalCents - newPaid) / 100).toFixed(2)} €`,
+      summary: `Pagamento registado: ${(data.amountEuros / 100).toFixed(2)} € (${data.paymentMethod}) — saldo ${(newDue / 100).toFixed(2)} €`,
     });
+    // 25/11: recibo Moloni deste pagamento (se a fatura já lá está)
+    await tryEmitReceipts(String(invoice._id));
     revalidatePath(`/admin/faturacao/${data.invoiceId}`);
     revalidatePath('/admin/faturacao');
     revalidatePath(`/admin/pacientes/${String(invoice.patientId)}`);
     revalidatePath('/admin/listagens/saldos');
-    return { success: true, dueCents: invoice.totalCents - newPaid };
+    return { success: true, dueCents: newDue };
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erro inesperado.' };
   }
 }
+
+// -----------------------------------------------------------------------------
+// NOTA DE CRÉDITO PARCIAL (25/11, Isabel) — só admin. Linhas ou só um valor.
+// A fatura mantém-se válida; o crédito abate à dívida e fica na ficha.
+// -----------------------------------------------------------------------------
+export type PartialCreditNoteState =
+  | { error: string }
+  | { success: true; totalCents: number; moloniNumber: string | null; moloniError: string | null }
+  | undefined;
+
+export async function partialCreditNoteAction(
+  _prev: PartialCreditNoteState,
+  formData: FormData,
+): Promise<PartialCreditNoteState> {
+  try {
+    const parsed = partialCreditNoteSchema.safeParse({
+      invoiceId: formData.get('invoiceId'),
+      kind: formData.get('kind'),
+      reason: formData.get('reason'),
+      lineIndexes: formData.get('lineIndexes'),
+      valueCents: formData.get('valueEuros'),
+      description: formData.get('description'),
+      voidProcedures: formData.get('voidProcedures'),
+    });
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
+    }
+    const data = parsed.data;
+
+    const session = await auth();
+    if (!session?.user?.id || session.user.role !== 'admin') {
+      return { error: 'Apenas a administração pode emitir notas de crédito.' };
+    }
+    await dbConnect();
+    const admin = await User.findById(session.user.id)
+      .select('role status')
+      .lean();
+    if (!admin || admin.status !== 'active' || admin.role !== 'admin') {
+      return { error: 'Apenas a administração ativa pode emitir notas de crédito.' };
+    }
+
+    const invoice = await Invoice.findById(data.invoiceId);
+    if (!invoice) return { error: 'Documento não encontrado.' };
+
+    const creditedLineIndexes = (invoice.creditNotes ?? []).flatMap(
+      c => c.lineIndexes ?? [],
+    );
+    const check = validatePartialCredit(
+      {
+        totalCents: invoice.totalCents,
+        status: invoice.status,
+        creditNotes: invoice.creditNotes ?? [],
+        lines: invoice.lines,
+      },
+      data.kind === 'lines'
+        ? { kind: 'lines', lineIndexes: data.lineIndexes, creditedLineIndexes }
+        : { kind: 'value', valueCents: data.valueCents },
+    );
+    if ('error' in check) return { error: check.error };
+
+    const now = new Date();
+    const creditNoteId = new mongoose.Types.ObjectId();
+    const lineIndexes =
+      data.kind === 'lines' ? [...new Set(data.lineIndexes)].sort((a, b) => a - b) : [];
+    const procIds =
+      data.kind === 'lines'
+        ? lineIndexes.map(i => invoice.lines[i].procedureId)
+        : [];
+    const procedures = procIds.length
+      ? await Procedure.find({ _id: { $in: procIds }, invoiceId: invoice._id })
+      : [];
+
+    const mongooseSession = await mongoose.startSession();
+    try {
+      await mongooseSession.withTransaction(async () => {
+        invoice.creditNotes = [
+          ...(invoice.creditNotes ?? []),
+          {
+            _id: creditNoteId,
+            kind: data.kind,
+            totalCents: check.totalCents,
+            reason: data.reason,
+            lineIndexes: data.kind === 'lines' ? lineIndexes : undefined,
+            description:
+              data.kind === 'value' ? data.description || 'Acerto de valor' : null,
+            createdAt: now,
+            createdByUserId: new mongoose.Types.ObjectId(session.user.id),
+          },
+        ] as typeof invoice.creditNotes;
+        // Saldo: se o crédito liquida o que faltava pagar, deixa de estar pendente
+        if (invoice.status === 'pending' && invoiceDueCents(invoice) <= 0) {
+          invoice.set(
+            'status',
+            invoice.moloniDocumentId ? 'issued' : 'awaiting-emission',
+          );
+        }
+        await invoice.save({ session: mongooseSession });
+
+        if (data.kind === 'lines') {
+          if (data.voidProcedures) {
+            for (const proc of procedures) {
+              if (proc.status === 'void') continue;
+              proc.set('status', 'void');
+              proc.set('voidedAt', now);
+              proc.set('voidedByUserId', session.user.id);
+              proc.set('voidReason', `Nota de crédito: ${data.reason}`);
+              await proc.save({ session: mongooseSession });
+            }
+          } else {
+            await Procedure.updateMany(
+              { _id: { $in: procedures.map(p => p._id) }, status: 'invoiced' },
+              { $set: { status: 'completed', invoiceId: null } },
+              { session: mongooseSession },
+            );
+          }
+        }
+      });
+    } finally {
+      await mongooseSession.endSession();
+    }
+
+    let adjustments = 0;
+    if (data.kind === 'lines' && data.voidProcedures) {
+      for (const proc of procedures) {
+        if (needsAdjustmentOnVoid(proc.executedAt, now)) {
+          await createVoidAdjustment({
+            proc,
+            reason: 'invoice-void',
+            invoiceId: String(invoice._id),
+            effectiveAt: now,
+            userId: session.user.id,
+            note: data.reason,
+          });
+          adjustments++;
+        }
+        await cancelRecallForProcedure(String(proc._id));
+        await reverseStockForProcedure({
+          procedureId: String(proc._id),
+          userId: session.user.id,
+          reason: `Nota de crédito: ${data.reason}`,
+        });
+      }
+    }
+
+    let moloniNumber: string | null = null;
+    let moloniError: string | null = null;
+    if (invoice.moloniDocumentId) {
+      const cn = await emitCreditNoteFor(String(invoice._id), String(creditNoteId));
+      moloniNumber = cn.number ?? null;
+      moloniError = cn.error ?? null;
+      if (cn.error) console.error('[moloni] nota de crédito parcial:', cn.error);
+    }
+
+    const euros = (check.totalCents / 100).toFixed(2);
+    await logAudit({
+      userId: session.user.id,
+      action: 'invoice-void',
+      entityType: 'Invoice',
+      entityId: String(invoice._id),
+      patientId: String(invoice.patientId),
+      clinicId: String(invoice.clinicId),
+      summary:
+        data.kind === 'lines'
+          ? `Nota de crédito parcial de ${euros} € — linha(s) ${lineIndexes.map(i => i + 1).join(', ')}${data.voidProcedures ? ` (${procedures.length} ato(s) anulado(s), ${adjustments} estorno(s))` : ' (atos devolvidos à cobrança)'} — ${data.reason}${moloniNumber ? ` · NC Moloni ${moloniNumber}` : ''}`
+          : `Nota de crédito parcial de ${euros} € (${data.description || 'acerto de valor'}) — ${data.reason}${moloniNumber ? ` · NC Moloni ${moloniNumber}` : ''}`,
+    });
+
+    revalidatePath(`/admin/faturacao/${data.invoiceId}`);
+    revalidatePath('/admin/faturacao');
+    revalidatePath('/admin/cobranca');
+    revalidatePath('/admin/relatorios');
+    revalidatePath('/admin/dashboard');
+    revalidatePath(`/admin/pacientes/${String(invoice.patientId)}`);
+    revalidatePath('/admin/listagens/saldos');
+    return { success: true, totalCents: check.totalCents, moloniNumber, moloniError };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Erro inesperado.' };
+  }
+}
+

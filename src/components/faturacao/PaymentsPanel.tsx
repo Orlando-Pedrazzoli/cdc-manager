@@ -24,23 +24,28 @@ export interface PaymentRow {
   paidAtLabel: string;
   receivedBy: string;
   note: string | null;
+  /** N.º do recibo Moloni (25/11: um recibo por pagamento) */
+  receiptNumber?: string | null;
 }
 
 export function PaymentsPanel({
   invoiceId,
   totalCents,
   paidCents,
+  creditedCents = 0,
   payments,
   canRegister,
 }: {
   invoiceId: string;
   totalCents: number;
   paidCents: number;
+  /** Notas de crédito parciais — abatem à dívida (25/11) */
+  creditedCents?: number;
   payments: PaymentRow[];
   canRegister: boolean;
 }) {
   const router = useRouter();
-  const due = totalCents - paidCents;
+  const due = Math.max(0, totalCents - creditedCents - paidCents);
   const [state, action, pending] = useActionState<
     RegisterPaymentState,
     FormData
@@ -100,6 +105,14 @@ export function PaymentsPanel({
           <span>
             Total <strong>{formatCents(totalCents)}</strong>
           </span>
+          {creditedCents > 0 && (
+            <span>
+              Creditado{' '}
+              <strong style={{ color: '#6A7186' }}>
+                {formatCents(creditedCents)}
+              </strong>
+            </span>
+          )}
           <span>
             Pago{' '}
             <strong style={{ color: '#0F7B4D' }}>
@@ -127,7 +140,7 @@ export function PaymentsPanel({
             {payments.map((p, i) => (
               <tr key={p.id}>
                 <td style={{ ...td, color: '#6A7186', whiteSpace: 'nowrap' }}>
-                  Recibo {i + 1}
+                  {p.receiptNumber ?? `Recibo ${i + 1}`}
                 </td>
                 <td style={{ ...td, whiteSpace: 'nowrap' }}>{p.paidAtLabel}</td>
                 <td style={td}>

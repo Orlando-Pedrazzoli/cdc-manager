@@ -10,6 +10,7 @@
 
 'use server';
 
+import { invoiceDueCents } from '@/lib/credit-notes';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import { dbConnect } from '@/lib/mongodb';
@@ -83,7 +84,7 @@ export async function getPatientAlertsAction(
       )
       .lean(),
     Invoice.find({ patientId, status: { $ne: 'voided' } })
-      .select('totalCents paidCents')
+      .select('totalCents paidCents status creditNotes.totalCents')
       .lean(),
     // 8.ª ronda/22 (Victor, 17/11/2026): os atos por faturar que vieram do
     // Dentoral "ficam de fora" dos avisos — "são muitos e não conseguimos
@@ -132,10 +133,7 @@ export async function getPatientAlertsAction(
       note,
       unbilledCents: unbilled.reduce((a, p) => a + p.priceCents, 0),
       unbilledCount: unbilled.length,
-      dueCents: invoices.reduce(
-        (a, i) => a + (i.totalCents - (i.paidCents ?? i.totalCents)),
-        0,
-      ),
+      dueCents: invoices.reduce((a, i) => a + invoiceDueCents(i), 0),
       noShows: att.noShows,
       lateCancels: att.lateCancels,
     }),

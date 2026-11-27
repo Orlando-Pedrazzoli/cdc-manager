@@ -17,7 +17,8 @@
 // FLUXO (Sprint 4):
 //   1. Receção abre o checkout com os Procedures 'completed' do paciente
 //   2. Confirma valores/meio de pagamento → action chama a API Moloni
-//   3. Moloni emite fatura-recibo certificada (numeração DELE)
+//   3. Moloni emite a FATURA certificada (numeração DELE) e um RECIBO por
+//      pagamento (25/11, Victor: nunca fatura-recibo)
 //   4. Gravamos aqui o espelho: ids Moloni, totais, meio de pagamento
 //   5. Procedures ligados passam a status 'invoiced'
 //   6. PDF fica disponível no portal do paciente (via link/download Moloni)
@@ -36,7 +37,7 @@ export const INVOICE_STATUS = [
   // Quando o Moloni ligar (Sprint 4), a emissão preenche os campos moloni*
   // e transita para 'issued'.
   'awaiting-emission',
-  'issued', // emitida e paga no ato (fatura-recibo — o caso normal no balcão)
+  'issued', // emitida no Moloni (fatura; os pagamentos têm recibo à parte)
   'pending', // pagamento por regularizar: parcial (Fase 5C) ou transferência a confirmar
   'voided', // anulada via nota de crédito no Moloni
 ] as const;
@@ -179,6 +180,56 @@ const InvoiceSchema = new Schema(
       type: String,
       trim: true,
       default: null,
+    },
+    // --- Recibos Moloni (25/11, Victor: "sempre fatura, com recibo em
+    // separado") — um recibo por pagamento registado (payments[]._id)
+    moloniReceipts: {
+      type: [
+        new Schema(
+          {
+            paymentId: { type: Schema.Types.ObjectId, required: true },
+            documentId: { type: Number, required: true },
+            number: { type: String, trim: true, default: null },
+            createdAt: { type: Date, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: undefined,
+    },
+    // --- Notas de crédito (25/11, regras da Isabel) -------------------------
+    // Totais ou parciais (linhas ou só um valor). Ficam aqui e aparecem na
+    // ficha do paciente. Regras em lib/credit-notes.ts.
+    creditNotes: {
+      type: [
+        new Schema(
+          {
+            kind: {
+              type: String,
+              enum: ['void', 'total', 'lines', 'value'],
+              required: true,
+            },
+            totalCents: { type: Number, required: true, min: 1 },
+            reason: { type: String, trim: true, maxlength: 300, required: true },
+            // 'lines': índices das linhas da fatura creditadas
+            lineIndexes: { type: [Number], default: undefined },
+            // 'value': descrição da linha (ex.: "Desconto")
+            description: { type: String, trim: true, maxlength: 120, default: null },
+            moloniDocumentId: { type: Number, default: null },
+            moloniDocumentNumber: { type: String, trim: true, default: null },
+            // Erro do Moloni (a NC interna fica registada; emite-se depois)
+            moloniError: { type: String, trim: true, maxlength: 300, default: null },
+            createdAt: { type: Date, required: true },
+            createdByUserId: {
+              type: Schema.Types.ObjectId,
+              ref: 'User',
+              required: true,
+            },
+          },
+          { _id: true },
+        ),
+      ],
+      default: undefined,
     },
     // --- Anulação -----------------------------------------------------------
     voidedAt: { type: Date, default: null },

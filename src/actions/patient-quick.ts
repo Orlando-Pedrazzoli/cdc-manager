@@ -15,6 +15,7 @@
 
 'use server';
 
+import { invoiceDueCents } from '@/lib/credit-notes';
 import { attendanceWarning, summarizeAttendance } from '@/lib/attendance';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -249,7 +250,7 @@ export async function getPatientQuickViewAction(patientId: string): Promise<Pati
   const [patient, record, invoices, unbilled, upcoming, lastVisit, clinics, attendance] = await Promise.all([
     Patient.findById(patientId).select('name processNumber birthDate phone email nif notes status').lean(),
     ClinicalRecord.findOne({ patientId }).select('allergies questionnaire.completedAt questionnaire.data').lean(),
-    Invoice.find({ patientId, status: { $ne: 'voided' } }).select('totalCents paidCents').lean(),
+    Invoice.find({ patientId, status: { $ne: 'voided' } }).select('totalCents paidCents status creditNotes.totalCents').lean(),
     Procedure.find({ patientId, status: 'completed', invoiceId: null }).select('priceCents').lean(),
     Appointment.find({ patientId, startAt: { $gte: new Date(now.getTime() - 12 * 60 * 60 * 1000) }, status: { $in: ['pending', 'confirmed', 'checked-in'] } })
       .sort({ startAt: 1 })
@@ -293,7 +294,7 @@ export async function getPatientQuickViewAction(patientId: string): Promise<Pati
     adminNote: (patient.notes as string | null) ?? null,
     allergies: ((record?.allergies as string[] | undefined) ?? []).filter(Boolean),
     hasAnamnesis: !!(questionnaire?.completedAt ?? questionnaire?.data),
-    dueCents: invoices.reduce((a, i) => a + (i.totalCents - (i.paidCents ?? i.totalCents)), 0),
+    dueCents: invoices.reduce((a, i) => a + invoiceDueCents(i), 0),
     unbilledCents: unbilled.reduce((a, p) => a + p.priceCents, 0),
     unbilledCount: unbilled.length,
     lastVisitLabel: lastVisit ? dateFmt.format(lastVisit.startAt as Date) : null,
