@@ -73,6 +73,8 @@ export default async function NewPatientPage() {
       >
         <PatientForm
           mode='create'
+          // Ponto 36: só quando o leitor estiver instalado nos postos
+          cardReader={process.env.CITIZEN_CARD_READER === '1'}
           doctors={doctors.map(d => ({
             id: String(d._id),
             name: d.name,

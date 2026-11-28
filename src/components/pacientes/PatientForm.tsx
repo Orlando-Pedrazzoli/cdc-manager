@@ -18,6 +18,8 @@
 
 'use client';
 
+import { CitizenCardButton } from '@/components/pacientes/CitizenCardButton';
+import type { CitizenCardData } from '@/lib/citizen-card';
 import {
   startTransition,
   useActionState,
@@ -268,7 +270,10 @@ export function PatientForm({
   initial,
   doctors,
   completing = false,
+  cardReader = false,
 }: {
+  /** Ponto 36: mostra "Ler Cartão de Cidadão" (leitor instalado nos postos) */
+  cardReader?: boolean;
   mode: 'create' | 'edit';
   patientId?: string; // obrigatório em edit
   initial?: PatientFormInitial;
@@ -357,6 +362,41 @@ export function PatientForm({
   const [street, setStreet] = useState<string>(values.street);
   const cityTouched = useRef<boolean>(Boolean(values.city));
   const streetTouched = useRef<boolean>(Boolean(values.street));
+  // Ponto 36: dados lidos do Cartão de Cidadão entram nos campos; só os
+  // que o cartão trouxe (a morada só vem com o PIN de morada do titular).
+  // Nada é gravado até a receção conferir e carregar em guardar.
+  const fillFromCard = (d: CitizenCardData) => {
+    if (d.name) setName(d.name);
+    if (d.birthDate) setBirthDate(d.birthDate);
+    if (d.sex) setSex(d.sex);
+    if (d.nif) {
+      setNif(d.nif);
+      setNoNif(false);
+    }
+    if (d.snsNumber) {
+      setSns(d.snsNumber);
+      setNoSns(false);
+    }
+    if (d.nationality) {
+      if ((NATIONALITIES as readonly string[]).includes(d.nationality)) {
+        setNatChoice(d.nationality);
+        setNatOther('');
+      } else {
+        setNatChoice('other');
+        setNatOther(d.nationality);
+      }
+    }
+    if (d.street) {
+      streetTouched.current = true;
+      setStreet(d.street);
+    }
+    if (d.city) {
+      cityTouched.current = true;
+      setCity(d.city);
+    }
+    if (d.postalCode) setPostalCode(d.postalCode);
+  };
+
   useEffect(() => {
     if (!/^\d{4}-\d{3}$/.test(postalCode)) return;
     if (cityTouched.current && streetTouched.current) return;
@@ -490,6 +530,7 @@ export function PatientForm({
           style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
         >
           <h3 style={sectionTitle}>Identificação</h3>
+          {cardReader && strict && <CitizenCardButton onRead={fillFromCard} />}
           <div style={grid2}>
             <RequiredBox done={name.trim().length >= 3}>
               <Input
