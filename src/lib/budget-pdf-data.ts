@@ -19,7 +19,11 @@ import TreatmentPlan from '@/models/TreatmentPlan';
 import { logAudit } from '@/lib/audit';
 import { budgetNumberLabel } from '@/lib/budgets';
 import { documentLogoDataUrl } from '@/lib/document-logo';
-import { longDatePt, shortDatePt } from '@/lib/document-merge';
+import {
+  longDatePt,
+  placeFromAddress,
+  shortDatePt,
+} from '@/lib/document-merge';
 import {
   budgetPdfFilename,
   budgetPrintRows,
@@ -88,7 +92,7 @@ export async function budgetPdfResponse(params: {
     rows,
     totals: budgetPrintTotals(rows, plan.discountCents),
     notes: plan.notes?.trim() || null,
-    issuedAtLabel: `${clinic?.address?.split(',').pop()?.trim() || 'Lisboa'}, ${longDatePt(now)}`,
+    issuedAtLabel: `${placeFromAddress(clinic?.address)}, ${longDatePt(now)}`,
   });
 
   await logAudit({

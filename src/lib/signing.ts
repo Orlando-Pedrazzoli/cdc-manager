@@ -26,7 +26,11 @@ import { logAudit } from '@/lib/audit';
 import { renderDocumentPdf } from '@/lib/document-pdf';
 import { documentLogoDataUrl } from '@/lib/document-logo';
 import { doctorSignatureDataUrl } from '@/lib/document-signature';
-import { longDatePt, shortDatePt } from '@/lib/document-merge';
+import {
+  longDatePt,
+  placeFromAddress,
+  shortDatePt,
+} from '@/lib/document-merge';
 import {
   patientDocumentKey,
   uploadDataUrl,
@@ -178,7 +182,7 @@ export async function finalizeIssuedDocument(params: {
     // Respostas de 25/11 (A8): assinatura do médico em imagem
     doctorSignatureDataUrl:
       doctor?.signatureUpdatedAt ? await doctorSignatureDataUrl(String(doctor._id)) : null,
-    issuedAtLabel: `${clinic?.address?.split(',').pop()?.trim() || 'Lisboa'}, ${longDatePt(now)}`,
+    issuedAtLabel: `${placeFromAddress(clinic?.address)}, ${longDatePt(now)}`,
     patientSignatureDataUrl: params.signatureDataUrl,
     patientSignatureLabel:
       t.requiresSignature || params.signatureDataUrl

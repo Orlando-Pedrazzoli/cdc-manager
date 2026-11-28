@@ -22,11 +22,16 @@ import {
   TEMPLATE_KIND_LABEL,
 } from '../../src/lib/data/document-templates';
 import { DOCUMENT_CATEGORIES } from '../../src/lib/domain';
-import { mergeTemplate, placeholdersIn } from '../../src/lib/document-merge';
+import {
+  mergeTemplate,
+  placeFromAddress,
+  placeholdersIn,
+} from '../../src/lib/document-merge';
 import {
   cleanDoctorIds,
   contractAccessQuery,
   doctorIsAllowed,
+  documentTextDoctorId,
   templateIssueBlock,
   templateListFilter,
 } from '../../src/lib/template-access';
@@ -214,6 +219,23 @@ test('contratos na ficha: escondidos do médico sem acesso; "Outro" continua esc
   assert.deepEqual(doctorDocumentFilter('u1', true), {
     $or: [{ category: { $nin: ['other'] } }, { uploadedByUserId: 'u1' }],
   });
+});
+
+test('texto do documento: médico que emite; se for a receção, o da consulta', () => {
+  assert.equal(documentTextDoctorId(A, B), A); // o médico que emite prevalece
+  assert.equal(documentTextDoctorId(null, B), B); // receção + consulta escolhida
+  assert.equal(documentTextDoctorId(null, null), null); // receção sem consulta
+  assert.equal(documentTextDoctorId(undefined, 'x'), null); // id inválido não entra
+});
+
+test('localidade da linha da data: sem código postal nem número de porta', () => {
+  assert.equal(placeFromAddress('Av. Lusíada, n.º 2, Loja 507, piso -1, 1500-392 Lisboa'), 'Lisboa');
+  assert.equal(placeFromAddress('Praceta Ferreira de Castro, n.º 1, 2610-072 Amadora'), 'Amadora');
+  assert.equal(placeFromAddress('Rua A, 5, 2770-196 Paço de Arcos'), 'Paço de Arcos');
+  assert.equal(placeFromAddress('Av. Lusiadas, 2'), 'Lisboa'); // sobrava "2"
+  assert.equal(placeFromAddress('Rua X, Loja 507'), 'Lisboa'); // não é localidade
+  assert.equal(placeFromAddress(null), 'Lisboa');
+  assert.equal(placeFromAddress('', 'Amadora'), 'Amadora');
 });
 
 // --- Importação ------------------------------------------------------------------

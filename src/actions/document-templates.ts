@@ -42,7 +42,11 @@ import { finalizeIssuedDocument } from '@/lib/signing';
 import User from '@/models/User';
 import { processLabel } from '@/lib/domain';
 import { certificateTimes } from '@/lib/certificate-times';
-import { cleanDoctorIds, templateIssueBlock } from '@/lib/template-access';
+import {
+  cleanDoctorIds,
+  documentTextDoctorId,
+  templateIssueBlock,
+} from '@/lib/template-access';
 
 const OID = /^[0-9a-fA-F]{24}$/;
 
@@ -300,21 +304,33 @@ async function buildValues(params: {
   appointmentId: string | null;
   extra: Record<string, string>;
 }) {
-  const [patient, doctor, clinics, appt] = await Promise.all([
+  const [patient, clinics, appt] = await Promise.all([
     Patient.findById(params.patientId)
       .select('name nif snsNumber birthDate processNumber address phone email')
       .lean(),
-    params.doctorId
-      ? Doctor.findById(params.doctorId).select('name fullName licenseNumber').lean()
-      : null,
     getActiveClinics(),
     params.appointmentId && OID.test(params.appointmentId)
       ? Appointment.findById(params.appointmentId)
-          .select('startAt endAt checkedInAt startedAt completedAt closedAt clinicId')
+          .select(
+            'startAt endAt checkedInAt startedAt completedAt closedAt clinicId doctorId',
+          )
           .lean()
       : null,
   ]);
   if (!patient) throw new Error('Paciente não encontrado.');
+  // 28/11 (verificação em produção): quando é a gestão ou a receção a emitir
+  // (orientações, contratos), o nome e a cédula do médico saíam "________",
+  // mesmo com a consulta escolhida. Passam a ser os do médico DESSA consulta.
+  // Só o texto: quem assina o documento continua a ser quem o emite.
+  const textDoctorId = documentTextDoctorId(
+    params.doctorId,
+    appt?.doctorId != null ? String(appt.doctorId) : null,
+  );
+  const doctor = textDoctorId
+    ? await Doctor.findById(textDoctorId)
+        .select('name fullName licenseNumber')
+        .lean()
+    : null;
   const clinic =
     clinics.find(
       c =>
