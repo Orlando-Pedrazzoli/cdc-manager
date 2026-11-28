@@ -14,6 +14,7 @@
 import { useActionState, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import { WebcamCapture } from '@/components/pacientes/WebcamCapture';
 import { fileInfo, putFile } from '@/lib/upload-client';
 import {
   Camera,
@@ -23,6 +24,7 @@ import {
   Phone,
   Mail,
   Trash2,
+  Upload,
   UserX,
   UserCheck,
 } from 'lucide-react';
@@ -75,8 +77,9 @@ function ageFrom(iso: string | null): number | null {
 }
 
 // -----------------------------------------------------------------------------
-// Avatar com foto (paridade Dentoral). Clique na câmara: carrega/substitui;
-// no lixo: remove. Fluxo em 3 passos dos documentos (upload direto).
+// Avatar com foto (paridade Dentoral). Câmara: tira a fotografia com a
+// câmara do posto (28/11); seta: carrega um ficheiro; lixo: remove.
+// Fluxo em 3 passos dos documentos (upload direto).
 // -----------------------------------------------------------------------------
 function PatientPhoto({
   patientId,
@@ -90,6 +93,7 @@ function PatientPhoto({
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const initials = name
     .split(/\s+/)
@@ -194,8 +198,12 @@ function PatientPhoto({
       <span style={{ display: 'flex', gap: '8px' }}>
         <button
           type='button'
-          title={photoThumbUrl ? 'Substituir foto' : 'Adicionar foto'}
-          onClick={() => fileRef.current?.click()}
+          title={
+            photoThumbUrl
+              ? 'Tirar nova fotografia com a câmara'
+              : 'Tirar fotografia com a câmara'
+          }
+          onClick={() => setCameraOpen(true)}
           disabled={busy}
           style={{
             border: 'none',
@@ -207,6 +215,22 @@ function PatientPhoto({
           }}
         >
           <Camera size={15} />
+        </button>
+        <button
+          type='button'
+          title='Carregar uma fotografia guardada no computador'
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          style={{
+            border: 'none',
+            background: 'none',
+            padding: 0,
+            cursor: busy ? 'default' : 'pointer',
+            color: '#2743A6',
+            opacity: busy ? 0.5 : 1,
+          }}
+        >
+          <Upload size={15} />
         </button>
         {photoThumbUrl && (
           <button
@@ -227,6 +251,16 @@ function PatientPhoto({
           </button>
         )}
       </span>
+      {cameraOpen && (
+        <WebcamCapture
+          patientName={name}
+          onClose={() => setCameraOpen(false)}
+          onCapture={file => {
+            setCameraOpen(false);
+            void upload(file);
+          }}
+        />
+      )}
     </div>
   );
 }
