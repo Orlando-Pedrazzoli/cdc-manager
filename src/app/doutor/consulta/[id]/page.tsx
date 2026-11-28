@@ -29,6 +29,7 @@ import RxRequest from '@/models/RxRequest';
 import ClinicalDocument from '@/models/Document';
 import { getClinicById } from '@/models/Clinic';
 import { documentUrls, previewUrl } from '@/lib/storage';
+import { shortDatePt } from '@/lib/document-merge';
 import { AnamnesisStatusBanner } from '@/components/clinico/AnamnesisStatusBanner';
 import { MandatoryAnamnesisGate } from '@/components/clinico/MandatoryAnamnesisGate';
 import { ConsultProgress } from '@/components/agenda/ConsultProgress';
@@ -280,7 +281,36 @@ export default async function ConsultationPage({
     : [];
   const rxDocByPublicId = new Map(rxDocs.map(d => [d.publicId, d]));
 
+  // Ponto 31: relatório da radiografia — texto + ligação ao PDF na ficha
+  const rxReportDocIds = rxRequests
+    .map(r => r.report?.documentId)
+    .filter(id => id != null);
+  const rxReportDocs = rxReportDocIds.length
+    ? await ClinicalDocument.find({ _id: { $in: rxReportDocIds } })
+        .select('publicId format resourceType voidedAt')
+        .lean()
+    : [];
+  const rxReportUrl = new Map<string, string>();
+  for (const d of rxReportDocs) {
+    if (d.voidedAt) continue;
+    const urls = await documentUrls({
+      publicId: d.publicId,
+      resourceType: d.resourceType ?? 'image',
+      format: d.format,
+    });
+    if (urls.previewUrl) rxReportUrl.set(String(d._id), urls.previewUrl);
+  }
+
   const rxItems: RxItem[] = await Promise.all(rxRequests.map(async r => ({
+    report: r.report
+      ? {
+          text: r.report.text,
+          writtenAtLabel: `${shortDatePt(r.report.writtenAt)} às ${lisbonHhmm(r.report.writtenAt)}`,
+          pdfUrl: r.report.documentId
+            ? (rxReportUrl.get(String(r.report.documentId)) ?? null)
+            : null,
+        }
+      : null,
     id: String(r._id),
     modality: r.modality as RxModality,
     toothNumbers: (r.toothNumbers as string[]) ?? [],

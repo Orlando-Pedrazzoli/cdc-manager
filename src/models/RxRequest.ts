@@ -160,6 +160,25 @@ const RxRequestSchema = new Schema(
       type: [ImageRefSchema],
       default: [],
     },
+    // Ponto 31 (Giulia, 27/11): relatório/interpretação escrito pelo médico
+    // que pediu; o PDF fica nos documentos do paciente (documentId).
+    // Escreve-se uma vez (os documentos emitidos não se alteram).
+    report: {
+      type: new Schema(
+        {
+          text: { type: String, required: true, trim: true, maxlength: 2000 },
+          doctorId: { type: Schema.Types.ObjectId, ref: 'Doctor', required: true },
+          writtenAt: { type: Date, required: true },
+          documentId: {
+            type: Schema.Types.ObjectId,
+            ref: 'PatientDocument',
+            default: null,
+          },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
     // Hook para o B.6: consentimento RX assinado associado ao pedido
     consentDocumentId: {
       type: Schema.Types.ObjectId,
