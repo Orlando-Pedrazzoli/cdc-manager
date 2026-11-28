@@ -21,6 +21,16 @@ import {
   taxIdFor,
 } from '../../src/lib/moloni';
 
+import {
+  creditNoteNetCents,
+  creditNoteProducts,
+  creditRequestFor,
+  documentNumberLabel,
+  invoiceProductsInOrder,
+  pickMaturityDateId,
+  type MoloniDoc,
+} from '../../src/lib/moloni-payloads';
+
 let n = 0;
 function test(name: string, fn: () => void) {
   fn();
@@ -119,6 +129,82 @@ test('parcial por valor: desconto esquecido, sem exceder o que falta', () => {
     (validatePartialCredit({ ...inv3, status: 'voided' }, { kind: 'value', valueCents: 100 }) as { error: string }).error,
     /anulado/,
   );
+});
+
+// --- 28/11: pedidos conferidos com a documentação da API ----------------------
+const fatura: MoloniDoc = {
+  number: 12,
+  document_set: { name: 'COL' },
+  document_type: { saft_code: 'FT' },
+  products: [
+    { document_product_id: 902, product_id: 52, name: 'Restauração', price: 60, qty: 1, order: 1, exemption_reason: 'M07', taxes: [] },
+    { document_product_id: 901, product_id: 51, name: 'Consulta', price: 40, qty: 1, order: 0, exemption_reason: 'M07', taxes: [] },
+    { document_product_id: 903, product_id: 53, name: 'Escova', price: 10, qty: 1, order: 2, taxes: [{ tax_id: 7, value: 23 }] },
+  ],
+};
+const linhas = invoiceProductsInOrder(fatura);
+
+test('número do documento: tipo + série/número, nos dois formatos da resposta', () => {
+  assert.equal(documentNumberLabel(fatura), 'FT COL/12');
+  assert.equal(documentNumberLabel({ document_set_name: 'A', number: '7' }), 'A/7');
+  assert.equal(documentNumberLabel({}), '');
+});
+
+test('nota de crédito por linhas: related_id da linha da fatura, mesmo preço', () => {
+  const p = creditNoteProducts(linhas, { kind: 'lines', lineIndexes: [1, 2] });
+  assert.deepEqual(p.map(x => x.related_id), [902, 903]);
+  assert.deepEqual(p.map(x => x.product_id), [52, 53]);
+  assert.deepEqual(p.map(x => x.price), [60, 10]);
+  assert.equal(p[0].exemption_reason, 'M07');
+  assert.deepEqual(p[1].taxes, [{ tax_id: 7, value: 23, order: 0, cumulative: 0 }]);
+  assert.equal('exemption_reason' in p[1], false);
+  assert.deepEqual(p.map(x => x.order), [0, 1]);
+});
+
+test('nota de crédito por linhas: linha inexistente ou repetida é recusada', () => {
+  assert.throws(() => creditNoteProducts(linhas, { kind: 'lines', lineIndexes: [5] }));
+  assert.throws(() => creditNoteProducts(linhas, { kind: 'lines', lineIndexes: [0, 0] }));
+  assert.throws(() => creditNoteProducts(linhas, { kind: 'lines', lineIndexes: [] }));
+});
+
+test('nota de crédito por valor: reparte sem passar o preço de cada linha', () => {
+  const a = creditNoteProducts(linhas, { kind: 'value', cents: 1500 });
+  assert.deepEqual(a.map(x => [x.related_id, x.price, x.qty]), [[901, 15, 1]]);
+  const b = creditNoteProducts(linhas, { kind: 'value', cents: 5550 });
+  assert.deepEqual(b.map(x => [x.related_id, x.price]), [[901, 40], [902, 15.5]]);
+  assert.equal(creditNoteNetCents(b), 5550);
+  const c = creditNoteProducts(linhas, { kind: 'value', cents: 6500, skipIndexes: [0] });
+  assert.deepEqual(c.map(x => [x.related_id, x.price]), [[902, 60], [903, 5]]);
+});
+
+test('nota de crédito por valor: acima do que as linhas permitem é recusada', () => {
+  assert.throws(() => creditNoteProducts(linhas, { kind: 'value', cents: 11001 }));
+  assert.throws(() => creditNoteProducts(linhas, { kind: 'value', cents: 6000, skipIndexes: [1, 0] }));
+  assert.throws(() => creditNoteProducts(linhas, { kind: 'value', cents: 0 }));
+});
+
+test('sem document_product_id na fatura não se envia nota de crédito', () => {
+  assert.throws(
+    () => creditNoteProducts([{ product_id: 1, name: 'x', price: 5, qty: 1 }], { kind: 'lines', lineIndexes: [0] }),
+    /document_product_id/,
+  );
+});
+
+test('o que creditar: linhas, valor, e anulação com e sem créditos anteriores', () => {
+  assert.deepEqual(creditRequestFor({ kind: 'lines', lineIndexes: [2], totalCents: 1000 }, [], 3), { kind: 'lines', lineIndexes: [2] });
+  assert.deepEqual(creditRequestFor({ kind: 'void', totalCents: 11000 }, [], 3), { kind: 'lines', lineIndexes: [0, 1, 2] });
+  assert.deepEqual(creditRequestFor({ kind: 'total', totalCents: 7000 }, [{ kind: 'lines', lineIndexes: [0] }], 3), { kind: 'lines', lineIndexes: [1, 2] });
+  assert.deepEqual(
+    creditRequestFor({ kind: 'total', totalCents: 6500 }, [{ kind: 'lines', lineIndexes: [0] }, { kind: 'value' }], 3),
+    { kind: 'value', cents: 6500, skipIndexes: [0] },
+  );
+  assert.deepEqual(creditRequestFor({ kind: 'value', totalCents: 500 }, [{ kind: 'lines', lineIndexes: [1] }], 3), { kind: 'value', cents: 500, skipIndexes: [1] });
+});
+
+test('prazo de vencimento do cliente: o de 0 dias, senão o primeiro', () => {
+  assert.equal(pickMaturityDateId([{ maturity_date_id: 4, days: 30 }, { maturity_date_id: 9, days: '0' }]), 9);
+  assert.equal(pickMaturityDateId([{ maturity_date_id: 4, days: 30 }]), 4);
+  assert.equal(pickMaturityDateId([]), null);
 });
 
 console.log(`\nmoloni-fatura: ${n} testes OK`);

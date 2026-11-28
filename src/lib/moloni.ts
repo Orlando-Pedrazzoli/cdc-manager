@@ -25,9 +25,20 @@
 // Documentos: FATURA + RECIBO em separado (nunca fatura-recibo) e notas de
 // crédito totais ou parciais, sempre associadas à fatura.
 //
-// Ainda não testado contra a conta real (credenciais por criar) — cada
-// pressuposto sobre campos obrigatórios está assinalado com "ASSUMIDO".
+// 28/11: campos conferidos com a documentação oficial (moloni.pt/dev) —
+// ver faturacao/moloni-levantamento no projeto. Falta o ensaio real na
+// Empresa Demonstração antes de 02/12.
 // =============================================================================
+
+import {
+  creditNoteProducts,
+  documentNumberLabel,
+  invoiceProductsInOrder,
+  pickMaturityDateId,
+  type CreditRequest,
+  type MoloniDoc,
+  type MoloniMaturityDate,
+} from '@/lib/moloni-payloads';
 
 const BASE = 'https://api.moloni.pt/v1';
 
@@ -226,6 +237,25 @@ export async function discover() {
 
 // --- Cliente (paciente) ---------------------------------------------------------
 const CONSUMIDOR_FINAL_VAT = '999999990';
+
+/** 1.º meio de pagamento configurado — o cliente Moloni exige um por defeito */
+function defaultPaymentMethodId(): number {
+  return Object.values(jsonMap(process.env.MOLONI_PAYMENT_METHODS))[0] ?? 0;
+}
+let maturityCache: number | null = null;
+/** Prazo de vencimento por defeito do cliente (pronto pagamento) */
+async function defaultMaturityDateId(): Promise<number> {
+  if (maturityCache != null) return maturityCache;
+  try {
+    const list = await moloni<MoloniMaturityDate[]>('maturityDates/getAll', {
+      company_id: companyId(),
+    });
+    maturityCache = pickMaturityDateId(list) ?? 0;
+  } catch {
+    maturityCache = 0;
+  }
+  return maturityCache;
+}
 export async function ensureCustomer(p: {
   name: string;
   nif: string | null;
@@ -257,20 +287,22 @@ export async function ensureCustomer(p: {
       vat,
       number: next.number,
       name: p.name,
-      language_id: 1, // ASSUMIDO: 1 = Português
+      language_id: 1, // 1 = Português
       address: p.address ?? 'Desconhecida',
-      zip_code: p.postalCode ?? '0000-000',
+      // opcional; em Portugal, quando vai, tem de ser 0000-000
+      zip_code: /^\d{4}-\d{3}$/.test(p.postalCode ?? '') ? p.postalCode : '',
       city: p.city ?? 'Desconhecida',
-      country_id: 1, // ASSUMIDO: 1 = Portugal
+      country_id: 1, // 1 = Portugal (documentação)
       email: p.email ?? '',
       phone: p.phone ?? '',
-      maturity_date_id: 0,
+      // obrigatórios na documentação e só aceitam ids válidos
+      maturity_date_id: await defaultMaturityDateId(),
+      payment_method_id: defaultPaymentMethodId(),
       payment_day: 0,
       discount: 0,
       credit_limit: 0,
-      payment_method_id: 0,
       delivery_method_id: 0,
-      salesperson_id: 0,
+      salesman_id: 0,
     },
   );
   return ins.customer_id;
@@ -296,7 +328,7 @@ export async function ensureProduct(p: {
     {
       company_id: cid,
       category_id: Number(process.env.MOLONI_CATEGORY_ID),
-      type: 2, // ASSUMIDO: 2 = serviço
+      type: 2, // 2 = serviço (documentação)
       name: p.name.slice(0, 200),
       reference: p.reference.slice(0, 30),
       price: p.priceCents / 100,
@@ -355,14 +387,16 @@ async function productLines(lines: EmitLine[]) {
   return products;
 }
 
+async function getDocument(documentId: number): Promise<MoloniDoc> {
+  return moloni<MoloniDoc>('documents/getOne', {
+    company_id: companyId(),
+    document_id: documentId,
+  });
+}
 async function docLabel(documentId: number) {
-  const doc = await moloni<{
-    document_set_name?: string;
-    number?: number;
-    atcud?: string;
-  }>('documents/getOne', { company_id: companyId(), document_id: documentId });
+  const doc = await getDocument(documentId);
   return {
-    number: `${doc.document_set_name ?? ''}/${doc.number ?? ''}`.trim(),
+    number: documentNumberLabel(doc) || String(documentId),
     atcud: doc.atcud ?? null,
   };
 }
@@ -389,7 +423,7 @@ export async function insertInvoice(input: {
     {
       company_id: companyId(),
       date: input.date,
-      expiration_date: input.date, // ASSUMIDO: vencimento a pronto
+      expiration_date: input.date, // obrigatório; vencimento a pronto
       document_set_id: setId,
       customer_id: input.customerId,
       products: await productLines(input.lines),
@@ -447,12 +481,19 @@ export async function insertCreditNote(input: {
   date: string;
   associatedDocumentId: number;
   totalCents: number;
-  lines: EmitLine[];
+  credit: CreditRequest;
   notes?: string | null;
 }): Promise<{ documentId: number; number: string }> {
   const setId = documentSetFor(input.clinicSlug);
   if (setId == null)
     throw new Error(`Moloni: sem série para a clínica "${input.clinicSlug}".`);
+  // As linhas saem da própria fatura no Moloni: cada uma leva o related_id
+  // (document_product_id) da linha que credita — obrigatório na API.
+  const invoice = await getDocument(input.associatedDocumentId);
+  const products = creditNoteProducts(
+    invoiceProductsInOrder(invoice),
+    input.credit,
+  );
   const ins = await moloni<{ valid: number; document_id: number }>(
     'creditNotes/insert',
     {
@@ -466,7 +507,7 @@ export async function insertCreditNote(input: {
           value: input.totalCents / 100,
         },
       ],
-      products: await productLines(input.lines),
+      products,
       notes: input.notes ?? '',
       status: 1,
     },

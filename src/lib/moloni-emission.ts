@@ -36,6 +36,7 @@ import {
   insertCreditNote,
   type EmitLine,
 } from '@/lib/moloni';
+import { creditRequestFor } from '@/lib/moloni-payloads';
 
 export const lisbonDate = (d: Date) =>
   new Intl.DateTimeFormat('en-CA', {
@@ -241,26 +242,16 @@ export async function emitCreditNoteFor(
     const cn = (inv.creditNotes ?? []).find(c => String(c._id) === creditNoteId);
     if (!cn || cn.moloniDocumentId) return {};
 
-    const all = await linesFor(inv);
-    let lines: EmitLine[];
-    if (cn.kind === 'lines') {
-      lines = (cn.lineIndexes ?? []).map(i => all[i]).filter(Boolean);
-    } else if (cn.kind === 'value') {
-      lines = [creditValueLine(cn.description ?? 'Acerto de valor', cn.totalCents)];
-    } else {
-      // 'void' / 'total': o que falta creditar. Sem créditos anteriores →
-      // todas as linhas; com créditos por linhas → as linhas que faltam;
-      // com créditos por valor → uma linha com o restante.
-      const before = (inv.creditNotes ?? []).filter(
-        c => String(c._id) !== creditNoteId,
-      );
-      if (before.length === 0) lines = all;
-      else if (before.every(c => c.kind === 'lines')) {
-        const used = new Set(before.flatMap(c => c.lineIndexes ?? []));
-        lines = all.filter((_, i) => !used.has(i));
-      } else lines = [creditValueLine('Crédito do valor restante', cn.totalCents)];
-    }
-    if (lines.length === 0) throw new Error('Nota de crédito sem linhas.');
+    // As linhas da nota de crédito são montadas a partir da fatura no
+    // Moloni (lib/moloni-payloads); aqui só se decide O QUE creditar.
+    const before = (inv.creditNotes ?? []).filter(
+      c => String(c._id) !== creditNoteId,
+    );
+    const credit = creditRequestFor(
+      { kind: cn.kind, lineIndexes: cn.lineIndexes, totalCents: cn.totalCents },
+      before.map(c => ({ kind: c.kind, lineIndexes: c.lineIndexes })),
+      inv.lines.length,
+    );
 
     const r = await insertCreditNote({
       clinicSlug: await clinicSlugOf(inv.clinicId),
@@ -268,7 +259,7 @@ export async function emitCreditNoteFor(
       date: lisbonDate(new Date()),
       associatedDocumentId: inv.moloniDocumentId,
       totalCents: cn.totalCents,
-      lines,
+      credit,
       notes: cn.reason,
     });
     cn.set('moloniDocumentId', r.documentId);
@@ -291,11 +282,6 @@ export async function emitCreditNoteFor(
     }
     return { error: msg };
   }
-}
-
-/** Linha de crédito "só um valor" (ex.: desconto esquecido) — isenta */
-function creditValueLine(name: string, cents: number): EmitLine {
-  return { reference: 'CDC-CREDITO', name, priceCents: cents, qty: 1, vatRate: 0 };
 }
 
 /**
