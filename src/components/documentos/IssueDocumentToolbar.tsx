@@ -10,6 +10,7 @@ import { dbConnect } from '@/lib/mongodb';
 import { templateListFilter } from '@/lib/template-access';
 import DocumentTemplate from '@/models/DocumentTemplate';
 import Appointment from '@/models/Appointment';
+import Doctor from '@/models/Doctor';
 import TreatmentType from '@/models/TreatmentType';
 import { getActiveClinics } from '@/models/Clinic';
 import { ensureDefaultTemplates } from '@/lib/document-templates-seed';
@@ -39,10 +40,13 @@ export async function IssueDocumentToolbar({
     Appointment.find({
       patientId,
       status: { $in: ['checked-in', 'in-progress', 'completed'] },
+      // 28/11: o médico só pode emitir sobre as SUAS consultas (a ação
+      // recusa as dos colegas); mostrar as dos outros só dava erro
+      ...(role === 'doctor' && doctorId ? { doctorId } : {}),
     })
       .sort({ startAt: -1 })
       .limit(10)
-      .select('startAt treatmentTypeId clinicId')
+      .select('startAt treatmentTypeId clinicId doctorId')
       .lean(),
     getActiveClinics(),
   ]);
@@ -54,6 +58,17 @@ export async function IssueDocumentToolbar({
     .select('name')
     .lean();
   const nameOf = new Map(tt.map(t => [String(t._id), t.name]));
+  // 28/11: para a gestão e a receção, cada consulta diz de que médico é —
+  // é esse o médico que sai no documento
+  const staff = role !== 'doctor';
+  const docs = staff
+    ? await Doctor.find({
+        _id: { $in: appts.map(a => a.doctorId).filter(id => id != null) },
+      })
+        .select('name')
+        .lean()
+    : [];
+  const doctorOf = new Map(docs.map(d => [String(d._id), d.name]));
   const fmt = new Intl.DateTimeFormat('pt-PT', {
     day: '2-digit',
     month: '2-digit',
@@ -84,8 +99,10 @@ export async function IssueDocumentToolbar({
       )}
       appointments={appts.map(a => ({
         id: String(a._id),
-        label: `${fmt.format(a.startAt).replace(',', '')} — ${nameOf.get(String(a.treatmentTypeId)) ?? 'consulta'}`,
+        label: `${fmt.format(a.startAt).replace(',', '')} — ${nameOf.get(String(a.treatmentTypeId)) ?? 'consulta'}${doctorOf.has(String(a.doctorId)) ? ` — ${doctorOf.get(String(a.doctorId))}` : ''}`,
+        clinicId: String(a.clinicId),
       }))}
+      staff={staff}
       size={size}
     />
   );

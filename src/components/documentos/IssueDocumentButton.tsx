@@ -48,6 +48,8 @@ export interface IssueTemplateOption {
 export interface IssueAppointmentOption {
   id: string;
   label: string; // "15/09/2026 14:00 — Consulta de medicina dentária"
+  /** 28/11: a clínica da consulta — o documento sai por ela */
+  clinicId?: string | null;
 }
 
 export function IssueDocumentButton({
@@ -55,12 +57,15 @@ export function IssueDocumentButton({
   clinicId,
   templates,
   appointments,
+  staff = false,
   size = 'md',
 }: {
   patientId: string;
   clinicId: string | null;
   templates: IssueTemplateOption[];
   appointments: IssueAppointmentOption[];
+  /** 28/11: quem emite é a gestão ou a receção (sem perfil médico) */
+  staff?: boolean;
   size?: 'sm' | 'md';
 }) {
   const router = useRouter();
@@ -90,7 +95,18 @@ export function IssueDocumentButton({
     needs('consulta.inicio') ||
     needs('consulta.fim') ||
     needs('consulta.data') ||
-    isTimeLockedKind(tpl?.kind);
+    isTimeLockedKind(tpl?.kind) ||
+    // 28/11 (verificação em produção): quando emite a gestão ou a receção,
+    // o médico do documento é o da consulta escolhida — sem consulta, o
+    // nome e a cédula saíam "________" (orientações, contratos)
+    (staff && (needs('medico.nome') || needs('medico.cedula')));
+  // 28/11: o documento sai pela clínica da consulta escolhida. Antes ia
+  // sempre a clínica da consulta mais recente: escolher uma consulta de
+  // outra clínica dava "A consulta não pertence à clínica indicada".
+  const issueClinicId =
+    (usesAppointment && appointmentId
+      ? appointments.find(a => a.id === appointmentId)?.clinicId
+      : null) ?? clinicId;
   const extra = { dias, 'acompanhante.nome': acompanhante, tratamento };
   const prepare = async () => {
     if (!templateId) return;
@@ -98,7 +114,7 @@ export function IssueDocumentButton({
     const r = await prepareDocumentAction({
       templateId,
       patientId,
-      clinicId,
+      clinicId: issueClinicId,
       appointmentId: usesAppointment ? appointmentId || null : null,
       extra,
     });
@@ -125,7 +141,7 @@ export function IssueDocumentButton({
     const r = await issueDocumentAction({
       templateId: prepared.templateId,
       patientId,
-      clinicId,
+      clinicId: issueClinicId,
       title,
       body,
       signatureDataUrl: signature,
@@ -246,7 +262,11 @@ export function IssueDocumentButton({
                 label='Consulta a que se refere'
                 value={appointmentId}
                 onChange={e => setAppointmentId(e.target.value)}
-                help='Preenche a data e as horas registadas no sistema: entrada = "Chegou", saída = "Tudo OK". Sem as duas, o comprovativo de presença não é emitido'
+                help={
+                  staff
+                    ? 'Preenche o médico, a data e as horas registadas dessa consulta (entrada = "Chegou", saída = "Tudo OK"). Sem as duas horas, o comprovativo de presença não é emitido'
+                    : 'Preenche a data e as horas registadas no sistema: entrada = "Chegou", saída = "Tudo OK". Sem as duas, o comprovativo de presença não é emitido'
+                }
               >
                 <option value=''>— Hoje, sem consulta associada —</option>
                 {appointments.map(a => (

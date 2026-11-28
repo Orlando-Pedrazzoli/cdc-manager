@@ -27,6 +27,7 @@ import {
   cleanDoctorIds,
   contractAccessQuery,
   doctorIsAllowed,
+  documentTextDoctorId,
   templateIssueBlock,
   templateListFilter,
 } from '../../src/lib/template-access';
@@ -214,6 +215,13 @@ test('contratos na ficha: escondidos do médico sem acesso; "Outro" continua esc
   assert.deepEqual(doctorDocumentFilter('u1', true), {
     $or: [{ category: { $nin: ['other'] } }, { uploadedByUserId: 'u1' }],
   });
+});
+
+test('texto do documento: médico que emite; se for a receção, o da consulta', () => {
+  assert.equal(documentTextDoctorId(A, B), A); // o médico que emite prevalece
+  assert.equal(documentTextDoctorId(null, B), B); // receção + consulta escolhida
+  assert.equal(documentTextDoctorId(null, null), null); // receção sem consulta
+  assert.equal(documentTextDoctorId(undefined, 'x'), null); // id inválido não entra
 });
 
 // --- Importação ------------------------------------------------------------------

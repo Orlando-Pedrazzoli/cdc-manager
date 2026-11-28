@@ -94,3 +94,19 @@ export function cleanDoctorIds(raw: readonly unknown[]): string[] {
   }
   return out;
 }
+
+// --- Médico que aparece no TEXTO do documento ------------------------------------
+/**
+ * 28/11/2026: o médico que emite é o que aparece no texto ({{medico.nome}},
+ * {{medico.cedula}}). Quando emite a gestão ou a receção (sem perfil médico),
+ * usa-se o médico da consulta escolhida; sem consulta, fica em branco para
+ * preencher à mão. Não muda quem assina.
+ */
+export function documentTextDoctorId(
+  issuerDoctorId: string | null | undefined,
+  appointmentDoctorId: string | null | undefined,
+): string | null {
+  const ok = (v: string | null | undefined) =>
+    typeof v === 'string' && /^[0-9a-fA-F]{24}$/.test(v) ? v : null;
+  return ok(issuerDoctorId) ?? ok(appointmentDoctorId);
+}
