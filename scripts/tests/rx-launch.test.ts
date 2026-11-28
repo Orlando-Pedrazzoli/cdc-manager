@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import {
   irysLaunchUrl,
   irysPatId,
+  kodakFolderFor,
   kodakLaunchUrl,
+  kodakNewFolder,
   normalizeKodakFolder,
   rxCleanName,
   rxSplitName,
@@ -110,6 +112,36 @@ test('Kodak: a migração limpa os valores da rx_kodak (código ou caminho)', ()
 test('Kodak: o endereço só aceita o código simples, nunca um caminho', () => {
   assert.equal(kodakLaunchUrl({ folder: 'Z:\\J.RVG\\J0002369', name: 'Ana Silva' }), null);
   assert.equal(kodakLaunchUrl({ folder: 'J.RVG/J0002369', name: 'Ana Silva' }), null);
+});
+
+// --- 28/11: pasta nova para quem ainda não tem (sem Dentoral a atribuir) ------
+test('Kodak: pasta nova = C + (5 000 000 + n.º de processo), sempre a mesma', () => {
+  assert.equal(kodakNewFolder(69163), 'C5069163');
+  assert.equal(kodakNewFolder(1), 'C5000001');
+  assert.equal(kodakNewFolder(4_999_999), 'C9999999');
+  for (const bad of [null, undefined, 0, -3, 1.5, 5_000_000]) {
+    assert.equal(kodakNewFolder(bad as number | null), null, String(bad));
+  }
+});
+
+test('Kodak: a pasta do Dentoral tem prioridade; sem ela usa-se a nova', () => {
+  assert.deepEqual(kodakFolderFor({ folder: 'j0002369', processNumber: 69163 }), { folder: 'J0002369', isNew: false });
+  assert.deepEqual(kodakFolderFor({ folder: null, processNumber: 69163 }), { folder: 'C5069163', isNew: true });
+  assert.deepEqual(kodakFolderFor({ folder: '  ', processNumber: 69163 }), { folder: 'C5069163', isNew: true });
+  // pasta inválida não é trocada às escondidas por uma nova
+  assert.equal(kodakFolderFor({ folder: 'recp', processNumber: 69163 }), null);
+  assert.equal(kodakFolderFor({ folder: null, processNumber: null }), null);
+});
+
+test('Kodak: o endereço da pasta nova passa na validação do lançador e leva novo=1', () => {
+  const q = query(kodakLaunchUrl({ folder: null, processNumber: 69163, name: 'Ana Silva' })!);
+  assert.equal(q.get('dir'), 'C.RVG\\C5069163');
+  assert.equal(q.get('novo'), '1');
+  const m = LAUNCHER_DIR.exec(q.get('dir')!);
+  assert.ok(m && m[1] === m[2]);
+  // pastas do Dentoral também levam novo=1 (código atribuído sem pasta no disco)
+  assert.equal(query(kodakLaunchUrl({ folder: 'J0002369', name: 'Ana Silva' })!).get('novo'), '1');
+  assert.equal(kodakLaunchUrl({ folder: null, processNumber: null, name: 'Ana Silva' }), null);
 });
 
 console.log(`\n${n} testes OK (rx-launch)`);

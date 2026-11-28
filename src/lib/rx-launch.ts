@@ -93,22 +93,61 @@ export function normalizeKodakFolder(raw: string | null | undefined): string | n
 }
 
 /**
+ * Pasta Kodak de um paciente que ainda não tem nenhuma (28/11/2026).
+ * Até aqui era o Dentoral que atribuía o código (inicial + sequência) quando
+ * se carregava em "Kodak" pela primeira vez. Sem Dentoral, o CDC Manager
+ * tem de o fazer sozinho e sem colisões:
+ *   "C" + (5 000 000 + n.º de processo)   →  processo 69163 = C5069163
+ * · depende só do n.º de processo (único e definitivo): não precisa de
+ *   contador, não muda se o nome for corrigido, dá sempre o mesmo resultado;
+ * · as sequências do Dentoral andam nos milhares — nunca chegam a 5 000 000.
+ * null sem n.º de processo válido (pré-marcação).
+ */
+export const KODAK_NEW_PREFIX = 'C';
+export const KODAK_NEW_OFFSET = 5_000_000;
+export function kodakNewFolder(
+  processNumber: number | null | undefined,
+): string | null {
+  if (processNumber == null || !Number.isInteger(processNumber)) return null;
+  if (processNumber < 1 || processNumber >= KODAK_NEW_OFFSET) return null;
+  return `${KODAK_NEW_PREFIX}${KODAK_NEW_OFFSET + processNumber}`;
+}
+
+/** Pasta a usar: a que veio do Dentoral ou, na falta, a nova do CDC Manager */
+export function kodakFolderFor(patient: {
+  folder: string | null | undefined;
+  processNumber?: number | null;
+}): { folder: string; isNew: boolean } | null {
+  const raw = (patient.folder ?? '').trim();
+  if (raw) {
+    // Só o código simples: um caminho aqui seria um erro de quem chama
+    const folder = /[\\/]/.test(raw) ? null : normalizeKodakFolder(raw);
+    return folder ? { folder, isNew: false } : null;
+  }
+  const created = kodakNewFolder(patient.processNumber);
+  return created ? { folder: created, isNew: true } : null;
+}
+
+/**
  * Endereço que abre o paciente no CS Imaging do posto, a partir do código
  * da pasta (ex.: "J0002369" → J.RVG\J0002369). null se o código for inválido.
  * A raiz (Z:\ nos gabinetes) é configuração do posto, não vai no endereço.
+ * Sem pasta atribuída usa a pasta nova (kodakNewFolder). Leva sempre
+ * `novo=1`: se a pasta ainda não existir no arquivo (1.ª radiografia), o
+ * lançador só deixa o Kodak criá-la nos postos com "kodakCriar" ligado.
  */
 export function kodakLaunchUrl(patient: {
   folder: string | null | undefined;
   name: string | null | undefined;
+  processNumber?: number | null;
 }): string | null {
-  const raw = (patient.folder ?? '').trim();
-  // Só o código simples: um caminho aqui seria um erro de quem chama
-  const folder = /[\\/]/.test(raw) ? null : normalizeKodakFolder(raw);
+  const target = kodakFolderFor(patient);
   const name = rxCleanName(patient.name);
-  if (!folder || !name) return null;
+  if (!target || !name) return null;
+  const { folder } = target;
   const dir = `${folder[0]}.RVG\\${folder}`;
   return (
     `cdcrx://kodak/?dir=${encodeURIComponent(dir)}` +
-    `&name=${encodeURIComponent(name)}`
+    `&name=${encodeURIComponent(name)}&novo=1`
   );
 }

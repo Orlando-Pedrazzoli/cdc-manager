@@ -9,7 +9,8 @@
 //
 //   · iRYS  — precisa do n.º de processo (o código é P + processo)
 //   · Kodak — precisa da pasta do paciente (Patient.kodakFolder, migrada da
-//             rx_kodak do Dentoral). Sem pasta, o botão não aparece.
+//             rx_kodak do Dentoral). Sem pasta usa a pasta nova do CDC
+//             Manager (lib/rx-launch.kodakNewFolder) — 1.ª radiografia.
 //
 // SEM 'use client': não têm hooks, servem em Server e Client Components.
 // Visual 100% inline (convenção do projeto).
@@ -17,7 +18,7 @@
 
 import type { ReactNode } from 'react';
 import { Scan, ScanLine } from 'lucide-react';
-import { irysLaunchUrl, kodakLaunchUrl } from '@/lib/rx-launch';
+import { irysLaunchUrl, kodakFolderFor, kodakLaunchUrl } from '@/lib/rx-launch';
 
 type Size = 'sm' | 'md';
 
@@ -82,23 +83,34 @@ export function RxLaunchButton({
   );
 }
 
-/** Abre o paciente no Kodak (CS Imaging). Sem pasta atribuída não aparece. */
+/**
+ * Abre o paciente no Kodak (CS Imaging). Com pasta do Dentoral abre essa;
+ * sem pasta usa a pasta nova do CDC Manager (1.ª radiografia) — precisa do
+ * n.º de processo. Sem um nem outro, não aparece.
+ */
 export function KodakLaunchButton({
   kodakFolder,
+  processNumber = null,
   name,
   size = 'md',
 }: {
   kodakFolder: string | null;
+  processNumber?: number | null;
   name: string;
   size?: Size;
 }) {
-  const url = kodakLaunchUrl({ folder: kodakFolder, name });
-  if (!url) return null;
+  const target = kodakFolderFor({ folder: kodakFolder, processNumber });
+  const url = kodakLaunchUrl({ folder: kodakFolder, processNumber, name });
+  if (!url || !target) return null;
   return (
     <LaunchLink
       href={url}
       size={size}
-      title={`Abre este paciente no Kodak (CS Imaging) deste posto — pasta ${kodakFolder}. Requer o lançador CDC RX instalado.`}
+      title={
+        target.isNew
+          ? `Abre este paciente no Kodak (CS Imaging) deste posto — pasta nova ${target.folder}, criada pelo Kodak na 1.ª radiografia. Requer o lançador CDC RX instalado.`
+          : `Abre este paciente no Kodak (CS Imaging) deste posto — pasta ${target.folder}. Requer o lançador CDC RX instalado.`
+      }
     >
       <Scan size={size === 'sm' ? 14 : 15} />
       Abrir no Kodak
@@ -120,7 +132,12 @@ export function RxLaunchButtons({
 }) {
   return (
     <>
-      <KodakLaunchButton kodakFolder={kodakFolder} name={name} size={size} />
+      <KodakLaunchButton
+        kodakFolder={kodakFolder}
+        processNumber={processNumber}
+        name={name}
+        size={size}
+      />
       <RxLaunchButton processNumber={processNumber} name={name} size={size} />
     </>
   );
