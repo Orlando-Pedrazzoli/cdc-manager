@@ -19,8 +19,10 @@ import { FileText } from 'lucide-react';
 import {
   createRxRequestAction,
   cancelRxRequestAction,
+  saveRxReportAction,
   type RxActionState,
 } from '@/actions/rx';
+import { RX_REPORT_MAX } from '@/lib/rx-report';
 import { SignaturePad } from '@/components/clinico/SignaturePad';
 import { RxLaunchButtons } from '@/components/rx/RxLaunchButton';
 import {
@@ -44,6 +46,9 @@ export type RxItem = {
    *  url = abrir em tamanho real (imagem grande ou o próprio PDF);
    *  thumbUrl = miniatura no painel; null (PDF) → mostra um ícone */
   images: { url: string; thumbUrl: string | null; label: string }[];
+  /** Ponto 31: relatório escrito pelo médico (null = por escrever).
+   *  pdfUrl = o documento na ficha do paciente (URL assinada) */
+  report: { text: string; writtenAtLabel: string; pdfUrl: string | null } | null;
 };
 
 const STATUS_STYLE: Record<RxStatus, { bg: string; fg: string }> = {
@@ -323,6 +328,9 @@ export function RxRequestPanel({
                     ))}
                   </div>
                 )}
+
+                {/* Ponto 31 — relatório da radiografia (interpretação) */}
+                {r.status === 'done' && <RxReport item={r} />}
               </div>
             );
           })}
@@ -532,5 +540,194 @@ export function RxRequestPanel({
         </form>
       )}
     </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Ponto 31 (Giulia, 27/11/2026): relatório da radiografia
+// -----------------------------------------------------------------------------
+// "Se cobramos a interpretação, devia existir registo dela." O médico escreve
+// o que foi detetado; fica no pedido e o PDF vai para os documentos do
+// paciente. Escreve-se uma vez — por isso o aviso antes de guardar.
+function RxReport({ item }: { item: RxItem }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [state, action, saving] = useActionState<RxActionState, FormData>(
+    async (prev, formData) => {
+      const result = await saveRxReportAction(prev, formData);
+      if (result && 'success' in result) {
+        setOpen(false);
+        setText('');
+      }
+      return result;
+    },
+    undefined,
+  );
+  const error = state && 'error' in state ? state.error : null;
+
+  if (item.report) {
+    return (
+      <div
+        style={{
+          marginTop: '10px',
+          border: '1px solid #E3E8F5',
+          borderRadius: '10px',
+          backgroundColor: '#F8FAFF',
+          padding: '10px 12px',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px',
+            flexWrap: 'wrap',
+          }}
+        >
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#1B2A6B' }}>
+            Relatório
+            <span style={{ marginLeft: 8, fontWeight: 500, color: '#6A7186' }}>
+              {item.report.writtenAtLabel}
+            </span>
+          </span>
+          {item.report.pdfUrl && (
+            <a
+              href={item.report.pdfUrl}
+              target='_blank'
+              rel='noopener noreferrer'
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: '12px',
+                fontWeight: 600,
+                color: '#2743A6',
+                textDecoration: 'none',
+              }}
+            >
+              <FileText size={14} /> Abrir PDF
+            </a>
+          )}
+        </div>
+        <p
+          style={{
+            margin: '6px 0 0',
+            fontSize: '13px',
+            color: '#1C2233',
+            lineHeight: 1.5,
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {item.report.text}
+        </p>
+      </div>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button
+        type='button'
+        onClick={() => setOpen(true)}
+        style={{
+          marginTop: '10px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          borderRadius: '8px',
+          border: '1px solid #C9D4FF',
+          padding: '7px 12px',
+          fontSize: '12px',
+          fontWeight: 600,
+          color: '#2743A6',
+          backgroundColor: '#FFFFFF',
+          cursor: 'pointer',
+        }}
+      >
+        <FileText size={14} /> Escrever relatório
+      </button>
+    );
+  }
+
+  return (
+    <form
+      action={action}
+      style={{
+        marginTop: '10px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+      }}
+    >
+      <input type='hidden' name='requestId' value={item.id} />
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: '12px', color: '#6A7186' }}>
+          O que foi detetado na radiografia
+        </span>
+        <textarea
+          name='text'
+          value={text}
+          onChange={e => setText(e.target.value)}
+          maxLength={RX_REPORT_MAX}
+          rows={4}
+          autoFocus
+          placeholder='ex.: lesão periapical no 36; perda óssea horizontal generalizada; sem outras alterações'
+          style={{
+            border: '1px solid #D8DEEF',
+            borderRadius: '8px',
+            padding: '8px 10px',
+            fontSize: '13px',
+            color: '#1C2233',
+            width: '100%',
+            resize: 'vertical',
+            fontFamily: 'inherit',
+          }}
+        />
+      </label>
+      <p style={{ margin: 0, fontSize: '12px', color: '#6A7186' }}>
+        Fica nos documentos do paciente, com o seu nome e cédula. Depois de
+        guardado não pode ser alterado.
+      </p>
+      {error && (
+        <p style={{ margin: 0, fontSize: '12px', color: '#B3261E' }}>{error}</p>
+      )}
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <button
+          type='submit'
+          disabled={saving || text.trim().length === 0}
+          style={{
+            borderRadius: '8px',
+            border: 'none',
+            padding: '8px 16px',
+            fontSize: '13px',
+            fontWeight: 600,
+            color: '#FFFFFF',
+            backgroundColor:
+              saving || text.trim().length === 0 ? '#8FA0DC' : '#2743A6',
+            cursor: saving || text.trim().length === 0 ? 'default' : 'pointer',
+          }}
+        >
+          {saving ? 'A guardar…' : 'Guardar relatório'}
+        </button>
+        <button
+          type='button'
+          onClick={() => setOpen(false)}
+          disabled={saving}
+          style={{
+            borderRadius: '8px',
+            border: '1px solid #D8DEEF',
+            padding: '8px 14px',
+            fontSize: '13px',
+            fontWeight: 600,
+            color: '#1B2A6B',
+            backgroundColor: '#FFFFFF',
+            cursor: saving ? 'default' : 'pointer',
+          }}
+        >
+          Cancelar
+        </button>
+      </div>
+    </form>
   );
 }

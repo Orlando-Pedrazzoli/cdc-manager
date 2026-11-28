@@ -6,6 +6,8 @@
 // · createRxRequestAction / cancelRxRequestAction — MÉDICO, apenas nas SUAS
 //   consultas (mesma guard requireOwnAppointment do registo de atos); pedir
 //   só com consulta em curso (in-progress) — o pedido nasce na triagem.
+// · saveRxReportAction — MÉDICO que pediu: relatório da radiografia
+//   concluída (ponto 31); escreve-se uma vez e gera o PDF na ficha.
 // · advanceRxRequestAction — STAFF (admin/receção): é o operador da sala de
 //   RX que inicia/conclui. Transições validadas por canTransitionRx.
 // Auditoria com logAudit em todas as escritas (entityType 'RxRequest').
@@ -39,6 +41,12 @@ import {
   RX_CONSENT_LEGAL_TEXT,
   type RxStatus,
 } from '@/lib/domain';
+import {
+  cleanRxReportText,
+  rxReportBlock,
+  rxReportTextError,
+} from '@/lib/rx-report';
+import { issueRxReportDocument } from '@/lib/rx-report-issue';
 import {
   createRxRequestSchema,
   advanceRxRequestSchema,
@@ -477,6 +485,98 @@ export async function registerRxImageAction(
     revalidatePath(`/doutor/consulta/${String(req.appointmentId)}`);
     revalidatePath(`/admin/pacientes/${String(req.patientId)}`);
     revalidatePath(`/doutor/pacientes/${String(req.patientId)}`);
+    return { success: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// MÉDICO: relatório da radiografia (ponto 31 da Giulia, 27/11/2026)
+// -----------------------------------------------------------------------------
+// O médico que pediu escreve o que foi detetado. Fica no pedido e sai em PDF
+// para os documentos do paciente (categoria Radiografia). Pode escrever-se
+// com a consulta em curso ou já concluída — a imagem pode chegar depois.
+// Escreve-se UMA vez: a reserva do pedido é atómica (report: null → texto),
+// por isso dois cliques não geram dois documentos.
+export async function saveRxReportAction(
+  _prev: RxActionState,
+  formData: FormData,
+): Promise<RxActionState> {
+  try {
+    const requestId = String(formData.get('requestId') ?? '');
+    if (!OBJECT_ID.test(requestId)) return { error: 'Pedido inválido.' };
+    const text = cleanRxReportText(formData.get('text'));
+    const textError = rxReportTextError(text);
+    if (textError) return { error: textError };
+
+    await dbConnect();
+    const req = await RxRequest.findById(requestId).lean();
+    if (!req) return { error: 'Pedido não encontrado.' };
+    const { userId, doctorId } = await requireOwnAppointment(
+      String(req.appointmentId),
+    );
+    const block = rxReportBlock({
+      status: req.status as string,
+      hasReport: !!req.report,
+    });
+    if (block) return { error: block };
+
+    const writtenAt = new Date();
+    const reserved = await RxRequest.findOneAndUpdate(
+      { _id: req._id, status: 'done', report: null },
+      { $set: { report: { text, doctorId, writtenAt, documentId: null } } },
+      { new: true },
+    );
+    if (!reserved) return { error: 'Esta radiografia já tem relatório.' };
+
+    let issued: { documentId: string; title: string };
+    try {
+      issued = await issueRxReportDocument({
+        request: {
+          patientId: req.patientId,
+          clinicId: req.clinicId,
+          doctorId: req.doctorId,
+          appointmentId: req.appointmentId,
+          modality: req.modality as string,
+          toothNumbers: (req.toothNumbers as string[]) ?? [],
+          notes: (req.notes as string | null) ?? null,
+          completedAt: req.completedAt ?? null,
+          requestedAt: req.requestedAt ?? null,
+        },
+        findings: text,
+        userId,
+      });
+    } catch (e) {
+      // O PDF falhou: liberta o pedido para o médico tentar de novo
+      await RxRequest.updateOne(
+        { _id: req._id, 'report.documentId': null },
+        { $set: { report: null } },
+      );
+      console.error('[rx] relatório:', e);
+      return {
+        error: 'Não foi possível gerar o documento do relatório. Tente de novo.',
+      };
+    }
+    await RxRequest.updateOne(
+      { _id: req._id },
+      { $set: { 'report.documentId': issued.documentId } },
+    );
+
+    await logAudit({
+      userId,
+      action: 'create',
+      entityType: 'RxRequest',
+      entityId: String(req._id),
+      patientId: String(req.patientId),
+      clinicId: String(req.clinicId),
+      summary: `${issued.title} — escrito e guardado nos documentos`,
+    });
+
+    revalidatePath(`/doutor/consulta/${String(req.appointmentId)}`);
+    revalidatePath(`/doutor/pacientes/${String(req.patientId)}`);
+    revalidatePath(`/admin/pacientes/${String(req.patientId)}`);
+    revalidatePath('/admin/rx');
     return { success: true };
   } catch (e) {
     return fail(e);
