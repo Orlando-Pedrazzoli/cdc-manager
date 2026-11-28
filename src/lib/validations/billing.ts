@@ -5,6 +5,7 @@
 
 import { z } from 'zod';
 import { PAYMENT_METHODS } from '@/lib/domain';
+import { parseEurosField } from '@/lib/checkout-payments';
 import { isValidNif } from '@/lib/validations/patient';
 
 const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
@@ -53,6 +54,22 @@ export const checkoutSchema = z.object({
       return Number.isFinite(n) ? Math.round(n * 100) : NaN;
     },
     z.number({ error: 'Valor inválido' }).int().min(0).nullable().default(null),
+  ),
+  // Ponto 23 (Giulia, 27/11): segundo meio de pagamento, opcional. '' = não
+  // há. O valor entra em euros e sai em cêntimos; a divisão e as regras
+  // estão em lib/checkout-payments.ts (splitCheckoutPayments).
+  secondMethod: z.preprocess(
+    v => (typeof v === 'string' && v.trim() !== '' ? v : null),
+    z.enum(PAYMENT_METHODS, { error: 'Segundo meio de pagamento inválido' }).nullable(),
+  ),
+  secondCents: z.preprocess(
+    v => parseEurosField(v),
+    z
+      .number({ error: 'Valor do segundo meio inválido' })
+      .int()
+      .min(0)
+      .nullable()
+      .default(null),
   ),
   // Respostas de 25/11 (A1): desconto no momento da faturação, em % ou em €.
   // O valor é lido em lib/checkout-discount.ts (parseDiscountField).

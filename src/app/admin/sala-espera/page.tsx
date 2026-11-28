@@ -22,6 +22,7 @@ import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
 import TreatmentType from '@/models/TreatmentType';
 import { lisbonToUtc, todayLisbon } from '@/lib/availability';
+import { followUpLabel } from '@/lib/follow-up';
 import { Badge } from '@/components/ui/Badge';
 import AutoRefresh from '@/components/ui/AutoRefresh';
 import { UndoCheckInButton } from '@/components/sala-espera/UndoCheckInButton';
@@ -92,7 +93,7 @@ export default async function SalaEsperaPage({
     status: { $in: ['checked-in', 'in-progress', 'completed', 'no-show'] },
   })
     .select(
-      'patientId doctorId treatmentTypeId startAt status isUrgent checkedInAt startedAt completedAt',
+      'patientId doctorId treatmentTypeId startAt status isUrgent checkedInAt startedAt completedAt followUp',
     )
     .lean();
 
@@ -152,6 +153,9 @@ export default async function SalaEsperaPage({
         patient: pById.get(String(a.patientId)),
         doctor: a.doctorId ? dById.get(String(a.doctorId)) : null,
         treatment: tById.get(String(a.treatmentTypeId)) ?? '—',
+        // Ponto 35 (27/11): resposta do médico a "Há próxima consulta?"
+        followUp: followUpLabel(a.followUp),
+        followUpNeeded: a.followUp?.needed === true,
       };
     })
     .sort((x, y) => x.orderKey - y.orderKey);
@@ -364,12 +368,13 @@ export default async function SalaEsperaPage({
                 <th scope="col" style={th}>Ato</th>
                 <th scope="col" style={th}>Médico</th>
                 <th scope="col" style={th}>Estado</th>
+                <th scope="col" style={th}>Próxima consulta</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td style={{ ...td, color: '#6A7186' }} colSpan={11}>
+                  <td style={{ ...td, color: '#6A7186' }} colSpan={12}>
                     Sem atendimentos neste dia.
                   </td>
                 </tr>
@@ -487,6 +492,18 @@ export default async function SalaEsperaPage({
                     {r.status === 'checked-in' && (
                       <UndoCheckInButton appointmentId={r.id} />
                     )}
+                  </td>
+                  {/* Ponto 35 (27/11): o médico disse se há próxima consulta */}
+                  <td
+                    style={{
+                      ...td,
+                      fontSize: '12.5px',
+                      fontWeight: r.followUpNeeded ? 700 : 400,
+                      color: r.followUpNeeded ? '#8A5A00' : '#6A7186',
+                      maxWidth: 260,
+                    }}
+                  >
+                    {r.followUp ?? (r.status === 'completed' ? '—' : '')}
                   </td>
                 </tr>
               ))}

@@ -5,6 +5,9 @@
 //   · 56 modelos clínicos — 28 consentimentos, 2 termos, 24 orientações
 //     pós-procedimento, atestado médico e encaminhamento clínico
 //     (src/lib/data/modelos-clinica.ts);
+//   · 1 RASCUNHO (28/11, ponto 34 da Giulia): autorização de atendimento de
+//     menor desacompanhado. Não é texto da clínica: é criado INATIVO e só
+//     aparece na lista de emissão depois de a gestão o rever e ativar;
 //   · 4 contratos + folha de modalidades de pagamento dos alinhadores
 //     (src/lib/data/contratos-clinica.ts).
 //
@@ -40,7 +43,10 @@
 import mongoose from 'mongoose';
 import DocumentTemplate from '../src/models/DocumentTemplate';
 import Doctor from '../src/models/Doctor';
-import { MODELOS_CLINICA } from '../src/lib/data/modelos-clinica';
+import {
+  MODELOS_CLINICA,
+  MODELOS_RASCUNHO,
+} from '../src/lib/data/modelos-clinica';
 import { CONTRATOS_CLINICA } from '../src/lib/data/contratos-clinica';
 import {
   importAction,
@@ -72,6 +78,8 @@ async function main() {
 
   const all = [
     ...MODELOS_CLINICA.map(t => ({ ...t, contract: false as const })),
+    // Rascunhos (texto que não veio da clínica): nascem INATIVOS
+    ...MODELOS_RASCUNHO.map(t => ({ ...t, contract: false as const })),
     ...CONTRATOS_CLINICA.map(t => ({ ...t, contract: true as const })),
   ];
   const keys = all.map(t => t.key);
@@ -108,13 +116,22 @@ async function main() {
   const count = { criar: 0, igual: 0, substituir: 0 };
   console.log('\nModelos:');
   for (const t of all) {
-    const action = importAction(existing.get(t.key) ?? null, t);
+    // Um rascunho que já exista é da gestão (pode tê-lo corrigido): não se toca
+    const action =
+      'draft' in t && t.draft && existing.has(t.key)
+        ? ('igual' as const)
+        : importAction(existing.get(t.key) ?? null, t);
     count[action]++;
     if (action !== 'igual')
-      console.log(`  ${action.padEnd(10)} ${t.key}  — ${t.title}`);
+      console.log(
+        `  ${action.padEnd(10)} ${t.key}  — ${t.title}${'draft' in t && t.draft ? '  [RASCUNHO: fica inativo até a gestão o ativar]' : ''}`,
+      );
     if (!apply || action === 'igual') continue;
 
     const isConsent = t.kind === 'consentimento' || t.kind === 'termo';
+    const isDraft = 'draft' in t && t.draft === true;
+    // Rascunho: a importação nunca mexe em `active` — nasce inativo (abaixo)
+    // e, depois de a gestão o ativar, continua ativo.
     await DocumentTemplate.updateOne(
       { key: t.key },
       {
@@ -123,7 +140,7 @@ async function main() {
           folder: t.folder,
           title: t.title,
           body: t.body,
-          active: true,
+          ...(isDraft ? {} : { active: true }),
         },
         $setOnInsert: t.contract
           ? {
@@ -132,10 +149,12 @@ async function main() {
               restrictedToDoctors: true,
               allowedDoctorIds,
             }
-          : {
-              allowStaff: t.kind === 'pos-operatorio',
-              requiresSignature: isConsent,
-            },
+          : isDraft
+            ? { active: false, allowStaff: true, requiresSignature: true }
+            : {
+                allowStaff: t.kind === 'pos-operatorio',
+                requiresSignature: isConsent,
+              },
       },
       { upsert: true },
     );

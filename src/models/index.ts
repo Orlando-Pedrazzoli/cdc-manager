@@ -18,6 +18,7 @@ export { default as TreatmentPlan } from './TreatmentPlan';
 export { default as Procedure } from './Procedure';
 export { default as ClinicalRecord } from './ClinicalRecord';
 export { default as Odontogram } from './Odontogram';
+export { default as TreatmentNote } from './TreatmentNote';
 export { default as Document } from './Document';
 export { default as Invoice } from './Invoice';
 export { default as LegacyInvoice } from './LegacyInvoice';

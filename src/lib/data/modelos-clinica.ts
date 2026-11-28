@@ -33,7 +33,50 @@ export interface ClinicTemplate {
   folder: TemplateFolder;
   title: string;
   body: string;
+  /**
+   * Rascunho: texto que NÃO veio da clínica. É criado INATIVO, para a gestão
+   * rever e ativar em Modelos de documentos; a importação nunca o ativa.
+   */
+  draft?: boolean;
 }
+
+// -----------------------------------------------------------------------------
+// Ponto 34 (Giulia, 27/11/2026): "Acrescentar aos documentos uma autorização
+// de atendimento de menores desacompanhados", assinada pelo responsável.
+// A clínica não enviou texto para este documento: o que se segue é um
+// RASCUNHO escrito para o Victor rever (por isso `draft: true` — nasce
+// inativo). Assina-se na receção, no ecrã ou no tablet, como os outros.
+// -----------------------------------------------------------------------------
+export const MODELOS_RASCUNHO: ClinicTemplate[] = [
+  {
+    key: 'autorizacao-menor-desacompanhado',
+    kind: 'autorizacao',
+    folder: 'odontopediatria',
+    title: 'Autorização — atendimento de menor desacompanhado',
+    draft: true,
+    body: `IDENTIFICAÇÃO
+Nome do(a) menor: {{paciente.nome}}
+N.º do paciente: {{paciente.processo}} · Data de nascimento: {{paciente.nascimento}}
+Nome completo do responsável legal / encarregado de educação: ________________
+Qualidade (pai, mãe, tutor legal): ________________
+N.º Cartão de Cidadão / BI / Passaporte / Título de Residência do responsável legal: ________________
+Telemóvel para contacto durante a consulta: ________________
+
+AUTORIZAÇÃO
+Eu, acima identificado(a), responsável legal do(a) menor, autorizo que este(a) compareça e seja atendido(a) em {{clinica.nome}} sem a minha presença nem a de outro adulto responsável.
+
+ÂMBITO DA AUTORIZAÇÃO
+[ ] Apenas na consulta de ____/____/________
+[ ] Nas consultas do tratamento em curso, até ____/____/________
+
+DECLARAÇÕES
+• Fui informado(a) do tratamento previsto e dei o meu consentimento para a sua realização.
+• Esta autorização abrange apenas os atos já consentidos. Qualquer procedimento não previsto só será realizado depois de a clínica me contactar e obter a minha autorização, salvo em situação de urgência.
+• Estarei contactável pelo telemóvel indicado durante todo o período da consulta.
+• No fim da consulta, o(a) menor: [ ] pode sair sozinho(a) da clínica   [ ] será recolhido(a) por: ________________
+• Posso revogar esta autorização a qualquer momento, por escrito.`,
+  },
+];
 
 export const MODELOS_CLINICA: ClinicTemplate[] = [
   {

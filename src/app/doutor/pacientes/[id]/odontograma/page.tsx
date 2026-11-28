@@ -27,6 +27,7 @@ import type {
 } from '@/components/clinico/ToothDetail';
 import type { ToothStatus, FaceCondition, ToothFace } from '@/lib/domain';
 import { PatientAlertsPopup } from '@/components/pacientes/PatientAlertsPopup';
+import { TreatmentNotes } from '@/components/odontograma-notas/TreatmentNotes';
 import { PendingBudgetNote } from '@/components/orcamentos/PendingBudgetNote';
 import { ageInYears } from '@/lib/age';
 import { defaultDentition, isChildAge } from '@/lib/domain';
@@ -200,6 +201,10 @@ export default async function OdontogramPage({
 
       {/* 8.ª ronda/12: "Orçamento entregue no dia X, pendente" */}
       <PendingBudgetNote patientId={id} area='doutor' />
+
+      {/* Ponto 32 (Giulia, 27/11): notas do tratamento — só para os médicos
+          do paciente (em modo de consulta, sem relação, não aparecem) */}
+      {!consultOnly && <TreatmentNotes patientId={id} />}
 
       <div
         style={{

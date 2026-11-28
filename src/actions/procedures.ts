@@ -28,6 +28,7 @@ import { revalidatePath } from 'next/cache';
 import { getVerifiedSession } from '@/lib/get-verified-session';
 import { dbConnect } from '@/lib/mongodb';
 import { logAudit } from '@/lib/audit';
+import { parseFollowUp } from '@/lib/follow-up';
 import {
   resolveCommission,
   computeLineFinancials,
@@ -440,6 +441,10 @@ export async function completeConsultationAction(
     const parsed = completeConsultationSchema.safeParse({
       appointmentId: formData.get('appointmentId'),
       finalNote: formData.get('finalNote'),
+      followUpAnswer: formData.get('followUpAnswer'),
+      followUpReason: formData.get('followUpReason'),
+      followUpMinutes: formData.get('followUpMinutes'),
+      followUpNote: formData.get('followUpNote'),
     });
     if (!parsed.success) {
       return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' };
@@ -452,9 +457,18 @@ export async function completeConsultationAction(
     if (appt.status !== 'in-progress') {
       return { error: 'Só é possível concluir uma consulta em curso.' };
     }
+    // Ponto 35 (Giulia, 27/11): a pergunta é obrigatória para concluir
+    const follow = parseFollowUp({
+      answer: parsed.data.followUpAnswer,
+      reason: parsed.data.followUpReason,
+      minutes: parsed.data.followUpMinutes,
+      note: parsed.data.followUpNote,
+    });
+    if ('error' in follow) return { error: follow.error };
 
     appt.set('status', 'completed');
     appt.set('completedAt', new Date());
+    appt.set('followUp', { ...follow.followUp, answeredAt: new Date() });
     await appt.save();
 
     if (parsed.data.finalNote) {

@@ -224,7 +224,11 @@ export default async function DoctorAgendaPage({
               : 'Sem horário de trabalho neste dia'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '6px' }}>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          {/* Ponto 26 (Giulia, 27/11): vista mensal */}
+          <Link href={`/doutor/agenda/mes?mes=${date.slice(0, 7)}`} style={navBtn}>
+            Vista mensal
+          </Link>
           <Link
             href={`/doutor/agenda?data=${shiftDate(date, -1)}`}
             style={navBtn}
