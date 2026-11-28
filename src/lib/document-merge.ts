@@ -78,3 +78,22 @@ export function stripTitleLine(body: string): string {
     ? lines.slice(2).join('\n')
     : body;
 }
+
+/**
+ * Localidade para a linha "Lisboa, 28 de novembro de 2026" dos PDF, tirada
+ * da morada da clínica. 28/11/2026: usava-se o último bocado da morada tal
+ * e qual — com "Av. Lusiadas, 2" saía "2, 28 de novembro…" e com a morada
+ * completa sairia "1500-392 Lisboa, …". Agora tira-se o código postal e,
+ * se não sobrar um nome, usa-se a localidade por omissão.
+ */
+export function placeFromAddress(
+  address: string | null | undefined,
+  fallback = 'Lisboa',
+): string {
+  const last = (address ?? '').split(',').pop() ?? '';
+  const place = last
+    .replace(/\b\d{4}-\d{3}\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return /\p{L}{2,}/u.test(place) && !/\d/.test(place) ? place : fallback;
+}
