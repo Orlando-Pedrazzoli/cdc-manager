@@ -158,6 +158,12 @@ export type AddClinicalNoteInput = z.infer<typeof addClinicalNoteSchema>;
 export const completeConsultationSchema = z.object({
   appointmentId: z.string().regex(OBJECT_ID),
   finalNote: optionalText(5000),
+  // Ponto 35 (Giulia, 27/11): "Há próxima consulta?" — lido e validado em
+  // lib/follow-up.ts (parseFollowUp); aqui só passam como texto
+  followUpAnswer: z.preprocess(v => (typeof v === 'string' ? v : ''), z.string().max(10)),
+  followUpReason: z.preprocess(v => (typeof v === 'string' ? v : ''), z.string().max(30)),
+  followUpMinutes: z.preprocess(v => (typeof v === 'string' ? v : ''), z.string().max(6)),
+  followUpNote: z.preprocess(v => (typeof v === 'string' ? v : ''), z.string().max(600)),
 });
 export type CompleteConsultationInput = z.infer<
   typeof completeConsultationSchema

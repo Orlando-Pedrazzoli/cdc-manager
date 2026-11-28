@@ -45,6 +45,7 @@
 // =============================================================================
 
 import mongoose, { Schema, type Model, type InferSchemaType } from 'mongoose';
+import { FOLLOW_UP_REASONS } from '@/lib/follow-up';
 
 export const APPOINTMENT_STATUS = [
   'pending',
@@ -246,6 +247,22 @@ const AppointmentSchema = new Schema(
     checkedInAt: { type: Date, default: null },
     startedAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },
+    // Ponto 35 (Giulia, 27/11/2026): "Há próxima consulta?" — resposta do
+    // médico ao concluir. null = não respondido (consultas anteriores).
+    // Regras e textos em lib/follow-up.ts.
+    followUp: {
+      type: new Schema(
+        {
+          needed: { type: Boolean, required: true },
+          reason: { type: String, enum: [...FOLLOW_UP_REASONS, null], default: null },
+          minutes: { type: Number, min: 5, max: 480, default: null },
+          note: { type: String, trim: true, maxlength: 300, default: null },
+          answeredAt: { type: Date, required: true },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
     // --- Migração Dentoral ---------------------------------------------------
     // legacyId: chave idempotente do import (scripts/migracao). legacyData:
     // campos originais sem lugar no modelo, guardados para consulta/auditoria.

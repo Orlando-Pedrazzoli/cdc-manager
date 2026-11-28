@@ -18,6 +18,10 @@ import { ReceiptEuro } from 'lucide-react';
 import { checkoutAction, type BillingActionState } from '@/actions/billing';
 import { formatCents } from '@/lib/commissions';
 import {
+  parseEurosField,
+  splitCheckoutPayments,
+} from '@/lib/checkout-payments';
+import {
   checkoutDiscountTotal,
   parseDiscountField,
 } from '@/lib/checkout-discount';
@@ -60,6 +64,9 @@ export function CheckoutModal({
     () => new Set(acts.map(a => a.id)),
   );
   const [method, setMethod] = useState<PaymentMethod>('card');
+  // Ponto 23 (Giulia, 27/11): segundo meio de pagamento, opcional
+  const [secondMethod, setSecondMethod] = useState<PaymentMethod | ''>('');
+  const [secondEuros, setSecondEuros] = useState('');
   // 5.ª ronda/05 (Victor, nov. 2026): "Confirmação antes de emitir, com o
   // resumo dos dados do documento, para evitar erros com um só clique."
   // 1.º passo = preencher; 2.º passo = rever o resumo e confirmar.
@@ -78,6 +85,10 @@ export function CheckoutModal({
         });
         setOpen(false);
         setReview(false);
+        // 28/11: se o paciente ficar na fila (cobrança de só alguns atos), a
+        // próxima cobrança não herda o segundo meio da anterior
+        setSecondMethod('');
+        setSecondEuros('');
         router.refresh();
       }
       if (result && 'error' in result) setReview(false);
@@ -143,6 +154,32 @@ export function CheckoutModal({
     const cents = Math.round(n * 100);
     return cents < totalCents ? { paid: cents, due: totalCents - cents } : null;
   }, [paidNow, totalCents]);
+
+  // Ponto 23: divisão do que é pago agora pelos dois meios (mesma regra do
+  // servidor — lib/checkout-payments.ts)
+  const paidNowCents = partialInfo ? partialInfo.paid : totalCents;
+  const splitInfo = useMemo(
+    () =>
+      splitCheckoutPayments({
+        paidNowCents,
+        method,
+        secondMethod: secondMethod || null,
+        secondCents: secondMethod ? parseEurosField(secondEuros) : null,
+      }),
+    [paidNowCents, method, secondMethod, secondEuros],
+  );
+  const splitError =
+    'error' in splitInfo && secondMethod && secondEuros.trim() !== ''
+      ? splitInfo.error
+      : secondMethod && secondMethod === method
+        ? 'Tem de ser diferente do primeiro meio'
+        : null;
+  const paidLabel =
+    'parts' in splitInfo && splitInfo.parts.length > 1
+      ? splitInfo.parts
+          .map(p => `${formatCents(p.amountCents)} ${PAYMENT_METHOD_LABEL[p.method]}`)
+          .join(' + ')
+      : `${formatCents(paidNowCents)} · ${PAYMENT_METHOD_LABEL[method]}`;
 
   return (
     <>
@@ -227,7 +264,7 @@ export function CheckoutModal({
               <SummaryRow label='Total do documento' value={formatCents(totalCents)} strong />
               <SummaryRow
                 label='Pago agora'
-                value={`${formatCents(partialInfo ? partialInfo.paid : totalCents)} · ${PAYMENT_METHOD_LABEL[method]}`}
+                value={paidLabel}
                 strong
               />
               {partialInfo && (
@@ -311,7 +348,15 @@ export function CheckoutModal({
               name='paymentMethod'
               label='Meio de pagamento *'
               value={method}
-              onChange={e => setMethod(e.target.value as PaymentMethod)}
+              onChange={e => {
+                const next = e.target.value as PaymentMethod;
+                setMethod(next);
+                // o segundo meio não pode ser igual ao primeiro
+                if (next === secondMethod) {
+                  setSecondMethod('');
+                  setSecondEuros('');
+                }
+              }}
               required
             >
               {PAYMENT_METHODS.map(m => (
@@ -367,6 +412,44 @@ export function CheckoutModal({
                   : 'Vazio = valor total. Menos que o total = pagamento parcial'
               }
             />
+            <span />
+            {/* Ponto 23 (Giulia, 27/11): pagar em dois meios — ex.: 10 € em
+                numerário e 30 € em multibanco */}
+            <Select
+              name='secondMethod'
+              label='Segundo meio de pagamento'
+              value={secondMethod}
+              onChange={e => {
+                setSecondMethod(e.target.value as PaymentMethod | '');
+                if (e.target.value === '') setSecondEuros('');
+              }}
+              help='Só quando o paciente paga em dois meios'
+            >
+              <option value=''>— Não, paga tudo num meio —</option>
+              {PAYMENT_METHODS.filter(m => m !== method).map(m => (
+                <option key={m} value={m}>
+                  {PAYMENT_METHOD_LABEL[m]}
+                </option>
+              ))}
+            </Select>
+            {secondMethod ? (
+              <Input
+                name='secondEuros'
+                label={`Valor em ${PAYMENT_METHOD_LABEL[secondMethod]} (€)`}
+                inputMode='decimal'
+                value={secondEuros}
+                onChange={e => setSecondEuros(e.target.value)}
+                placeholder='0,00'
+                error={splitError ?? undefined}
+                help={
+                  'parts' in splitInfo && splitInfo.parts.length > 1
+                    ? `O resto, ${formatCents(splitInfo.parts[0].amountCents)}, fica em ${PAYMENT_METHOD_LABEL[method]}`
+                    : `O resto do valor pago agora fica em ${PAYMENT_METHOD_LABEL[method]}`
+                }
+              />
+            ) : (
+              <span />
+            )}
           </div>
 
           <div
@@ -441,7 +524,12 @@ export function CheckoutModal({
                 </Button>
                 <Button
                   type='button'
-                  disabled={selected.size === 0 || !!discountInfo.error}
+                  disabled={
+                    selected.size === 0 ||
+                    !!discountInfo.error ||
+                    // ponto 23: segundo meio escolhido sem valor válido
+                    (!!secondMethod && 'error' in splitInfo)
+                  }
                   onClick={() => setReview(true)}
                 >
                   Rever e confirmar ({formatCents(totalCents)})

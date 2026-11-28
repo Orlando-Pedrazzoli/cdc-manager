@@ -23,6 +23,8 @@ import Procedure from '@/models/Procedure';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
 import Invoice from '@/models/Invoice';
+import Appointment from '@/models/Appointment';
+import { followUpLabel } from '@/lib/follow-up';
 import LabCase from '@/models/LabCase';
 import Supplier from '@/models/Supplier';
 import { patientSearchOr } from '@/lib/patient-search';
@@ -31,7 +33,7 @@ import { clinicLabel } from '@/lib/branding';
 import { lisbonToUtc, todayLisbon } from '@/lib/availability';
 import { cobrancaOpensToday } from '@/lib/cobranca-filters';
 import { formatCents } from '@/lib/commissions';
-import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/domain';
+import { paymentMethodsLabel } from '@/lib/checkout-payments';
 import {
   CheckoutModal,
   type BillableAct,
@@ -258,6 +260,36 @@ export default async function CobrancaPage({
   const shownEntries = queueEntries.slice(0, MAX_CARDS);
   const hiddenCount = queueEntries.length - shownEntries.length;
   const todayTotalCents = todayInvoices.reduce((s, i) => s + i.totalCents, 0);
+
+  // Ponto 35 (Giulia, 27/11): o que o médico respondeu a "Há próxima
+  // consulta?" nas consultas dos atos em fila — para a receção marcar com o
+  // paciente ainda no balcão. Só as respostas "sim".
+  const queueAppointmentIds = [
+    ...new Set(
+      shownEntries.flatMap(([, procs]) =>
+        procs.filter(p => p.appointmentId).map(p => String(p.appointmentId)),
+      ),
+    ),
+  ];
+  const followAppts = queueAppointmentIds.length
+    ? await Appointment.find({
+        _id: { $in: queueAppointmentIds },
+        'followUp.needed': true,
+      })
+        .select('patientId followUp completedAt')
+        .sort({ completedAt: -1 })
+        .lean()
+    : [];
+  const followByPatient = new Map<string, string[]>();
+  for (const a of followAppts) {
+    const text = followUpLabel(a.followUp);
+    if (!text) continue;
+    const key = String(a.patientId);
+    const when = a.completedAt
+      ? ` (consulta de ${new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Lisbon' }).format(new Date(a.completedAt))})`
+      : '';
+    followByPatient.set(key, [...(followByPatient.get(key) ?? []), text + when]);
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -545,6 +577,20 @@ export default async function CobrancaPage({
                       {formatCents(subtotal)}
                     </strong>
                   </p>
+                  {/* Ponto 35 (27/11): o médico pediu próxima consulta */}
+                  {(followByPatient.get(patientId) ?? []).map((text, i) => (
+                    <p
+                      key={i}
+                      style={{
+                        margin: '4px 0 0',
+                        fontSize: '12.5px',
+                        fontWeight: 700,
+                        color: '#8A5A00',
+                      }}
+                    >
+                      {text}
+                    </p>
+                  ))}
                 </div>
                 <CheckoutModal
                   clinicId={String(clinic._id)}
@@ -693,8 +739,7 @@ export default async function CobrancaPage({
                     }}
                   >
                     {inv.paidAt ? lisbonDateTime(inv.paidAt) : '—'} ·{' '}
-                    {PAYMENT_METHOD_LABEL[inv.paymentMethod as PaymentMethod] ??
-                      inv.paymentMethod}
+                    {paymentMethodsLabel(inv)}
                     {inv.status === 'awaiting-emission' && (
                       <span style={{ color: '#8A5A00', fontWeight: 600 }}>
                         {' '}

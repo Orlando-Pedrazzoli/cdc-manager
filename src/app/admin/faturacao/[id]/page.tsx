@@ -24,7 +24,7 @@ import User from '@/models/User';
 import AuditLog from '@/models/AuditLog';
 import { formatCents } from '@/lib/commissions';
 import { INVOICE_STATUS_LABEL } from '@/lib/labels';
-import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/domain';
+import { paymentMethodsLabel } from '@/lib/checkout-payments';
 import { Badge, type BadgeVariant } from '@/components/ui/Badge';
 import { VoidInvoiceModal } from '@/components/faturacao/VoidInvoiceModal';
 import { PartialCreditNoteModal } from '@/components/faturacao/PartialCreditNoteModal';
@@ -294,7 +294,7 @@ export default async function InvoiceDetailPage({
         <InfoRow label='Data' value={lisbonDateTime(when)} />
         <InfoRow
           label='Meio de pagamento'
-          value={PAYMENT_METHOD_LABEL[inv.paymentMethod as PaymentMethod]}
+          value={paymentMethodsLabel(inv)}
         />
         <InfoRow label='Registado por' value={issuer?.name ?? '—'} />
       </div>

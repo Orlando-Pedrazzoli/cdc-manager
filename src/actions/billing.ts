@@ -63,6 +63,7 @@ import {
   tryEmitReceipts,
 } from '@/lib/moloni-emission';
 import { FINAL_CONSUMER_ADDRESS_THRESHOLD_CENTS } from '@/lib/validations/patient';
+import { splitCheckoutPayments } from '@/lib/checkout-payments';
 import Invoice from '@/models/Invoice';
 import Procedure from '@/models/Procedure';
 import Patient from '@/models/Patient';
@@ -85,6 +86,8 @@ export async function checkoutAction(
       paymentMethod: formData.get('paymentMethod'),
       nif: formData.get('nif'),
       paidNowCents: formData.get('paidNowEuros'), // euros no form → cêntimos no schema
+      secondMethod: formData.get('secondMethod'),
+      secondCents: formData.get('secondEuros'),
       discountMode: formData.get('discountMode'),
       discountValue: formData.get('discountValue'),
     });
@@ -187,6 +190,14 @@ export async function checkoutAction(
       return { error: 'O valor pago não pode exceder o total.' };
     }
     const isPartial = paidNow < totalCents;
+    // Ponto 23 (Giulia, 27/11): o que é pago agora pode ir em dois meios
+    const split = splitCheckoutPayments({
+      paidNowCents: paidNow,
+      method: data.paymentMethod,
+      secondMethod: data.secondMethod,
+      secondCents: data.secondCents,
+    });
+    if ('error' in split) return { error: split.error };
 
     // E12: seguradora + nº de cartão da ficha → cabeçalho do documento
     const patientForInvoice = await Patient.findById(data.patientId)
@@ -241,20 +252,13 @@ export async function checkoutAction(
                 discount && discount.mode === 'percent' ? discount.value : null,
               paymentMethod: data.paymentMethod,
               paidAt: paidNow > 0 ? now : null,
-              payments:
-                paidNow > 0
-                  ? [
-                      {
-                        amountCents: paidNow,
-                        method: data.paymentMethod,
-                        paidAt: now,
-                        receivedByUserId: session.user.id,
-                        note: isPartial
-                          ? 'Pagamento parcial na cobrança'
-                          : null,
-                      },
-                    ]
-                  : [],
+              payments: split.parts.map(part => ({
+                amountCents: part.amountCents,
+                method: part.method,
+                paidAt: now,
+                receivedByUserId: session.user.id,
+                note: isPartial ? 'Pagamento parcial na cobrança' : null,
+              })),
               paidCents: paidNow,
               nifSnapshot: data.nif,
               insuranceSnapshot,
@@ -313,7 +317,13 @@ export async function checkoutAction(
       entityId: String(invoiceId),
       patientId: data.patientId,
       clinicId: data.clinicId,
-      summary: `Cobrança registada: ${(totalCents / 100).toFixed(2)} € (${procedures.length} ato${procedures.length === 1 ? '' : 's'}, ${data.paymentMethod}${
+      summary: `Cobrança registada: ${(totalCents / 100).toFixed(2)} € (${procedures.length} ato${procedures.length === 1 ? '' : 's'}, ${
+        split.parts.length > 1
+          ? split.parts
+              .map(part => `${(part.amountCents / 100).toFixed(2)} € ${part.method}`)
+              .join(' + ')
+          : data.paymentMethod
+      }${
         discountCents > 0
           ? `, desconto na faturação ${
               discount && discount.mode === 'percent' ? `${discount.value}% = ` : ''

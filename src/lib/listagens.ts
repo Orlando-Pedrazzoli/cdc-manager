@@ -21,11 +21,12 @@ import Patient from '@/models/Patient';
 import Appointment from '@/models/Appointment';
 import Procedure from '@/models/Procedure';
 import Invoice from '@/models/Invoice';
+import { cashEntries, paymentMethodsLabel } from '@/lib/checkout-payments';
 import TreatmentType from '@/models/TreatmentType';
 import TreatmentPlan from '@/models/TreatmentPlan';
 import Doctor from '@/models/Doctor';
 import { lisbonToUtc } from '@/lib/availability';
-import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/domain';
+import { PAYMENT_METHOD_LABEL } from '@/lib/domain';
 import { INVOICE_STATUS_LABEL } from '@/lib/labels';
 import { processLabel } from '@/lib/domain';
 
@@ -440,17 +441,30 @@ export async function runListing(
 
     case 'diario-caixa': {
       const [s, e] = bounds(p);
+      // Ponto 23 (27/11): a caixa soma os PAGAMENTOS, cada um no seu dia e
+      // no seu meio. Antes somava o total do documento no meio principal e
+      // no dia do primeiro pagamento — com pagamento parcial ou em dois
+      // meios a caixa não batia. Regra em lib/checkout-payments.ts.
       const inv = await Invoice.find({
         ...clinicMatch(p),
         status: { $ne: 'voided' },
-        paidAt: { $gte: s, $lt: e },
+        $or: [
+          { 'payments.paidAt': { $gte: s, $lt: e } },
+          { payments: null, paidAt: { $gte: s, $lt: e } },
+        ],
       })
-        .select('paidAt paymentMethod totalCents')
-        .sort({ paidAt: 1 })
+        .select('paidAt paymentMethod totalCents payments')
         .lean();
       const byDay = new Map<string, Record<string, number>>();
-      for (const i of inv) {
-        const d = ptDate(i.paidAt as Date);
+      const docsByDay = new Map<string, Set<string>>();
+      const entries = inv
+        .flatMap(i =>
+          cashEntries(i).map(entry => ({ ...entry, id: String(i._id) })),
+        )
+        .filter(x => x.paidAt >= s && x.paidAt < e)
+        .sort((a, b) => a.paidAt.getTime() - b.paidAt.getTime());
+      for (const x of entries) {
+        const d = ptDate(x.paidAt);
         const r = byDay.get(d) ?? {
           cash: 0,
           card: 0,
@@ -459,10 +473,12 @@ export async function runListing(
           total: 0,
           n: 0,
         };
-        r[i.paymentMethod as string] =
-          (r[i.paymentMethod as string] ?? 0) + i.totalCents;
-        r.total += i.totalCents;
-        r.n += 1;
+        r[x.method] = (r[x.method] ?? 0) + x.amountCents;
+        r.total += x.amountCents;
+        const docs = docsByDay.get(d) ?? new Set<string>();
+        docs.add(x.id);
+        docsByDay.set(d, docs);
+        r.n = docs.size;
         byDay.set(d, r);
       }
       const rows = Array.from(byDay.entries()).map(([dia, r]) => ({
@@ -525,7 +541,7 @@ export async function runListing(
         createdAt: { $gte: s, $lt: e },
       })
         .select(
-          'createdAt patientId status paymentMethod totalCents nifSnapshot moloniDocumentNumber',
+          'createdAt patientId status paymentMethod payments.method totalCents nifSnapshot moloniDocumentNumber',
         )
         .sort({ createdAt: -1 })
         .lean();
@@ -546,8 +562,8 @@ export async function runListing(
           paciente: pt?.name ?? '(removido)',
           nif: i.nifSnapshot ?? 'Cons. final',
           meio:
-            PAYMENT_METHOD_LABEL[i.paymentMethod as PaymentMethod] ??
-            i.paymentMethod,
+            // ponto 23: pagamento em dois meios → "Numerário + Multibanco"
+            paymentMethodsLabel(i),
           estado:
             INVOICE_STATUS_LABEL[
               i.status as keyof typeof INVOICE_STATUS_LABEL

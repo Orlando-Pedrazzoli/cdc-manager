@@ -29,7 +29,7 @@ import { getActiveClinics } from '@/models/Clinic';
 import { lisbonToUtc } from '@/lib/availability';
 import { formatCents } from '@/lib/commissions';
 import { INVOICE_STATUS_LABEL } from '@/lib/labels';
-import { PAYMENT_METHOD_LABEL, type PaymentMethod } from '@/lib/domain';
+import { paymentMethodsLabel } from '@/lib/checkout-payments';
 import { Badge, type BadgeVariant } from '@/components/ui/Badge';
 
 export const dynamic = 'force-dynamic';
@@ -468,7 +468,7 @@ export default async function FaturacaoPage({
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {PAYMENT_METHOD_LABEL[inv.paymentMethod as PaymentMethod]}
+                      {paymentMethodsLabel(inv)}
                     </td>
                     <td
                       style={{
